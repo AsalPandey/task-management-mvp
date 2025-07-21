@@ -72,19 +72,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/analytics', [App\Http\Controllers\AnalyticsController::class, 'index'])->name('analytics');
     Route::get('/projects', [App\Http\Controllers\ProjectsController::class, 'index'])->name('projects');
-    Route::post('/projects', [App\Http\Controllers\ProjectsController::class, 'store']);
+    Route::post('/projects', [App\Http\Controllers\ProjectsController::class, 'store'])->middleware('throttle:10,1');
     Route::put('/projects/{id}', [App\Http\Controllers\ProjectsController::class, 'update']);
     Route::delete('/projects/{id}', [App\Http\Controllers\ProjectsController::class, 'destroy']);
     Route::get('/settings', [App\Http\Controllers\SettingsController::class, 'index'])->name('settings');
     Route::get('/tasks', [App\Http\Controllers\TasksController::class, 'index'])->name('tasks');
-    Route::post('/tasks', [App\Http\Controllers\TasksController::class, 'store']);
+    Route::post('/tasks', [App\Http\Controllers\TasksController::class, 'store'])->middleware('throttle:20,1');
     Route::put('/tasks/{id}', [App\Http\Controllers\TasksController::class, 'update']);
     Route::delete('/tasks/{id}', [App\Http\Controllers\TasksController::class, 'destroy']);
+    Route::post('/tasks/bulk-delete', [App\Http\Controllers\TasksController::class, 'bulkDelete']);
+    Route::post('/tasks/bulk-complete', [App\Http\Controllers\TasksController::class, 'bulkComplete']);
     Route::get('/team-dashboard', [App\Http\Controllers\TeamDashboardController::class, 'index'])->name('team-dashboard');
     Route::get('/team-management', [App\Http\Controllers\TeamManagementController::class, 'index'])->name('team-management');
     Route::post('/team-management', [App\Http\Controllers\TeamManagementController::class, 'store']);
     Route::put('/team-management/{id}', [App\Http\Controllers\TeamManagementController::class, 'update']);
     Route::delete('/team-management/{id}', [App\Http\Controllers\TeamManagementController::class, 'destroy']);
+    Route::post('/notifications/read/{id}', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::get('/notifications/all', [App\Http\Controllers\NotificationController::class, 'all'])->name('notifications.all');
 });
 
 // Team Dashboard route with manual role check
@@ -95,5 +99,8 @@ Route::get('/team-dashboard', function () {
     }
     return app(\App\Http\Controllers\TeamDashboardController::class)->index();
 })->middleware(['auth', 'verified'])->name('team-dashboard');
+
+Route::get('/history', [App\Http\Controllers\CompletedTasksController::class, 'index'])->name('completed-tasks');
+Route::post('/history/revert/{id}', [App\Http\Controllers\CompletedTasksController::class, 'revert'])->name('completed-tasks.revert');
 
 require __DIR__.'/auth.php';

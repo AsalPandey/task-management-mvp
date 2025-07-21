@@ -24,8 +24,7 @@
             </a>
             <a href="{{ route('tasks') }}" class="nav-tab{{ request()->routeIs('tasks') ? ' active' : '' }}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++                <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                    <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
                     <path d="M16 3v4M8 3v4" stroke="currentColor" stroke-width="2"/>
                 </svg>
                 Tasks
@@ -62,6 +61,51 @@
             </a>
         </nav>
         <div class="header-actions">
+            <!-- Notifications Bell -->
+            <div class="notifications-dropdown" style="position:relative; margin-right:1.5rem;">
+                <button id="notificationsBell" style="background:none; border:none; cursor:pointer; position:relative;">
+                    <span style="font-size:1.5rem;">🔔</span>
+                    @php $unreadCount = $user ? $user->unreadNotifications->count() : 0; @endphp
+                    @if($unreadCount > 0)
+                        <span style="position:absolute; top:0; right:0; background:#ff6b6b; color:#fff; border-radius:50%; font-size:0.8rem; padding:0 6px;">{{ $unreadCount }}</span>
+                    @endif
+                </button>
+                <div id="notificationsDropdown" style="display:none; position:absolute; right:0; top:2.2rem; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-radius:8px; min-width:270px; z-index:1000;">
+                    <div style="padding:0.7rem 1rem; border-bottom:1px solid #eee; font-weight:600; color:#4f8cff;">Notifications</div>
+                    @if($user && $user->notifications->count())
+                        @foreach($user->unreadNotifications->take(7) as $notification)
+                            <div style="padding:0.7rem 1rem; border-bottom:1px solid #f4f4f4; font-size:0.98rem; background:{{ $notification->read_at ? '#fff' : '#f4f8ff' }};">
+                                {{ $notification->data['message'] ?? 'You have a new notification.' }}
+                                <form method="POST" action="{{ route('notifications.read', $notification->id) }}" style="display:inline; float:right;">
+                                    @csrf
+                                    <button type="submit" style="background:none; border:none; color:#4f8cff; font-size:0.9rem; cursor:pointer;">Mark as read</button>
+                                </form>
+                            </div>
+                        @endforeach
+                        <div style="text-align:center; padding:0.7rem 1rem;">
+                            <a href="{{ route('notifications.all') }}" style="color:#4f8cff; font-size:0.95rem;">View all</a>
+                        </div>
+                    @else
+                        <div style="padding:1.2rem; color:#888; text-align:center;">No notifications</div>
+                    @endif
+                </div>
+            </div>
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const bell = document.getElementById('notificationsBell');
+                const dropdown = document.getElementById('notificationsDropdown');
+                if (bell && dropdown) {
+                    bell.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                    });
+                    document.addEventListener('click', function() {
+                        dropdown.style.display = 'none';
+                    });
+                }
+            });
+            </script>
+            <!-- End Notifications Bell -->
             <div class="user-info">
                 <span class="user-name">{{ $user ? $user->name : '' }}</span>
             </div>

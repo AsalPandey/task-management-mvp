@@ -64,6 +64,15 @@ document.addEventListener('DOMContentLoaded', function() {
             taskModal.classList.add('active');
             document.getElementById('submitBtn').textContent = '➕ Create Task';
             document.getElementById('modalTitle').textContent = 'Create New Task';
+            // Set start date to today by default
+            const startDateInput = document.getElementById('taskStartDate');
+            if (startDateInput) {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                startDateInput.value = `${yyyy}-${mm}-${dd}`;
+            }
         });
     }
     if (modalClose) {
@@ -154,6 +163,16 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.task && editTaskId) {
                 showMessage('Task updated.');
+                // If the task was marked as completed and moved, remove from DOM
+                if (data.moved) {
+                    const card = document.querySelector(`.task-card[data-task-id='${editTaskId}']`);
+                    if (card) card.remove();
+                    const row = document.querySelector(`tr[data-task-id='${editTaskId}']`);
+                    if (row) row.remove();
+                    taskModal.classList.remove('active');
+                    editTaskId = null;
+                    return;
+                }
                 // Update the card in the DOM
                 const card = document.querySelector(`.task-card[data-task-id='${editTaskId}']`);
                 if (card) {
@@ -286,7 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('submitBtn').textContent = '✏️ Update Task';
             document.getElementById('modalTitle').textContent = 'Edit Task';
             taskForm.querySelector('#taskTitle').value = card.querySelector('.task-title').textContent;
-            taskForm.querySelector('#taskDescription').value = card.querySelector('.task-comments p')?.textContent || '';
+            taskForm.querySelector('#taskDescription').value = card.dataset.description || '';
             taskForm.querySelector('#taskProject').value = card.dataset.projectId || '';
             taskForm.querySelector('#taskAssignee').value = card.dataset.assigneeId || '';
             taskForm.querySelector('#taskPriority').value = card.dataset.priority || 'Medium';
@@ -295,7 +314,7 @@ document.addEventListener('DOMContentLoaded', function() {
             taskForm.querySelector('#taskDueDate').value = card.dataset.dueDate || '';
             taskForm.querySelector('#taskProgress').value = card.dataset.progress || 0;
             taskForm.querySelector('#progressValue').textContent = card.dataset.progress || 0;
-            taskForm.querySelector('#taskComments').value = card.querySelector('.task-comments p')?.textContent || '';
+            taskForm.querySelector('#taskComments').value = card.dataset.comments || '';
         });
     });
     // Toggle view logic
@@ -332,6 +351,116 @@ document.addEventListener('DOMContentLoaded', function() {
             const card = document.querySelector(`.task-card[data-task-id='${row.dataset.taskId}']`);
             if (card) card.querySelector('.delete-btn').click();
         });
+    });
+
+    // Bulk Actions
+    const selectAllTasksCheckbox = document.getElementById('selectAllTasks');
+    const taskCheckboxes = document.querySelectorAll('.task-checkbox');
+    const bulkActions = document.getElementById('bulkActions');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const bulkCompleteBtn = document.getElementById('bulkCompleteBtn');
+
+    function updateBulkActions() {
+        const checkedCount = document.querySelectorAll('.task-checkbox:checked').length;
+        selectAllTasksCheckbox.checked = taskCheckboxes.length > 0 && checkedCount === taskCheckboxes.length;
+        bulkDeleteBtn.disabled = checkedCount === 0;
+        bulkCompleteBtn.disabled = checkedCount === 0;
+        bulkActions.style.display = checkedCount > 0 ? '' : 'none';
+    }
+
+    selectAllTasksCheckbox.addEventListener('change', function() {
+        taskCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkActions();
+    });
+
+    taskCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActions);
+    });
+
+    bulkDeleteBtn.addEventListener('click', function() {
+        const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+        if (confirm('Are you sure you want to delete these ' + selectedTaskIds.length + ' tasks?')) {
+            fetch(`/tasks/bulk-delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ task_ids: selectedTaskIds }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    selectedTaskIds.forEach(id => {
+                        const card = document.querySelector(`.task-card[data-task-id='${id}']`);
+                        if (card) card.remove();
+                        const row = document.querySelector(`tr[data-task-id='${id}']`);
+                        if (row) row.remove();
+                    });
+                    updateBulkActions();
+                    showMessage('Tasks deleted.');
+                } else {
+                    showMessage('Error deleting tasks.', false);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting tasks:', error);
+                showMessage('Error deleting tasks.', false);
+            });
+        }
+    });
+
+    bulkCompleteBtn.addEventListener('click', function() {
+        const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+        if (confirm('Are you sure you want to mark these ' + selectedTaskIds.length + ' tasks as completed?')) {
+            fetch(`/tasks/bulk-complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ task_ids: selectedTaskIds }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    selectedTaskIds.forEach(id => {
+                        const card = document.querySelector(`.task-card[data-task-id='${id}']`);
+                        if (card) {
+                            card.dataset.status = 'Completed';
+                            card.querySelector('.status-badge').textContent = 'Completed';
+                            card.querySelector('.status-badge').className = 'status-badge status-completed';
+                            card.querySelector('.progress-header span:last-child').textContent = '100%';
+                            card.querySelector('.progress-fill').style.width = '100%';
+                            card.querySelector('.due-date').textContent = '-'; // Clear due date
+                            card.dataset.dueDate = null;
+                        }
+                        const row = document.querySelector(`tr[data-task-id='${id}']`);
+                        if (row) {
+                            row.querySelector('td:nth-child(1)').textContent = card.querySelector('.task-title').textContent + ' (Completed)';
+                            row.querySelector('td:nth-child(2) .status-badge').textContent = 'Completed';
+                            row.querySelector('td:nth-child(2) .status-badge').className = 'status-badge status-completed';
+                            row.querySelector('td:nth-child(3) .priority-badge').textContent = 'Completed';
+                            row.querySelector('td:nth-child(3) .priority-badge').className = 'priority-badge priority-completed';
+                            row.querySelector('td:nth-child(6)').textContent = '-'; // Clear due date
+                            row.querySelector('td:nth-child(7)').textContent = '100%';
+                        }
+                    });
+                    updateBulkActions();
+                    showMessage('Tasks marked as completed.');
+                } else {
+                    showMessage('Error marking tasks as completed.', false);
+                }
+            })
+            .catch(error => {
+                console.error('Error marking tasks as completed:', error);
+                showMessage('Error marking tasks as completed.', false);
+            });
+        }
     });
 });
 </script>
@@ -383,7 +512,18 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Tasks Grid (Card View) -->
     <div id="tasksGrid" class="tasks-grid">
         @forelse ($tasks as $task)
-            <div class="task-card" tabindex="0" style="cursor:pointer" data-task-id="{{ $task->id }}" data-project-id="{{ $task->project_id }}" data-assignee-id="{{ $task->assignee_id }}" data-priority="{{ $task->priority }}" data-status="{{ $task->status }}" data-start-date="{{ $task->start_date }}" data-due-date="{{ $task->due_date }}" data-progress="{{ $task->progress }}">
+            <div class="task-card" tabindex="0" style="cursor:pointer"
+                data-task-id="{{ $task->id }}"
+                data-project-id="{{ $task->project_id }}"
+                data-assignee-id="{{ $task->assignee_id }}"
+                data-priority="{{ $task->priority }}"
+                data-status="{{ $task->status }}"
+                data-start-date="{{ $task->start_date }}"
+                data-due-date="{{ $task->due_date }}"
+                data-progress="{{ $task->progress }}"
+                data-description="{{ htmlspecialchars($task->description ?? '', ENT_QUOTES) }}"
+                data-comments="{{ htmlspecialchars($task->comments ?? '', ENT_QUOTES) }}"
+            >
                 <div class="task-header">
                     <div class="task-status-icon">
                         <span class="status-icon {{ str_replace(' ', '-', strtolower($task->status)) }}">
@@ -448,11 +588,17 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         @endforelse
     </div>
+    <!-- Bulk Actions -->
+    <div id="bulkActions" style="display:none; margin-bottom:1rem;">
+        <button id="bulkDeleteBtn" class="btn-small btn-danger">🗑️ Delete Selected</button>
+        <button id="bulkCompleteBtn" class="btn-small btn-primary">✅ Mark Completed</button>
+    </div>
     <!-- Tasks Table View (hidden by default) -->
     <div id="tasksTableWrapper" style="display:none;">
         <table class="tasks-table">
             <thead>
                 <tr>
+                    <th><input type="checkbox" id="selectAllTasks"></th>
                     <th>Title</th>
                     <th>Status</th>
                     <th>Priority</th>
@@ -467,6 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <tbody>
                 @foreach ($tasks as $task)
                     <tr data-task-id="{{ $task->id }}">
+                        <td><input type="checkbox" class="task-checkbox" value="{{ $task->id }}"></td>
                         <td>{{ $task->title }}</td>
                         <td><span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span></td>
                         <td><span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span></td>
@@ -488,6 +635,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 @endforeach
             </tbody>
         </table>
+    </div>
+    <!-- History Button at the bottom -->
+    <div style="margin: 3rem auto 0 auto; text-align: center;">
+        <a href="{{ route('completed-tasks') }}" class="btn-primary" style="padding: 0.7rem 2.5rem; font-size: 1.1rem; border-radius: 8px;">History</a>
     </div>
     <!-- Task Form Modal -->
     <div id="taskModal" class="modal">
@@ -547,7 +698,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="form-row">
                     <div class="form-group">
                         <label for="taskStartDate">Start Date *</label>
-                        <input type="date" id="taskStartDate" name="taskStartDate" required>
+                        <input type="date" id="taskStartDate" name="taskStartDate" required value="{{ old('taskStartDate') ?? now()->format('Y-m-d') }}">
                     </div>
                     <div class="form-group">
                         <label for="taskDueDate">Due Date *</label>

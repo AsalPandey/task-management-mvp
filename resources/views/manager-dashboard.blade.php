@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         Last updated: <span>{{ $recentTasks->first() ? $recentTasks->first()->updated_at->format('M d, Y H:i') : 'Never' }}</span>
                     </div>
                 </div>
+                <a href="{{ route('completed-tasks') }}" class="btn-primary" style="margin-top:1rem; display:inline-block;">View Task History</a>
             </div>
             <div class="metrics-grid">
                 <div class="metric-card blue">
@@ -143,18 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="metric-label">Overdue</div>
                     <div class="metric-subtitle">Needs attention</div>
                 </div>
-            </div>
-            <div class="progress-card">
-                <div class="progress-header">
-                    <h3>Overall Team Progress</h3>
-                    <span class="progress-percentage">{{ $progress }}%</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ $progress }}%"></div>
-                    </div>
-                </div>
-                <p id="progressDescription">Average completion across {{ $tasks->count() }} tasks</p>
             </div>
 
             <!-- Charts Section -->
@@ -347,6 +336,19 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </div>
     </main>
+    <!-- Overall Progress Bar at the very bottom -->
+    <div class="progress-card" style="margin: 3rem auto 0 auto; max-width: 600px;">
+        <div class="progress-header">
+            <h3>My Overall Progress</h3>
+            <span class="progress-percentage">{{ $progress }}%</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ $progress }}%"></div>
+            </div>
+        </div>
+        <p id="progressDescription">Average completion across {{ $tasks->count() }} tasks</p>
+    </div>
     <!-- Task Form Modal -->
     <div id="taskModal" class="modal">
         <div class="modal-content">

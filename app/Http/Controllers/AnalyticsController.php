@@ -3,44 +3,50 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\CompletedTask;
 
 class AnalyticsController extends Controller
 {
     public function index()
     {
         // Task stats
-        $totalTasks = \App\Models\Task::count();
-        $completedTasks = \App\Models\Task::where('status', 'Completed')->count();
-        $inProgressTasks = \App\Models\Task::where('status', 'In Progress')->count();
-        $overdueTasks = \App\Models\Task::where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
-        $completionRate = $totalTasks ? round($completedTasks / $totalTasks * 100) : 0;
-        $avgProgress = $totalTasks ? round(\App\Models\Task::avg('progress')) : 0;
+        $activeTasks = \App\Models\Task::all();
+        $completedTasks = CompletedTask::all();
+        $totalTasks = $activeTasks->count() + $completedTasks->count();
+        $completedTasksCount = $completedTasks->count();
+        $inProgressTasks = $activeTasks->where('status', 'In Progress')->count();
+        $overdueTasks = $activeTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        $completionRate = $totalTasks ? round($completedTasksCount / $totalTasks * 100) : 0;
+        $avgProgress = $totalTasks ? round((($activeTasks->avg('progress') * $activeTasks->count() + $completedTasks->avg('progress') * $completedTasks->count()) / $totalTasks)) : 0;
 
         // Priority breakdown
-        $priorityCounts = \App\Models\Task::groupBy('priority')->selectRaw('priority, COUNT(*) as count')->pluck('count', 'priority');
+        $priorityCounts = $activeTasks->groupBy('priority')->map->count();
+        foreach ($completedTasks->groupBy('priority') as $priority => $group) {
+            $priorityCounts[$priority] = ($priorityCounts[$priority] ?? 0) + $group->count();
+        }
         // Productivity trend (last 7 days)
         $days = collect(range(0, 6))->map(function($i) {
-            return now()->subDays(6 - $i)->format('D');
+            return now()->subDays(6 - $i)->format('Y-m-d');
         });
-        $productivity = $days->mapWithKeys(function($day) {
-            $date = now()->parse($day)->format('Y-m-d');
-            $count = \App\Models\Task::whereDate('updated_at', $date)->count();
-            return [$day => $count];
+        $productivity = $days->mapWithKeys(function($date) {
+            $count = CompletedTask::whereDate('completed_at', $date)->count();
+            return [now()->parse($date)->format('D') => $count];
         });
 
         // Team performance
         $users = \App\Models\User::with(['role', 'tasks'])->get();
         $teamPerformance = $users->map(function($user) {
-            $tasks = $user->tasks ?? collect();
-            $total = $tasks->count();
-            $completed = $tasks->where('status', 'Completed')->count();
-            $overdue = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
-            $completionRate = $total ? round($completed / $total * 100) : 0;
+            $active = $user->tasks ?? collect();
+            $completed = CompletedTask::where('assignee_id', $user->id)->get();
+            $total = $active->count() + $completed->count();
+            $completedCount = $completed->count();
+            $overdue = $active->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+            $completionRate = $total ? round($completedCount / $total * 100) : 0;
             return [
                 'name' => $user->name,
                 'avatar' => strtoupper(substr($user->name, 0, 2)),
                 'total' => $total,
-                'completed' => $completed,
+                'completed' => $completedCount,
                 'overdue' => $overdue,
                 'completionRate' => $completionRate,
             ];
@@ -49,10 +55,11 @@ class AnalyticsController extends Controller
         // Project performance
         $projects = \App\Models\Project::with('tasks')->get();
         $projectPerformance = $projects->map(function($project) {
-            $tasks = $project->tasks;
-            $total = $tasks->count();
-            $done = $tasks->where('status', 'Completed')->count();
-            $progress = $total ? round($tasks->avg('progress')) : 0;
+            $active = $project->tasks;
+            $completed = CompletedTask::where('project_id', $project->id)->get();
+            $total = $active->count() + $completed->count();
+            $done = $completed->count();
+            $progress = $total ? round((($active->avg('progress') * $active->count() + $completed->avg('progress') * $completed->count()) / $total)) : 0;
             return [
                 'name' => $project->name,
                 'color' => $project->color ?? '#3B82F6',
@@ -64,7 +71,7 @@ class AnalyticsController extends Controller
 
         // Insights
         $achievements = [
-            'Completed ' . $completedTasks . ' tasks successfully',
+            'Completed ' . $completedTasksCount . ' tasks successfully',
             'Maintaining ' . $avgProgress . '% average progress rate',
             'Most tasks completed on schedule',
         ];
@@ -78,7 +85,7 @@ class AnalyticsController extends Controller
         $lastUpdated = \App\Models\Task::latest('updated_at')->value('updated_at');
 
         return view('analytics', compact(
-            'totalTasks', 'completedTasks', 'inProgressTasks', 'overdueTasks', 'completionRate', 'avgProgress',
+            'totalTasks', 'completedTasksCount', 'inProgressTasks', 'overdueTasks', 'completionRate', 'avgProgress',
             'priorityCounts', 'productivity', 'teamPerformance', 'projectPerformance',
             'achievements', 'improvements', 'lastUpdated'
         ));

@@ -11,31 +11,41 @@ class TeamDashboardController extends Controller
         $user = auth()->user();
         $tasks = \App\Models\Task::with('project')->where('assignee_id', $user->id)->get();
         $totalTasks = $tasks->count();
-        $completedTasks = $tasks->where('status', 'Completed')->count();
         $inProgressTasks = $tasks->where('status', 'In Progress')->count();
         $overdueTasks = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
         $avgProgress = $totalTasks ? round($tasks->avg('progress')) : 0;
-        $completionRate = $totalTasks ? round($completedTasks / $totalTasks * 100) : 0;
+        $completionRate = $totalTasks ? round(($tasks->where('status', 'Completed')->count()) / $totalTasks * 100) : 0;
         $priorityCounts = [
             'High' => $tasks->where('priority', 'High')->count(),
             'Medium' => $tasks->where('priority', 'Medium')->count(),
             'Low' => $tasks->where('priority', 'Low')->count(),
         ];
         $statusCounts = [
-            'Completed' => $completedTasks,
+            'Completed' => 0, // will be set below
             'In Progress' => $inProgressTasks,
             'Overdue' => $overdueTasks,
         ];
         $overdueList = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed');
-        // Productivity trend (last 7 days)
+        // Completed tasks today
+        $todayCompletedTasks = \App\Models\CompletedTask::where('assignee_id', $user->id)
+            ->whereDate('completed_at', now()->toDateString())
+            ->count();
+        $statusCounts['Completed'] = $todayCompletedTasks;
+        // Productivity trend (last 7 days) and completed history
         $days = collect(range(0, 6))->map(function($i) {
-            return now()->subDays(6 - $i)->format('D');
+            return now()->subDays(6 - $i)->format('Y-m-d');
         });
-        $productivity = $days->mapWithKeys(function($day) use ($tasks) {
-            $date = now()->parse($day)->format('Y-m-d');
-            $count = $tasks->where('updated_at', '>=', $date . ' 00:00:00')->where('updated_at', '<=', $date . ' 23:59:59')->count();
-            return [$day => $count];
+        $productivity = $days->mapWithKeys(function($date) use ($user) {
+            $count = \App\Models\CompletedTask::where('assignee_id', $user->id)
+                ->whereDate('completed_at', $date)
+                ->count();
+            return [now()->parse($date)->format('D') => $count];
         });
+        $completedHistory = \App\Models\CompletedTask::with('project')
+            ->where('assignee_id', $user->id)
+            ->where('completed_at', '>=', now()->subDays(7))
+            ->orderBy('completed_at', 'desc')
+            ->get();
         // Notifications: last 5 assigned, completed, or overdue tasks for this user
         $notifications = collect();
         foreach ($tasks->sortByDesc('created_at')->take(5) as $task) {
@@ -47,9 +57,8 @@ class TeamDashboardController extends Controller
                 $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."]);
             }
         }
-        // Insights
         $achievements = [
-            'Completed ' . $completedTasks . ' tasks successfully',
+            'Completed ' . $todayCompletedTasks . ' tasks today',
             'Maintaining ' . $avgProgress . '% progress rate',
         ];
         $improvements = [
@@ -57,7 +66,7 @@ class TeamDashboardController extends Controller
             'Consider breaking down complex tasks',
         ];
         return view('team-dashboard', compact(
-            'user', 'tasks', 'totalTasks', 'completedTasks', 'inProgressTasks', 'overdueTasks', 'avgProgress', 'completionRate', 'priorityCounts', 'statusCounts', 'overdueList', 'productivity', 'notifications', 'achievements', 'improvements'
+            'user', 'tasks', 'totalTasks', 'todayCompletedTasks', 'inProgressTasks', 'overdueTasks', 'avgProgress', 'completionRate', 'priorityCounts', 'statusCounts', 'overdueList', 'productivity', 'notifications', 'achievements', 'improvements', 'completedHistory'
         ));
     }
 }

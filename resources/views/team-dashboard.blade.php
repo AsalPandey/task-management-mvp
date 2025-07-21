@@ -266,9 +266,9 @@
                 </div>
                 <div class="metric-card green">
                     <div class="metric-icon">✅</div>
-                    <div class="metric-value" id="myCompletedTasks">{{ $completedTasks }}</div>
+                    <div class="metric-value" id="myCompletedTasks">{{ $todayCompletedTasks }}</div>
                     <div class="metric-label">Completed</div>
-                    <div class="metric-subtitle">{{ $completionRate }}% completion rate</div>
+                    <div class="metric-subtitle">Today</div>
                 </div>
                 <div class="metric-card purple">
                     <div class="metric-icon">📈</div>
@@ -281,29 +281,18 @@
                     <div class="metric-label">Overdue</div>
                 </div>
             </div>
-            <!-- Progress Overview -->
-            <div class="progress-card">
-                <div class="progress-header">
-                    <h3>My Overall Progress</h3>
-                    <span class="progress-percentage">{{ $avgProgress }}%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: {{ $avgProgress }}%"></div>
-                </div>
-                <p>Average completion across {{ $totalTasks }} tasks</p>
-            </div>
             <!-- My Tasks Overview -->
             <div class="charts-grid">
                 <div class="chart-card">
                     <h3>📊 My Tasks by Status</h3>
                     <div class="status-chart">
                         <div class="status-item">
-                            <div class="status-indicator completed"></div>
-                            <span>Completed</span>
+                            <div class="status-indicator not-started" style="background:#b0b3b8;"></div>
+                            <span>Not Started</span>
                             <div class="status-bar">
-                                <div class="status-fill" style="width: {{ $totalTasks ? round($completedTasks / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="status-fill" style="background:#b0b3b8; width: {{ $totalTasks ? round(($tasks->where('status', 'Not Started')->count()) / $totalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $completedTasks }}</span>
+                            <span>{{ $tasks->where('status', 'Not Started')->count() }}</span>
                         </div>
                         <div class="status-item">
                             <div class="status-indicator in-progress"></div>
@@ -437,5 +426,51 @@
             </div>
         </div>
     </main>
+<!-- Completed Tasks History (last 7 days) -->
+@if($completedHistory->count())
+<div class="completed-history-card" style="margin: 3rem auto 0 auto; max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06); padding: 1.5rem 1.2rem;">
+    <h3 style="font-weight:600; color:#4f8cff; display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+        <span style="font-size:1.3rem;">✅</span> Completed Tasks (Last 7 Days)
+    </h3>
+    <table class="tasks-table" style="margin-bottom:0;">
+        <thead style="background:#f4f8ff;">
+            <tr>
+                <th style="color:#4f8cff;">Title</th>
+                <th style="color:#4f8cff;">Project</th>
+                <th style="color:#4f8cff;">Completed At</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($completedHistory as $task)
+                <tr>
+                    <td><span style="font-size:1.1rem;">{{ $task->title }}</span></td>
+                    <td><span style="color:#888;">{{ $task->project ? $task->project->name : '-' }}</span></td>
+                    <td><span style="color:#38b6ff; font-weight:500;">{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</span></td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+</div>
+@else
+<div class="completed-history-card" style="margin: 3rem auto 0 auto; max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06); padding: 1.5rem 1.2rem; text-align:center; color:#888;">
+    <h3 style="font-weight:600; color:#4f8cff; display:flex; align-items:center; gap:0.5rem; justify-content:center;">
+        <span style="font-size:1.3rem;">✅</span> Completed Tasks (Last 7 Days)
+    </h3>
+    <div style="margin-top:1.5rem; font-size:1.1rem;">No completed tasks in the last 7 days.</div>
+</div>
+@endif
+<!-- My Overall Progress Bar at the very bottom -->
+<div class="progress-card" style="margin: 3rem auto 0 auto; max-width: 600px;">
+    <div class="progress-header">
+        <h3>My Overall Progress</h3>
+        <span class="progress-percentage">{{ $avgProgress }}%</span>
+    </div>
+    <div class="progress-bar-container">
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: {{ $avgProgress }}%"></div>
+        </div>
+    </div>
+    <p id="progressDescription">Average completion across {{ $totalTasks }} tasks</p>
+</div>
 </div>
 @endsection 

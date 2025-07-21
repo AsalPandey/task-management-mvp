@@ -184,7 +184,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Joined:</span>
-                        <span class="detail-value">{{ $user->created_at ? $user->created_at->format('m/d/Y') : '-' }}</span>
+                        <span class="detail-value">
+                            {{ $user->created_at ? $user->created_at->format('m/d/Y') : '-' }}
+                        </span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Last Login:</span>

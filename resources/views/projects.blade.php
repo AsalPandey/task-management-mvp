@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('submitBtn').textContent = '✏️ Update Project';
             document.getElementById('modalTitle').textContent = 'Edit Project';
             document.getElementById('projectName').value = card.querySelector('h3').textContent;
-            document.getElementById('projectDescription').value = card.querySelector('p').textContent;
+            document.getElementById('projectDescription').value = card.dataset.description; // Use data attribute
             document.getElementById('projectStatus').value = card.querySelector('.status-badge').textContent.trim();
             const color = card.style.borderLeftColor || '#3B82F6';
             document.getElementById('projectColor').value = color;
@@ -179,11 +179,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         card.querySelector('.status-badge').textContent = data.status;
                         card.querySelector('.status-badge').className = 'status-badge status-' + data.status.toLowerCase();
                         card.style.borderLeftColor = data.color || '#3B82F6';
+                        card.dataset.description = data.description; // Update data attribute
                     }
                     if (row) {
                         row.querySelector('td:nth-child(1)').textContent = data.name;
                         row.querySelector('td:nth-child(2) .status-badge').textContent = data.status;
                         row.querySelector('td:nth-child(2) .status-badge').className = 'status-badge status-' + data.status.toLowerCase();
+                        row.dataset.description = data.description; // Update data attribute
                         // Progress, tasks, done, overdue, created can be updated if returned in response
                     }
                     projectModal.classList.remove('active');
@@ -263,6 +265,64 @@ document.addEventListener('DOMContentLoaded', function() {
         if (el) el.addEventListener('input', filterProjects);
         if (el && el.tagName === 'SELECT') el.addEventListener('change', filterProjects);
     });
+
+    // Bulk Project Actions
+    const selectAllProjectsCheckbox = document.getElementById('selectAllProjects');
+    const projectCheckboxes = document.querySelectorAll('.project-checkbox');
+    const bulkProjectActions = document.getElementById('bulkProjectActions');
+    const bulkProjectDeleteBtn = document.getElementById('bulkProjectDeleteBtn');
+
+    function updateBulkProjectActions() {
+        const checkedCount = document.querySelectorAll('.project-checkbox:checked').length;
+        selectAllProjectsCheckbox.checked = projectCheckboxes.length > 0 && checkedCount === projectCheckboxes.length;
+        bulkProjectDeleteBtn.disabled = checkedCount === 0;
+        bulkProjectActions.style.display = checkedCount > 0 ? '' : 'none';
+    }
+
+    selectAllProjectsCheckbox.addEventListener('change', function() {
+        projectCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkProjectActions();
+    });
+
+    projectCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkProjectActions);
+    });
+
+    bulkProjectDeleteBtn.addEventListener('click', function() {
+        const selectedProjectIds = Array.from(projectCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+        if (confirm('Are you sure you want to delete these ' + selectedProjectIds.length + ' projects?')) {
+            fetch(`/projects/bulk-delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ project_ids: selectedProjectIds }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    selectedProjectIds.forEach(id => {
+                        const card = document.querySelector(`.project-card[data-project-id='${id}']`);
+                        if (card) card.remove();
+                        const row = document.querySelector(`tr[data-project-id='${id}']`);
+                        if (row) row.remove();
+                    });
+                    updateBulkProjectActions();
+                    showMessage('Projects deleted.');
+                } else {
+                    showMessage('Error deleting projects.', false);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting projects:', error);
+                showMessage('Error deleting projects.', false);
+            });
+        }
+    });
 });
 </script>
 @endpush
@@ -297,7 +357,9 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Projects Grid (Card View) -->
     <div id="projectsGrid" class="projects-grid">
         @forelse ($projects as $project)
-            <div class="project-card" data-project-id="{{ $project->id }}" data-status="{{ $project->status }}" style="border-left-color: {{ $project->color ?? '#3B82F6' }};">
+            <div class="project-card" data-project-id="{{ $project->id }}" data-status="{{ $project->status }}" style="border-left-color: {{ $project->color ?? '#3B82F6' }};"
+                data-description="{{ htmlspecialchars($project->description ?? '', ENT_QUOTES) }}"
+            >
                 <div class="project-header">
                     <div class="project-info">
                         <h3>{{ $project->name }}</h3>
@@ -361,11 +423,16 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         @endforelse
     </div>
+    <!-- Bulk Actions -->
+    <div id="bulkProjectActions" style="display:none; margin-bottom:1rem;">
+        <button id="bulkProjectDeleteBtn" class="btn-small btn-danger">🗑️ Delete Selected</button>
+    </div>
     <!-- Projects Table View (hidden by default) -->
     <div id="projectsTableWrapper" style="display:none;">
         <table class="projects-table">
             <thead>
                 <tr>
+                    <th><input type="checkbox" id="selectAllProjects"></th>
                     <th>Name</th>
                     <th>Status</th>
                     <th>Progress</th>
@@ -384,7 +451,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         $progress = $total ? round($project->tasks->avg('progress')) : 0;
                         $overdue = $project->tasks->where('status', '!=', 'Completed')->where('due_date', '<', now())->count();
                     @endphp
-                    <tr data-project-id="{{ $project->id }}" data-status="{{ $project->status }}">
+                    <tr data-project-id="{{ $project->id }}" data-status="{{ $project->status }}"
+                        data-description="{{ htmlspecialchars($project->description ?? '', ENT_QUOTES) }}"
+                    >
+                        <td><input type="checkbox" class="project-checkbox" value="{{ $project->id }}"></td>
                         <td>{{ $project->name }}</td>
                         <td><span class="status-badge status-{{ strtolower($project->status) }}">{{ ucfirst($project->status) }}</span></td>
                         <td>{{ $progress }}%</td>

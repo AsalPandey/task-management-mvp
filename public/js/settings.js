@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const profileAvatar = document.getElementById('profileAvatar');
         const profileFullName = document.getElementById('profileFullName');
         const profileEmail = document.getElementById('profileEmail');
+        const profileTimezone = document.getElementById('profileTimezone');
         const accountCreated = document.getElementById('accountCreated');
         const lastLogin = document.getElementById('lastLogin');
 
@@ -62,6 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (profileFullName) profileFullName.value = currentUser.name;
         if (profileEmail) profileEmail.value = currentUser.email;
+        if (profileTimezone) profileTimezone.value = currentUser.timezone;
         if (accountCreated) accountCreated.textContent = new Date(currentUser.createdAt).toLocaleDateString();
         if (lastLogin && currentUser.lastLogin) {
             lastLogin.textContent = new Date(currentUser.lastLogin).toLocaleDateString();
@@ -87,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const profileFullName = document.getElementById('profileFullName').value;
         const profileEmail = document.getElementById('profileEmail').value;
+        // const profileTimezone = document.getElementById('profileTimezone').value; // removed
 
         if (!profileFullName.trim() || !profileEmail.trim()) {
             showMessage('profileMessage', 'All fields are required.', 'error');
@@ -100,25 +103,37 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const result = window.authSystem.updateProfile({
-            name: profileFullName,
-            email: profileEmail
-        });
-
-        if (result.success) {
-            // Update UI
-            const profileName = document.getElementById('profileName');
-            const profileAvatar = document.getElementById('profileAvatar');
-            
-            if (profileName) profileName.textContent = profileFullName;
-            if (profileAvatar) {
-                profileAvatar.textContent = profileFullName.split(' ').map(n => n[0]).join('').toUpperCase();
+        fetch('/settings/profile', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                profileFullName,
+                profileEmail
+                // profileTimezone // removed
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update UI
+                const profileName = document.getElementById('profileName');
+                const profileAvatar = document.getElementById('profileAvatar');
+                if (profileName) profileName.textContent = profileFullName;
+                if (profileAvatar) {
+                    profileAvatar.textContent = profileFullName.split(' ').map(n => n[0]).join('').toUpperCase();
+                }
+                showMessage('profileMessage', '✅ Profile updated successfully!', 'success');
+            } else {
+                showMessage('profileMessage', data.message || '❌ Failed to update profile. Please try again.', 'error');
             }
-            
-            showMessage('profileMessage', '✅ Profile updated successfully!', 'success');
-        } else {
+        })
+        .catch(() => {
             showMessage('profileMessage', '❌ Failed to update profile. Please try again.', 'error');
-        }
+        });
     }
 
     function handlePasswordChange(e) {

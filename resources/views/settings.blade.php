@@ -167,7 +167,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="security-icon">🛡️</span>
                             <div class="security-text">
                                 <span class="security-label">Account created:</span>
-                                <span class="security-value" id="accountCreated">{{ $user->created_at ? $user->created_at->format('m/d/Y') : '-' }}</span>
+                                <span class="security-value" id="accountCreated">
+                                    {{ $user->created_at ? $user->created_at->format('m/d/Y') : '-' }}
+                                </span>
                             </div>
                         </div>
                         <div class="security-item">

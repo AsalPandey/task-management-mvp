@@ -44,6 +44,11 @@ class TeamManagementController extends Controller
     public function destroy($id)
     {
         $user = \App\Models\User::findOrFail($id);
+        $activeTasks = \App\Models\Task::where('assignee_id', $id)->count();
+        $completedTasks = \App\Models\CompletedTask::where('assignee_id', $id)->count();
+        if ($activeTasks > 0 || $completedTasks > 0) {
+            return response()->json(['success' => false, 'message' => 'Cannot delete user with assigned tasks. Please reassign or delete all tasks first.'], 409);
+        }
         $user->delete();
         return response()->json(['success' => true]);
     }
