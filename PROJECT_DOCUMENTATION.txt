@@ -1,0 +1,159 @@
+Task Management System Documentation
+====================================
+
+1. System Overview
+------------------
+This is a Laravel-based Task Management system with a Blade (MVC) frontend. It supports three user roles (manager, teamleader, team_member) and provides dashboards, project/task management, analytics, and team management. The UI is modern, minimal, and responsive, with real-time updates for key actions. The system is designed for clarity, maintainability, and extensibility.
+
+2. User Roles & Permissions
+---------------------------
+- **Manager**: Full access to all features. Can manage all projects, tasks, team members, and view analytics.
+- **Team Leader**: (If implemented) Can view/manage team tasks and projects, but with limited admin rights. May have access to analytics for their team.
+- **Team Member**: Can only access their own dashboard, tasks assigned to them, and settings. Cannot see or manage other users' tasks/projects. Navigation and UI are restricted to their scope.
+
+3. Feature-by-Feature Breakdown
+-------------------------------
+
+### 3.1 Authentication & Authorization
+- **Purpose**: Secure access to the system, with role-based redirects and access control.
+- **Flow**: Users log in via a Blade form. After login, they are redirected to their role's dashboard. All routes are protected by `auth` middleware and manual role checks.
+- **UI/UX**: Clean login form, error messages for invalid credentials, and demo credentials for testing.
+- **Backend**: Laravel Breeze for scaffolding, custom logic in `AuthenticatedSessionController` for role-based redirects.
+- **Security**: Passwords are hashed, CSRF protection is enforced, and sensitive routes are guarded.
+
+### 3.2 Navigation
+- **Purpose**: Provide clear, role-aware access to all features.
+- **Flow**: Navigation bar shows only the tabs the user can access (e.g., team members see only Tasks and Settings).
+- **UI/UX**: Responsive, icon-based tabs, user name display, logout button.
+- **Backend**: Blade partial with role checks using `auth()->user()->role`.
+
+### 3.3 Dashboards
+- **Manager Dashboard**: Shows team/project stats, charts, workload, overdue tasks, and performance insights. All data is dynamic and reflects the entire organization.
+- **Team Member Dashboard**: Shows only the user's own tasks, progress, overdue, upcoming deadlines, and personal insights. No access to team/project-wide data.
+- **Team Leader Dashboard**: (If implemented) Shows team-specific stats and insights.
+- **UI/UX**: Modern cards, charts, and insights. Real-time updates for widgets. Navigation between tabs is smooth and role-aware.
+- **Backend**: Controllers fetch and aggregate data using Eloquent relationships and pass to Blade views.
+
+### 3.4 Projects
+- **Purpose**: Manage the lifecycle of projects (create, edit, delete, view stats).
+- **Flow**: Projects are displayed as cards (with color, status, progress, stats) or as a table. Users can filter/search, edit, or delete projects. All changes are reflected in real time.
+- **UI/UX**: Card and table toggle, color-coded status, progress bars, stats for tasks/done/overdue, modal for add/edit.
+- **Backend**: CRUD via AJAX (fetch), validation, and Eloquent. Real-time DOM updates after edit/delete. Only managers/teamleaders can create/edit/delete; team members may have read-only access if allowed.
+- **Special Cases**: Color picker for project theme, status options (Active, On Hold, Completed), progress auto-calculated from tasks.
+
+### 3.5 Tasks
+- **Purpose**: Manage individual work items within projects.
+- **Flow**: Tasks are displayed as cards or in a table. Users can filter/search, edit, or delete tasks. Team members see only their own tasks. All changes are reflected in real time.
+- **UI/UX**: Card and table toggle, status/priority badges, assignee/assigned by, progress bar, overdue warning, modal for add/edit.
+- **Backend**: CRUD via AJAX, validation, and Eloquent. Real-time DOM updates after edit/delete. Role-based visibility for assignee/assigned by.
+- **Special Cases**: Only managers/teamleaders can assign tasks; team members can only update their own task progress/status.
+
+### 3.6 Team Management
+- **Purpose**: Allow managers to add, edit, or remove team members.
+- **Flow**: Team members are displayed as cards with role, join date, and actions. Add/edit/delete is via modal and AJAX.
+- **UI/UX**: Clean card layout, modals for add/edit, confirmation for delete.
+- **Backend**: CRUD via AJAX, validation, and Eloquent. Only managers can access this feature.
+
+### 3.7 Settings
+- **Purpose**: Allow users to manage their profile, notification preferences, and security.
+- **Flow**: Tabs for Profile, Notifications, Security. No Preferences tab. Profile and password can be updated; notification toggles are UI-only unless backend is extended.
+- **UI/UX**: Tabbed layout, avatar, form validation, success/error messages.
+- **Backend**: Profile/password update via AJAX or form submit. Security tab shows account creation and last login.
+
+### 3.8 Analytics
+- **Purpose**: Provide managers (and optionally team leaders) with insights into team/project performance.
+- **Flow**: Charts for task status, priority, productivity trend, team/project performance, and insights.
+- **UI/UX**: Modern charts, performance bars, and insights cards.
+- **Backend**: Data aggregation in AnalyticsController, passed to Blade view.
+- **Special Cases**: Only accessible to roles with analytics permission.
+
+### 3.9 Real-time UI/UX
+- **Purpose**: Ensure a smooth, modern experience.
+- **Flow**: All updates (edit/delete) for tasks and projects are reflected instantly in both card and table views using JavaScript DOM patching. Only new creation triggers a reload (for simplicity).
+- **UI/UX**: No page reloads for updates, instant feedback, and error/success messages.
+
+4. Controller/Blade Guidelines
+------------------------------
+- Use controller methods for all business logic; keep Blade views focused on display.
+- Use compact() to pass variables to views.
+- Use @foreach/@if for dynamic content; avoid inline PHP except for simple logic.
+- Use @push('styles')/@push('scripts') for page-specific assets.
+- Use AJAX (fetch) for CRUD; always return JSON from controllers for AJAX endpoints.
+- Use real-time DOM updates after AJAX (no reloads for updates).
+- Use Blade conditionals to hide/show fields based on user role.
+- Use Eloquent relationships for all data fetching; eager load where possible for performance.
+
+5. Database Schema Breakdown
+----------------------------
+- **users**
+  - id (PK, bigint, auto-increment)
+  - name (string, 255)
+  - email (string, 255, unique)
+  - password (string, hashed)
+  - role_id (FK to roles.id, nullable)
+  - email_verified_at (timestamp, nullable)
+  - created_at, updated_at (timestamps)
+- **roles**
+  - id (PK, bigint, auto-increment)
+  - name (string, 50, unique: manager, teamleader, team_member)
+  - created_at, updated_at (timestamps)
+- **projects**
+  - id (PK, bigint, auto-increment)
+  - name (string, 255)
+  - description (text, nullable)
+  - start_date (date, nullable)
+  - end_date (date, nullable)
+  - status (string, 50: active, on hold, completed)
+  - color (string, 20, nullable)
+  - created_at, updated_at (timestamps)
+- **tasks**
+  - id (PK, bigint, auto-increment)
+  - title (string, 255)
+  - description (text, nullable)
+  - project_id (FK to projects.id, nullable)
+  - assignee_id (FK to users.id, nullable)
+  - priority (string, 20: High, Medium, Low)
+  - status (string, 50: Not Started, In Progress, Completed, On Hold)
+  - progress (integer, 0-100)
+  - start_date (date, nullable)
+  - due_date (date, nullable)
+  - comments (text, nullable)
+  - created_at, updated_at (timestamps)
+- **Relationships**:
+  - User belongsTo Role
+  - User hasMany Tasks (as assignee)
+  - Project hasMany Tasks
+  - Task belongsTo Project, belongsTo User (assignee)
+- **Example**: A project can have many tasks, each task is assigned to a user, and each user has a role.
+
+6. Error Handling, Validation, and Security
+-------------------------------------------
+- All forms are validated both client-side (required fields, min/max) and server-side (Laravel validation).
+- All AJAX endpoints return JSON with success/error and message fields.
+- CSRF tokens are included in all AJAX requests.
+- Sensitive actions (edit/delete) require authentication and role checks.
+- Passwords are always hashed; sensitive data is never exposed in responses.
+- Error messages are user-friendly and never leak sensitive info.
+
+7. Deployment & Environment Setup
+---------------------------------
+- **Requirements**: PHP 8+, Composer, MySQL, Node.js (for asset build if needed)
+- **Setup**:
+  1. Clone the repo and run `composer install`.
+  2. Copy `.env.example` to `.env` and set DB credentials.
+  3. Run `php artisan key:generate`.
+  4. Run `php artisan migrate --seed` to set up the database.
+  5. Run `php artisan serve` to start the dev server.
+  6. (Optional) Run `npm install && npm run dev` if using Laravel Mix/Vite for assets.
+- **Production**: Set `APP_ENV=production`, configure cache, queue, and mail as needed.
+
+8. Extensibility Notes
+----------------------
+- To add more roles, update the roles table and add role checks in controllers/views.
+- To add more fields to tasks/projects, update migrations, models, and Blade forms.
+- To add more analytics, extend the AnalyticsController and analytics.blade.php.
+- For real-time notifications, consider using Laravel Echo and broadcasting.
+- For API/mobile support, add API routes/controllers and use Laravel resources.
+- For advanced permissions, use Laravel Policies or Gates.
+
+For further details, see the codebase and Blade templates for implementation patterns. 
