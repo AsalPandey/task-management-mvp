@@ -3,6 +3,29 @@
 @push('styles')
 <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
 <link rel="stylesheet" href="{{ asset('css/common.css') }}">
+<style>
+body { background: #f7f8fa; }
+.app-container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
+.page-header h2 { font-size: 1.7rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.page-header p { color: #888; font-size: 1.05rem; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2rem; margin-bottom: 2rem; }
+.metric-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.1rem 1rem; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.metric-icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+.metric-value { font-size: 1.7rem; font-weight: 600; color: #22223b; }
+.metric-label { font-size: 1rem; color: #6c757d; margin-bottom: 0.2rem; }
+.charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; margin-bottom: 2rem; }
+.chart-card { background: #f8fafc; border-radius: 12px; padding: 1rem 1rem 0.5rem 1rem; box-shadow: none; min-width: 0; }
+.bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 2rem; }
+.workload-card, .overdue-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; }
+.notifications-card, .insights-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; margin-bottom: 2rem; }
+.insights-card h3 { font-size: 1.1rem; font-weight: 600; color: #22223b; margin-bottom: 0.7rem; }
+.insights-grid { display: flex; gap: 2rem; }
+.insight-section { flex: 1; }
+.insight-section h4 { font-size: 1rem; color: #4f8cff; margin-bottom: 0.5rem; }
+.insight-section ul { padding-left: 1.1rem; color: #555; font-size: 0.97rem; }
+@media (max-width: 900px) { .metrics-grid, .charts-grid, .bottom-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .metrics-grid, .charts-grid, .bottom-grid { grid-template-columns: 1fr; } .app-container { padding: 1rem 0.2rem; } .insights-grid { flex-direction: column; gap: 1rem; } }
+</style>
 @endpush
 
 @push('scripts')
@@ -32,11 +55,36 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalCloses = document.querySelectorAll('.modal-close');
     const progressSlider = document.getElementById('taskProgress');
     const progressValue = document.getElementById('progressValue');
+    const messageContainer = document.getElementById('messageContainer');
+
+    function showMessage(msg, success = true) {
+        Swal.fire({
+            icon: success ? 'success' : 'error',
+            title: success ? 'Success' : 'Error',
+            text: msg,
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+    function setLoading(isLoading) {
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = isLoading;
+        if (isLoading) {
+            submitBtn.textContent = '⏳ Please wait...';
+        } else {
+            submitBtn.textContent = 'Create Task';
+        }
+    }
+    function resetModal() {
+        taskForm.reset();
+        setLoading(false);
+        showMessage('', true);
+        if (progressValue) progressValue.textContent = '0';
+    }
 
     if (newTaskBtn && taskModal) {
         newTaskBtn.addEventListener('click', function() {
-            taskForm.reset();
-            progressValue.textContent = '0';
+            resetModal();
             document.getElementById('taskStartDate').value = new Date().toISOString().split('T')[0];
             taskModal.classList.add('active');
         });
@@ -45,6 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
         modalCloses.forEach(close => {
             close.addEventListener('click', function() {
                 taskModal.classList.remove('active');
+                resetModal();
             });
         });
     }
@@ -52,6 +101,7 @@ document.addEventListener('DOMContentLoaded', function() {
         taskModal.addEventListener('click', function(e) {
             if (e.target === this) {
                 taskModal.classList.remove('active');
+                resetModal();
             }
         });
     }
@@ -60,12 +110,180 @@ document.addEventListener('DOMContentLoaded', function() {
             progressValue.textContent = this.value;
         });
     }
+    // Add submit handler for feedback (AJAX example, adapt as needed)
+    if (taskForm) {
+        taskForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            setLoading(true);
+            const formData = new FormData(taskForm);
+            const payload = {
+                title: formData.get('taskTitle'),
+                description: formData.get('taskDescription'),
+                project_id: formData.get('taskProject'),
+                assignee_id: formData.get('taskAssignee'),
+                priority: formData.get('taskPriority'),
+                status: formData.get('taskStatus'),
+                progress: formData.get('taskProgress'),
+                start_date: formData.get('taskStartDate'),
+                due_date: formData.get('taskDueDate'),
+                comments: formData.get('taskComments'),
+            };
+            fetch('/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            })
+            .then(r => r.json())
+            .then(data => {
+                setLoading(false);
+                if (data.task) {
+                    showMessage('Task created successfully!');
+                    taskModal.classList.remove('active');
+                    resetModal();
+                    window.location.reload();
+                } else if (data.message) {
+                    showMessage(data.message, false);
+                } else {
+                    showMessage('An error occurred. Please try again.', false);
+                }
+            })
+            .catch(error => {
+                setLoading(false);
+                showMessage('An error occurred: ' + (error.message || error), false);
+            });
+        });
+    }
+
+    // AJAX: Delete task (card view)
+    document.querySelectorAll('.task-card .delete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            Swal.fire({
+                title: 'Delete this task?',
+                text: 'This action cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+                const card = this.closest('.task-card');
+                const id = card.dataset.taskId;
+                this.disabled = true;
+                this.textContent = '⏳';
+                fetch(`/tasks/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        'Accept': 'application/json',
+                    },
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        card.remove();
+                        Swal.fire('Deleted!', 'Task deleted.', 'success');
+                    } else if (data.message) {
+                        Swal.fire('Error', data.message, 'error');
+                        this.disabled = false;
+                        this.textContent = '🗑️';
+                    } else {
+                        Swal.fire('Error', 'Error deleting task.', 'error');
+                        this.disabled = false;
+                        this.textContent = '🗑️';
+                    }
+                })
+                .catch(error => {
+                    Swal.fire('Error', 'Error deleting task: ' + (error.message || error), 'error');
+                    this.disabled = false;
+                    this.textContent = '🗑️';
+                });
+            });
+        });
+    });
+    // AJAX: Delete task (table view)
+    document.querySelectorAll('.table-delete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            Swal.fire({
+                title: 'Delete this task?',
+                text: 'This action cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+                const row = this.closest('tr');
+                const id = row.dataset.taskId;
+                this.disabled = true;
+                this.textContent = '⏳';
+                fetch(`/tasks/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        'Accept': 'application/json',
+                    },
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        row.remove();
+                        Swal.fire('Deleted!', 'Task deleted.', 'success');
+                    } else if (data.message) {
+                        Swal.fire('Error', data.message, 'error');
+                        this.disabled = false;
+                        this.textContent = '🗑️';
+                    } else {
+                        Swal.fire('Error', 'Error deleting task.', 'error');
+                        this.disabled = false;
+                        this.textContent = '🗑️';
+                    }
+                })
+                .catch(error => {
+                    Swal.fire('Error', 'Error deleting task: ' + (error.message || error), 'error');
+                    this.disabled = false;
+                    this.textContent = '🗑️';
+                });
+            });
+        });
+    });
+
+    // --- Dynamic Assignee Dropdown ---
+    {{-- Removed projectMembers and taskProjectSelect/taskAssigneeSelect logic --}}
+    // function updateAssigneeOptions() {
+    //     const projectId = taskProjectSelect.value;
+    //     taskAssigneeSelect.innerHTML = '<option value="">Select Team Member</option>';
+    //     if (projectId && projectMembers[projectId]) {
+    //         Object.entries(projectMembers[projectId]).forEach(([id, name]) => {
+    //             const opt = document.createElement('option');
+    //             opt.value = id;
+    //             opt.textContent = name;
+    //             taskAssigneeSelect.appendChild(opt);
+    //         });
+    //     }
+    // }
+    // if (taskProjectSelect && taskAssigneeSelect) {
+    //     taskProjectSelect.addEventListener('change', updateAssigneeOptions);
+    //     // On modal open, update assignees if project is pre-selected
+    //     if (taskProjectSelect.value) updateAssigneeOptions();
+    // }
+
+
 });
 </script>
 @endpush
 
 @section('content')
 <div class="app-container">
+
+    <div id="messageContainer" class="message-container" style="display: none;"></div>
     <main class="main-content">
         <div id="dashboard" class="tab-content active">
             <div class="page-header">
@@ -99,9 +317,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="metric-trend">+12%</div>
                     </div>
-                    <div class="metric-value">{{ $tasks->count() }}</div>
-                    <div class="metric-label">Total Tasks</div>
-                    <div class="metric-subtitle">Across all projects</div>
+                    <div class="metric-value">{{ $currentActiveCount }}</div>
+                    <div class="metric-label">Active Tasks</div>
+                    <div class="metric-subtitle">Currently Active</div>
                 </div>
                 <div class="metric-card green">
                     <div class="metric-header">
@@ -112,9 +330,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="metric-trend">+8%</div>
                     </div>
-                    <div class="metric-value">{{ $tasks->where('status', 'Completed')->count() }}</div>
-                    <div class="metric-label">Completed</div>
-                    <div class="metric-subtitle">{{ $progress }}% completion rate</div>
+                    <div class="metric-value">{{ $todayCompletedCount }}</div>
+                    <div class="metric-label">Completed Today</div>
+                    <div class="metric-subtitle">{{ $todayProgress }}% today's progress</div>
                 </div>
                 <div class="metric-card purple">
                     <div class="metric-header">
@@ -125,7 +343,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="metric-trend">+5%</div>
                     </div>
-                    <div class="metric-value">{{ $tasks->where('status', 'In Progress')->count() }}</div>
+                    <div class="metric-value">{{ $statusCounts['In Progress'] ?? 0 }}</div>
                     <div class="metric-label">In Progress</div>
                     <div class="metric-subtitle">Active development</div>
                 </div>
@@ -140,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="metric-trend">-2%</div>
                     </div>
-                    <div class="metric-value">{{ $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count() }}</div>
+                    <div class="metric-value">{{ $todayOverdueTasks->count() }}</div>
                     <div class="metric-label">Overdue</div>
                     <div class="metric-subtitle">Needs attention</div>
                 </div>
@@ -163,7 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="status-item">
                                 <span class="status-label">{{ $status }}</span>
                                 <div class="status-bar">
-                                    <div class="status-fill" style="width: {{ $tasks->count() ? round($count / $tasks->count() * 100) : 0 }}%"></div>
+                                    <div class="status-fill" style="width: {{ $currentActiveCount ? round($count / $currentActiveCount * 100) : 0 }}%"></div>
                                 </div>
                                 <span class="status-count">{{ $count }}</span>
                             </div>
@@ -186,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="priority-item">
                                 <span class="priority-label">{{ $priority }}</span>
                                 <div class="priority-bar">
-                                    <div class="priority-fill" style="width: {{ $tasks->count() ? round($count / $tasks->count() * 100) : 0 }}%"></div>
+                                    <div class="priority-fill" style="width: {{ $currentActiveCount ? round($count / $currentActiveCount * 100) : 0 }}%"></div>
                                 </div>
                                 <span class="priority-count">{{ $count }}</span>
                             </div>
@@ -195,71 +413,28 @@ document.addEventListener('DOMContentLoaded', function() {
                         @endforelse
                     </div>
                 </div>
-                <div class="chart-card">
-                    <h3>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                        Active Projects
-                    </h3>
-                    <div class="projects-list" id="projectsList">
-                        @forelse ($activeProjects as $project)
-                            <div class="project-list-item">
-                                <span class="project-name">{{ $project->name }}</span>
-                                <span class="project-progress">{{ $project->tasks->count() }} tasks</span>
-                            </div>
-                        @empty
-                            <div>No active projects</div>
-                        @endforelse
-                    </div>
-                </div>
+                {{-- Removed obsolete activeProjects section --}}
             </div>
 
-            <!-- Team Workload and Overdue Tasks -->
-            <div class="bottom-grid">
-                <div class="workload-card">
-                    <h3>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2"/>
-                            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
-                            <path d="M23 21v-2a4 4 0 00-3-3.87" stroke="currentColor" stroke-width="2"/>
-                            <path d="M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                        Team Workload
-                    </h3>
-                    <div class="team-workload" id="teamWorkload">
-                        @forelse ($teamWorkload as $assignee => $count)
-                            <div class="workload-item">
-                                <span class="assignee-label">{{ $assignee }}</span>
-                                <div class="workload-bar">
-                                    <div class="workload-fill" style="width: {{ $tasks->count() ? round($count / $tasks->count() * 100) : 0 }}%"></div>
-                                </div>
-                                <span class="workload-count">{{ $count }}</span>
-                            </div>
-                        @empty
-                            <div>No workload data</div>
-                        @endforelse
-                    </div>
-                </div>
-                <div class="overdue-card">
-                    <h3>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                            <polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2"/>
-                        </svg>
-                        Overdue Tasks (<span id="overdueCount">{{ $overdueTasks->count() }}</span>)
-                    </h3>
-                    <div class="overdue-tasks" id="overdueTasks">
-                        @forelse ($overdueTasks as $task)
-                            <div class="overdue-task-item">
-                                <span class="overdue-title">{{ $task->title }}</span>
-                                <span class="overdue-assignee">{{ $task->assignee ? $task->assignee->name : '-' }}</span>
-                                <span class="overdue-due">Due: {{ $task->due_date }}</span>
-                            </div>
-                        @empty
-                            <div>No overdue tasks</div>
-                        @endforelse
-                    </div>
+            <!-- Overdue Tasks -->
+            <div class="overdue-card">
+                <h3>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                        <polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Overdue Tasks (<span id="overdueCount">{{ $todayOverdueTasks->count() }}</span>)
+                </h3>
+                <div class="overdue-tasks" id="overdueTasks">
+                    @forelse ($todayOverdueTasks as $task)
+                        <div class="overdue-task-item">
+                            <span class="overdue-title">{{ $task->title }}</span>
+                            <span class="overdue-assignee">{{ $task->assignee ? $task->assignee->name : '-' }}</span>
+                            <span class="overdue-due">Due: {{ $task->due_date }}</span>
+                        </div>
+                    @empty
+                        <div>No overdue tasks</div>
+                    @endforelse
                 </div>
             </div>
 
@@ -310,12 +485,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     Loading tasks...
                 </div>
             </div>
-            <div id="projects" class="tab-content">
-                <div class="loading">
-                    <div class="loading-spinner"></div>
-                    Loading projects...
-                </div>
-            </div>
             <div id="analytics" class="tab-content">
                 <div class="loading">
                     <div class="loading-spinner"></div>
@@ -334,21 +503,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     Loading settings...
                 </div>
             </div>
-        </div>
-    </main>
-    <!-- Overall Progress Bar at the very bottom -->
-    <div class="progress-card" style="margin: 3rem auto 0 auto; max-width: 600px;">
-        <div class="progress-header">
-            <h3>My Overall Progress</h3>
-            <span class="progress-percentage">{{ $progress }}%</span>
-        </div>
-        <div class="progress-bar-container">
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: {{ $progress }}%"></div>
+            <!-- Place My Overall Progress here so it only shows on dashboard tab -->
+            <div class="progress-card" style="margin: 3rem auto 0 auto; max-width: 600px;">
+                <div class="progress-header">
+                    <h3>My Overall Progress</h3>
+                    <span class="progress-percentage">{{ $todayProgress }}%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ $todayProgress }}%"></div>
+                    </div>
+                </div>
+                <p id="progressDescription">Average completion across {{ $currentActiveCount }} tasks</p>
             </div>
         </div>
-        <p id="progressDescription">Average completion across {{ $tasks->count() }} tasks</p>
-    </div>
+    </main>
     <!-- Task Form Modal -->
     <div id="taskModal" class="modal">
         <div class="modal-content">
@@ -363,15 +532,6 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <form id="taskForm" class="modal-form">
                 <div class="form-row">
-                    <div class="form-group">
-                        <label for="taskProject">Project *</label>
-                        <select id="taskProject" name="taskProject" required>
-                            <option value="">Select Project</option>
-                            @foreach ($projects as $project)
-                                <option value="{{ $project->id }}">{{ $project->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
                     <div class="form-group">
                         <label for="taskPriority">Priority *</label>
                         <select id="taskPriority" name="taskPriority" required>
@@ -390,9 +550,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label for="taskAssignee">Assign To *</label>
                         <select id="taskAssignee" name="taskAssignee" required>
                             <option value="">Select Team Member</option>
-                            @foreach (\App\Models\User::all() as $user)
-                                <option value="{{ $user->id }}">{{ $user->name }}</option>
-                            @endforeach
+                            {{-- Will be dynamically populated based on project selection --}}
                         </select>
                     </div>
                     <div class="form-group">

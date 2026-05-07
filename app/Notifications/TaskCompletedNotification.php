@@ -6,17 +6,25 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use App\Models\Task;
+use App\Models\CompletedTask;
 
 class TaskCompletedNotification extends Notification
 {
     use Queueable;
 
+    protected $task;
+    protected $completedBy;
+    protected $isForAssignee;
+
     /**
      * Create a new notification instance.
      */
-    public function __construct()
+    public function __construct($task, $completedBy = null, $isForAssignee = true)
     {
-        //
+        $this->task = $task;
+        $this->completedBy = $completedBy;
+        $this->isForAssignee = $isForAssignee;
     }
 
     /**
@@ -34,10 +42,24 @@ class TaskCompletedNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->line('The introduction to the notification.')
-            ->action('Notification Action', url('/'))
-            ->line('Thank you for using our application!');
+        $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
+        $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
+        
+        if ($this->isForAssignee) {
+            return (new MailMessage)
+                ->subject('Task Completed: ' . $taskTitle)
+                ->line("Great job! You have completed the task '{$taskTitle}'.")
+                ->line("Task was completed on: " . now()->format('M d, Y H:i'))
+                ->action('View Completed Tasks', url('/completed-tasks'))
+                ->line('Keep up the excellent work!');
+        } else {
+            return (new MailMessage)
+                ->subject('Task Completed by Team Member: ' . $taskTitle)
+                ->line("The task '{$taskTitle}' has been completed by {$completedByName}.")
+                ->line("Task was completed on: " . now()->format('M d, Y H:i'))
+                ->action('View Completed Tasks', url('/completed-tasks'))
+                ->line('Thank you for managing the team!');
+        }
     }
 
     /**
@@ -47,8 +69,53 @@ class TaskCompletedNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        return [
-            'message' => 'A task assigned to you has been marked as completed.'
-        ];
+        $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
+        $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
+        $completedAt = $this->getFormattedCompletedAt();
+        
+        if ($this->isForAssignee) {
+            return [
+                'task_id' => $this->task->id,
+                'task_title' => $taskTitle,
+                'completed_by' => $completedByName,
+                'completed_at' => $completedAt,
+                'message' => "Task '{$taskTitle}' has been completed successfully!",
+                'type' => 'task_completed_assignee'
+            ];
+        } else {
+            return [
+                'task_id' => $this->task->id,
+                'task_title' => $taskTitle,
+                'completed_by' => $completedByName,
+                'completed_at' => $completedAt,
+                'message' => "Task '{$taskTitle}' was completed by {$completedByName}.",
+                'type' => 'task_completed_assignor'
+            ];
+        }
+    }
+
+    /**
+     * Get formatted completed at date with safety checks
+     */
+    private function getFormattedCompletedAt()
+    {
+        if ($this->task instanceof CompletedTask && $this->task->completed_at) {
+            // If it's already a Carbon instance
+            if (is_object($this->task->completed_at) && method_exists($this->task->completed_at, 'format')) {
+                return $this->task->completed_at->format('M d, Y H:i');
+            }
+
+            // If it's a string, try to parse it
+            if (is_string($this->task->completed_at)) {
+                try {
+                    $date = \Carbon\Carbon::parse($this->task->completed_at);
+                    return $date->format('M d, Y H:i');
+                } catch (\Exception $e) {
+                    return $this->task->completed_at;
+                }
+            }
+        }
+
+        return now()->format('M d, Y H:i');
     }
 }

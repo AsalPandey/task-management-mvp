@@ -4,234 +4,220 @@
 <link rel="stylesheet" href="{{ asset('css/team.css') }}">
 <link rel="stylesheet" href="{{ asset('css/common.css') }}">
 <style>
-    .app-container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem 1rem;
-        background: #fafbfc;
-        border-radius: 18px;
-        box-shadow: 0 2px 16px 0 rgba(60,72,88,0.07);
-    }
-    .main-content {
-        display: flex;
-        flex-direction: column;
-        gap: 2rem;
-    }
-    .page-header {
-        margin-bottom: 0.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #e5e7eb;
-    }
-    .metrics-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-    .metric-card {
-        background: #fff;
-        border-radius: 14px;
-        box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06);
-        padding: 1.2rem 1rem;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        min-width: 0;
-    }
-    .metric-icon {
-        font-size: 1.7rem;
-        margin-bottom: 0.5rem;
-    }
-    .metric-value {
-        font-size: 2.1rem;
-        font-weight: 600;
-        color: #22223b;
-    }
-    .metric-label {
-        font-size: 1rem;
-        color: #6c757d;
-        margin-bottom: 0.2rem;
-    }
-    .metric-subtitle {
-        font-size: 0.9rem;
-        color: #b0b3b8;
-    }
-    .progress-card, .insights-card, .notifications-card, .deadlines-card, .overdue-card {
-        background: #fff;
-        border-radius: 14px;
-        box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06);
-        padding: 1.5rem 1.2rem;
-        margin-bottom: 1.5rem;
-    }
-    .progress-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.5rem;
-    }
-    .progress-percentage {
-        font-size: 1.2rem;
-        font-weight: 500;
-        color: #4f8cff;
-    }
-    .progress-bar {
-        width: 100%;
-        height: 10px;
-        background: #f1f3f6;
-        border-radius: 6px;
-        margin-bottom: 0.5rem;
-        overflow: hidden;
-    }
-    .progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #4f8cff 60%, #38b6ff 100%);
-        border-radius: 6px;
-        transition: width 0.4s;
-    }
-    .charts-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-    .chart-card {
-        background: #f8fafc;
-        border-radius: 12px;
-        padding: 1rem 1rem 0.5rem 1rem;
-        box-shadow: none;
-        min-width: 0;
-    }
-    .status-chart, .priority-chart, .productivity-chart {
-        margin-top: 0.7rem;
-    }
-    .status-item, .priority-item, .productivity-day {
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-        margin-bottom: 0.5rem;
-    }
-    .status-indicator.completed { background: #4f8cff; }
-    .status-indicator.in-progress { background: #ffb347; }
-    .status-indicator.overdue { background: #ff6b6b; }
-    .status-indicator {
-        width: 12px; height: 12px; border-radius: 50%; display: inline-block;
-    }
-    .priority-indicator.high { background: #ff6b6b; }
-    .priority-indicator.medium { background: #ffb347; }
-    .priority-indicator.low { background: #4f8cff; }
-    .priority-indicator {
-        width: 12px; height: 12px; border-radius: 50%; display: inline-block;
-    }
-    .status-bar, .priority-bar, .productivity-bar {
-        flex: 1;
-        height: 7px;
-        background: #e5e7eb;
-        border-radius: 4px;
-        margin: 0 0.5rem;
-        overflow: hidden;
-    }
-    .status-fill, .priority-fill, .productivity-fill {
-        height: 100%;
-        border-radius: 4px;
-        transition: width 0.4s;
-    }
-    .status-fill.completed { background: #4f8cff; }
-    .status-fill.in-progress { background: #ffb347; }
-    .status-fill.overdue { background: #ff6b6b; }
-    .priority-fill.high { background: #ff6b6b; }
-    .priority-fill.medium { background: #ffb347; }
-    .priority-fill.low { background: #4f8cff; }
-    .status-fill, .priority-fill { background: #4f8cff; }
-    .productivity-fill { background: #38b6ff; }
-    .overdue-card, .deadlines-card {
-        border-left: 4px solid #ff6b6b;
-    }
-    .notifications-card {
-        border-left: 4px solid #4f8cff;
-        margin-bottom: 1.5rem;
-    }
-    .notification-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.7rem;
-        margin-top: 0.7rem;
-    }
-    .notification-item {
-        display: flex;
-        align-items: center;
-        gap: 0.7rem;
-        background: #f1f3f6;
-        border-radius: 8px;
-        padding: 0.7rem 1rem;
-        font-size: 1rem;
-        color: #22223b;
-    }
-    .notification-icon {
-        font-size: 1.2rem;
-        color: #4f8cff;
-    }
-    .deadlines-card {
-        border-left: 4px solid #ffb347;
-    }
-    .deadlines-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.7rem;
-        margin-top: 0.7rem;
-    }
-    .deadline-task {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #f1f3f6;
-        border-radius: 8px;
-        padding: 0.7rem 1rem;
-    }
-    .insights-card {
-        border-left: 4px solid #38b6ff;
-    }
-    .insights-grid {
-        display: flex;
-        gap: 2rem;
-        margin-top: 1rem;
-    }
-    .insight-section {
-        flex: 1;
-    }
-    .achievement-item, .improvement-item {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: #f8fafc;
-        border-radius: 6px;
-        padding: 0.5rem 0.8rem;
-        margin-bottom: 0.5rem;
-        font-size: 1rem;
-    }
-    .achievement-icon, .improvement-icon {
-        font-size: 1.1rem;
-    }
-    @media (max-width: 900px) {
-        .metrics-grid, .charts-grid {
-            grid-template-columns: 1fr 1fr;
-        }
-    }
-    @media (max-width: 600px) {
-        .metrics-grid, .charts-grid {
-            grid-template-columns: 1fr;
-        }
-        .insights-grid {
-            flex-direction: column;
-            gap: 1rem;
-        }
-        .app-container {
-            padding: 1rem 0.2rem;
-        }
-    }
+body { background: #f7f8fa; }
+.app-container { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
+.page-header h2 { font-size: 1.7rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.page-header p { color: #888; font-size: 1.05rem; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2rem; margin-bottom: 2rem; }
+.metric-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.1rem 1rem; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.metric-icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+.metric-value { font-size: 1.7rem; font-weight: 600; color: #22223b; }
+.metric-label { font-size: 1rem; color: #6c757d; margin-bottom: 0.2rem; }
+.progress-card, .insights-card, .notifications-card, .deadlines-card, .overdue-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; margin-bottom: 2rem; }
+.progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.progress-percentage { font-size: 1.2rem; font-weight: 500; color: #4f8cff; }
+.progress-bar {
+    width: 100%;
+    height: 10px;
+    background: #f1f3f6;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4f8cff 60%, #38b6ff 100%);
+    border-radius: 6px;
+    transition: width 0.4s;
+}
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.chart-card {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 1rem 1rem 0.5rem 1rem;
+    box-shadow: none;
+    min-width: 0;
+}
+.status-chart, .priority-chart, .productivity-chart {
+    margin-top: 0.7rem;
+}
+.status-item, .priority-item, .productivity-day {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.5rem;
+}
+.status-indicator.completed { background: #4f8cff; }
+.status-indicator.in-progress { background: #ffb347; }
+.status-indicator.overdue { background: #ff6b6b; }
+.status-indicator {
+    width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+}
+.priority-indicator.high { background: #ff6b6b; }
+.priority-indicator.medium { background: #ffb347; }
+.priority-indicator.low { background: #4f8cff; }
+.priority-indicator {
+    width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+}
+.status-bar, .priority-bar, .productivity-bar {
+    flex: 1;
+    height: 7px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    margin: 0 0.5rem;
+    overflow: hidden;
+}
+.status-fill, .priority-fill, .productivity-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s;
+}
+.status-fill.completed { background: #4f8cff; }
+.status-fill.in-progress { background: #ffb347; }
+.status-fill.overdue { background: #ff6b6b; }
+.priority-fill.high { background: #ff6b6b; }
+.priority-fill.medium { background: #ffb347; }
+.priority-fill.low { background: #4f8cff; }
+.status-fill, .priority-fill { background: #4f8cff; }
+.productivity-fill { background: #38b6ff; }
+.overdue-card, .deadlines-card {
+    border-left: 4px solid #ff6b6b;
+}
+.notifications-card {
+    border-left: 4px solid #4f8cff;
+    margin-bottom: 1.5rem;
+}
+.notification-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin-top: 0.7rem;
+}
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    background: #f1f3f6;
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+    color: #22223b;
+}
+.notification-icon {
+    font-size: 1.2rem;
+    color: #4f8cff;
+}
+.deadlines-card {
+    border-left: 4px solid #ffb347;
+}
+.deadlines-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin-top: 0.7rem;
+}
+.deadline-task {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f1f3f6;
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+}
+.insights-card {
+    border-left: 4px solid #38b6ff;
+}
+.insights-grid {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1rem;
+}
+.insight-section {
+    flex: 1;
+}
+.achievement-item, .improvement-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+.achievement-icon, .improvement-icon {
+    font-size: 1.1rem;
+}
+@media (max-width: 900px) { .metrics-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .metrics-grid { grid-template-columns: 1fr; } .app-container { padding: 1rem 0.2rem; } }
 </style>
+@endpush
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Message container logic for future modals/forms
+    const messageContainer = document.getElementById('messageContainer');
+    function showMessage(msg, success = true) {
+        if (!messageContainer) return;
+        messageContainer.textContent = msg;
+        messageContainer.style.display = 'block';
+        messageContainer.className = 'message-container ' + (success ? 'success' : 'error');
+        setTimeout(() => { messageContainer.style.display = 'none'; }, 3000);
+    }
+
+    // AJAX: Mark task as complete
+    document.querySelectorAll('.overdue-task .btn-small.btn-primary').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const taskCard = this.closest('.overdue-task');
+            const title = taskCard.querySelector('h4').textContent;
+            if (!confirm('Mark task "' + title + '" as completed?')) return;
+            this.disabled = true;
+            this.textContent = '⏳ Completing...';
+            const taskId = taskCard.dataset.taskId;
+            fetch(`/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ status: 'Completed', progress: 100 }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success || (data.task && data.task.status === 'Completed')) {
+                    showMessage('Task marked as completed!');
+                    taskCard.remove();
+                } else if (data.message) {
+                    showMessage(data.message, false);
+                    this.disabled = false;
+                    this.textContent = 'Update Progress';
+                } else {
+                    showMessage('Error marking task as completed.', false);
+                    this.disabled = false;
+                    this.textContent = 'Update Progress';
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + (error.message || error), false);
+                this.disabled = false;
+                this.textContent = 'Update Progress';
+            });
+        });
+    });
+    // TODO: Add AJAX for progress update modal if/when implemented
+});
+</script>
 @endpush
 @section('content')
 <div class="app-container">
+    <div id="messageContainer" class="message-container" style="display: none;"></div>
     <!-- Header -->
     <main class="main-content">
         <!-- Dashboard Tab -->
@@ -260,8 +246,8 @@
             <div class="metrics-grid">
                 <div class="metric-card blue">
                     <div class="metric-icon">📊</div>
-                    <div class="metric-value" id="myTotalTasks">{{ $totalTasks }}</div>
-                    <div class="metric-label">My Tasks</div>
+                    <div class="metric-value" id="myTotalTasks">{{ $todayTotalTasks }}</div>
+                    <div class="metric-label">Today's Tasks</div>
                     <div class="metric-subtitle">Assigned to you</div>
                 </div>
                 <div class="metric-card green">
@@ -272,12 +258,12 @@
                 </div>
                 <div class="metric-card purple">
                     <div class="metric-icon">📈</div>
-                    <div class="metric-value" id="myInProgressTasks">{{ $inProgressTasks }}</div>
+                    <div class="metric-value" id="myInProgressTasks">{{ $todayInProgressTasks }}</div>
                     <div class="metric-label">In Progress</div>
                 </div>
                 <div class="metric-card red">
                     <div class="metric-icon">⚠️</div>
-                    <div class="metric-value" id="myOverdueTasks">{{ $overdueTasks }}</div>
+                    <div class="metric-value" id="myOverdueTasks">{{ $todayOverdueTasks }}</div>
                     <div class="metric-label">Overdue</div>
                 </div>
             </div>
@@ -290,25 +276,25 @@
                             <div class="status-indicator not-started" style="background:#b0b3b8;"></div>
                             <span>Not Started</span>
                             <div class="status-bar">
-                                <div class="status-fill" style="background:#b0b3b8; width: {{ $totalTasks ? round(($tasks->where('status', 'Not Started')->count()) / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="status-fill" style="background:#b0b3b8; width: {{ $todayTotalTasks ? round($todayStatusCounts['Not Started'] / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $tasks->where('status', 'Not Started')->count() }}</span>
+                            <span>{{ $todayStatusCounts['Not Started'] }}</span>
                         </div>
                         <div class="status-item">
                             <div class="status-indicator in-progress"></div>
                             <span>In Progress</span>
                             <div class="status-bar">
-                                <div class="status-fill" style="width: {{ $totalTasks ? round($inProgressTasks / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="status-fill" style="width: {{ $todayTotalTasks ? round($todayInProgressTasks / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $inProgressTasks }}</span>
+                            <span>{{ $todayInProgressTasks }}</span>
                         </div>
                         <div class="status-item">
                             <div class="status-indicator overdue"></div>
                             <span>Overdue</span>
                             <div class="status-bar">
-                                <div class="status-fill" style="width: {{ $totalTasks ? round($overdueTasks / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="status-fill" style="width: {{ $todayTotalTasks ? round($todayOverdueTasks / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $overdueTasks }}</span>
+                            <span>{{ $todayOverdueTasks }}</span>
                         </div>
                     </div>
                 </div>
@@ -319,25 +305,25 @@
                             <div class="priority-indicator high"></div>
                             <span>High</span>
                             <div class="priority-bar">
-                                <div class="priority-fill" style="width: {{ $totalTasks ? round($priorityCounts['High'] / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="priority-fill" style="width: {{ $todayTotalTasks ? round($todayPriorityCounts['High'] / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $priorityCounts['High'] }}</span>
+                            <span>{{ $todayPriorityCounts['High'] }}</span>
                         </div>
                         <div class="priority-item">
                             <div class="priority-indicator medium"></div>
                             <span>Medium</span>
                             <div class="priority-bar">
-                                <div class="priority-fill" style="width: {{ $totalTasks ? round($priorityCounts['Medium'] / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="priority-fill" style="width: {{ $todayTotalTasks ? round($todayPriorityCounts['Medium'] / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $priorityCounts['Medium'] }}</span>
+                            <span>{{ $todayPriorityCounts['Medium'] }}</span>
                         </div>
                         <div class="priority-item">
                             <div class="priority-indicator low"></div>
                             <span>Low</span>
                             <div class="priority-bar">
-                                <div class="priority-fill" style="width: {{ $totalTasks ? round($priorityCounts['Low'] / $totalTasks * 100) : 0 }}%"></div>
+                                <div class="priority-fill" style="width: {{ $todayTotalTasks ? round($todayPriorityCounts['Low'] / $todayTotalTasks * 100) : 0 }}%"></div>
                             </div>
-                            <span>{{ $priorityCounts['Low'] }}</span>
+                            <span>{{ $todayPriorityCounts['Low'] }}</span>
                         </div>
                     </div>
                 </div>
@@ -358,10 +344,10 @@
             </div>
             <!-- My Overdue Tasks -->
             <div class="overdue-card full-width">
-                <h3>🕐 My Overdue Tasks ({{ $overdueList->count() }})</h3>
+                <h3>🕐 My Overdue Tasks ({{ $todayOverdueList->count() }})</h3>
                 <div class="overdue-tasks">
-                    @forelse($overdueList as $task)
-                        <div class="overdue-task">
+                    @forelse($todayOverdueList as $task)
+                        <div class="overdue-task" data-task-id="{{ $task->id }}">
                             <div class="task-info">
                                 <h4>{{ $task->title }}</h4>
                                 <p>Project: {{ $task->project ? $task->project->name : '-' }}</p>
@@ -384,13 +370,13 @@
                 <h3>📅 Upcoming Deadlines</h3>
                 <div class="deadlines-list">
                     @php
-                        $upcoming = $tasks->where('due_date', '>=', now()->toDateString())->where('due_date', '<=', now()->addDays(7)->toDateString())->sortBy('due_date');
+                        $upcoming = $todayTasks->where('due_date', '>=', now()->toDateString())->where('due_date', '<=', now()->addDays(7)->toDateString())->sortBy('due_date');
                     @endphp
                     @forelse($upcoming as $task)
                         <div class="deadline-task">
                             <div class="task-info">
                                 <h4>{{ $task->title }}</h4>
-                                <p>Project: {{ $task->project ? $task->project->name : '-' }}</p>
+                                <p>Project: -</p>
                             </div>
                             <div class="task-meta">
                                 <p>Due: {{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</p>
@@ -427,7 +413,7 @@
         </div>
     </main>
 <!-- Completed Tasks History (last 7 days) -->
-@if($completedHistory->count())
+@if($recentCompletedHistory->count())
 <div class="completed-history-card" style="margin: 3rem auto 0 auto; max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06); padding: 1.5rem 1.2rem;">
     <h3 style="font-weight:600; color:#4f8cff; display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
         <span style="font-size:1.3rem;">✅</span> Completed Tasks (Last 7 Days)
@@ -441,10 +427,10 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($completedHistory as $task)
+            @foreach($recentCompletedHistory as $task)
                 <tr>
                     <td><span style="font-size:1.1rem;">{{ $task->title }}</span></td>
-                    <td><span style="color:#888;">{{ $task->project ? $task->project->name : '-' }}</span></td>
+                    <td><span style="color:#888;">-</span></td>
                     <td><span style="color:#38b6ff; font-weight:500;">{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</span></td>
                 </tr>
             @endforeach
@@ -463,14 +449,14 @@
 <div class="progress-card" style="margin: 3rem auto 0 auto; max-width: 600px;">
     <div class="progress-header">
         <h3>My Overall Progress</h3>
-        <span class="progress-percentage">{{ $avgProgress }}%</span>
+        <span class="progress-percentage">{{ $todayAvgProgress }}%</span>
     </div>
     <div class="progress-bar-container">
         <div class="progress-bar">
-            <div class="progress-fill" style="width: {{ $avgProgress }}%"></div>
+            <div class="progress-fill" style="width: {{ $todayAvgProgress }}%"></div>
         </div>
     </div>
-    <p id="progressDescription">Average completion across {{ $totalTasks }} tasks</p>
+    <p id="progressDescription">Average completion across {{ $todayTotalTasks }} tasks</p>
 </div>
 </div>
 @endsection 

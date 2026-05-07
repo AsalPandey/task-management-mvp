@@ -23,6 +23,7 @@ class User extends Authenticatable
         'email',
         'password',
         'active',
+        'role_id',
     ];
 
     /**
@@ -60,6 +61,11 @@ class User extends Authenticatable
 
     public function tasks()
     {
-        return $this->hasMany(\App\Models\Task::class, 'assignee_id');
+        return $this->hasMany(Task::class, 'assignee_id');
+    }
+
+    public function isActive()
+    {
+        return $this->active;
     }
 }

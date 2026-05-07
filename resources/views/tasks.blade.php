@@ -4,42 +4,20 @@
 <link rel="stylesheet" href="{{ asset('css/tasks.css') }}">
 <link rel="stylesheet" href="{{ asset('css/common.css') }}">
 <style>
-.tasks-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 1.5rem;
-    background: #fff;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06);
-}
-.tasks-table th, .tasks-table td {
-    padding: 0.7rem 1rem;
-    border-bottom: 1px solid #e5e7eb;
-    text-align: left;
-}
-.tasks-table th {
-    background: #f8fafc;
-    font-weight: 600;
-    color: #22223b;
-}
-.tasks-table tr:last-child td {
-    border-bottom: none;
-}
-.btn-small {
-    font-size: 0.95rem;
-    padding: 0.2rem 0.7rem;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    margin-right: 0.3rem;
-}
-.btn-small.btn-primary { background: #4f8cff; color: #fff; }
-.btn-small.btn-danger { background: #ff6b6b; color: #fff; }
+body { background: #f7f8fa; }
+.tasks-container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
+.tasks-header h1 { font-size: 1.7rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.filters-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; margin-bottom: 2rem; }
+.tasks-table { background: #f8fafc; border-radius: 12px; box-shadow: none; }
+@media (max-width: 900px) { .tasks-table th, .tasks-table td { padding: 0.5rem 0.5rem; } }
+@media (max-width: 600px) { .tasks-container { padding: 1rem 0.2rem; } }
 </style>
 @endpush
 @push('scripts')
 <script>
+// Output projectMembers as a JS object
+// console.log('projectMembers:', window.projectMembers); // DEBUG
+
 document.addEventListener('DOMContentLoaded', function() {
     // Modal logic
     const newTaskBtn = document.getElementById('newTaskBtn');
@@ -50,11 +28,30 @@ document.addEventListener('DOMContentLoaded', function() {
     let editTaskId = null;
 
     function showMessage(msg, success = true) {
-        if (!messageContainer) return;
-        messageContainer.textContent = msg;
-        messageContainer.style.display = 'block';
-        messageContainer.className = 'message-container ' + (success ? 'success' : 'error');
-        setTimeout(() => { messageContainer.style.display = 'none'; }, 2000);
+        Swal.fire({
+            icon: success ? 'success' : 'error',
+            title: success ? 'Success' : 'Error',
+            text: msg,
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+
+    function setLoading(isLoading) {
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = isLoading;
+        if (isLoading) {
+            submitBtn.textContent = '⏳ Please wait...';
+        } else {
+            submitBtn.textContent = editTaskId ? '✏️ Update Task' : '➕ Create Task';
+        }
+    }
+
+    function resetModal() {
+        taskForm.reset();
+        editTaskId = null;
+        setLoading(false);
+        // Do not show any message on modal reset/close
     }
 
     if (newTaskBtn && taskModal) {
@@ -73,17 +70,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 const dd = String(today.getDate()).padStart(2, '0');
                 startDateInput.value = `${yyyy}-${mm}-${dd}`;
             }
+            // Populate assignees when opening new task modal
+            const taskProject = document.getElementById('taskProject');
+            if (taskProject) {
+                populateAssignees(taskProject.value);
+            }
         });
     }
     if (modalClose) {
         modalClose.addEventListener('click', function() {
             taskModal.classList.remove('active');
+            resetModal();
         });
     }
     if (taskModal) {
         taskModal.addEventListener('click', function(e) {
             if (e.target === this) {
                 taskModal.classList.remove('active');
+                resetModal();
             }
         });
     }
@@ -92,30 +96,51 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             const card = this.closest('.task-card');
-            editTaskId = card.dataset.taskId;
-            taskModal.classList.add('active');
-            document.getElementById('submitBtn').textContent = '✏️ Update Task';
-            document.getElementById('modalTitle').textContent = 'Edit Task';
-            taskForm.querySelector('#taskTitle').value = card.querySelector('.task-title').textContent;
-            taskForm.querySelector('#taskDescription').value = card.querySelector('.task-comments p')?.textContent || '';
-            taskForm.querySelector('#taskProject').value = card.dataset.projectId || '';
-            taskForm.querySelector('#taskAssignee').value = card.dataset.assigneeId || '';
-            taskForm.querySelector('#taskPriority').value = card.dataset.priority || 'Medium';
-            taskForm.querySelector('#taskStatus').value = card.dataset.status || 'Not Started';
-            taskForm.querySelector('#taskStartDate').value = card.dataset.startDate || '';
-            taskForm.querySelector('#taskDueDate').value = card.dataset.dueDate || '';
-            taskForm.querySelector('#taskProgress').value = card.dataset.progress || 0;
-            taskForm.querySelector('#progressValue').textContent = card.dataset.progress || 0;
-            taskForm.querySelector('#taskComments').value = card.querySelector('.task-comments p')?.textContent || '';
+            const taskId = card.dataset.taskId;
+            fetch(`/tasks/${taskId}/edit`, {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    const task = data.task;
+                    taskModal.classList.add('active');
+                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
+                    document.getElementById('modalTitle').textContent = 'Edit Task';
+                    taskForm.querySelector('#taskTitle').value = task.title || '';
+                    taskForm.querySelector('#taskDescription').value = task.description || '';
+                    taskForm.querySelector('#taskAssignee').value = task.assignee_id || '';
+                    taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
+                    taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
+                    taskForm.querySelector('#taskStartDate').value = task.start_date || '';
+                    taskForm.querySelector('#taskDueDate').value = task.due_date || '';
+                    taskForm.querySelector('#taskProgress').value = task.progress || 0;
+                    taskForm.querySelector('#progressValue').textContent = task.progress || 0;
+                    taskForm.querySelector('#taskComments').value = task.comments || '';
+                    editTaskId = task.id;
+                } else {
+                    showMessage('Could not fetch task data.', false);
+                }
+            })
+            .catch(() => showMessage('Could not fetch task data.', false));
         });
     });
     // Delete task
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
+            Swal.fire({
+                title: 'Delete this task?',
+                text: 'This action cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
             const card = this.closest('.task-card');
             const id = card.dataset.taskId;
-            if (confirm('Delete this task?')) {
                 fetch(`/tasks/${id}`, {
                     method: 'DELETE',
                     headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
@@ -126,15 +151,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(data => {
                     if (data.success) {
                         card.remove();
-                        showMessage('Task deleted.');
+                        Swal.fire('Deleted!', 'Task deleted.', 'success');
+                    } else if (data.message) {
+                        Swal.fire('Error', data.message, 'error');
+                    } else {
+                        Swal.fire('Error', 'Error deleting task.', 'error');
                     }
+                })
+                .catch(error => {
+                    Swal.fire('Error', 'Error deleting task: ' + (error.message || error), 'error');
                 });
-            }
+            });
         });
     });
     // Create/update task
     taskForm.addEventListener('submit', function(e) {
         e.preventDefault();
+        setLoading(true);
         const formData = new FormData(taskForm);
         const payload = {
             title: formData.get('taskTitle'),
@@ -161,33 +194,43 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(r => r.json())
         .then(data => {
+            setLoading(false);
             if (data.task && editTaskId) {
                 showMessage('Task updated.');
-                // If the task was marked as completed and moved, remove from DOM
                 if (data.moved) {
                     const card = document.querySelector(`.task-card[data-task-id='${editTaskId}']`);
                     if (card) card.remove();
                     const row = document.querySelector(`tr[data-task-id='${editTaskId}']`);
                     if (row) row.remove();
-                    taskModal.classList.remove('active');
-                    editTaskId = null;
+                    if (taskModal) taskModal.classList.remove('active');
+                    resetModal();
                     return;
                 }
                 // Update the card in the DOM
                 const card = document.querySelector(`.task-card[data-task-id='${editTaskId}']`);
                 if (card) {
-                    card.querySelector('.task-title').textContent = data.task.title;
-                    card.querySelector('.priority-badge').textContent = data.task.priority;
-                    card.querySelector('.priority-badge').className = 'priority-badge priority-' + data.task.priority.toLowerCase();
-                    card.querySelector('.status-badge').textContent = data.task.status;
-                    card.querySelector('.status-badge').className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
-                    card.querySelector('.progress-header span:last-child').textContent = data.task.progress + '%';
-                    card.querySelector('.progress-fill').style.width = data.task.progress + '%';
-                    card.querySelector('.due-date').textContent = data.task.due_date ? new Date(data.task.due_date).toLocaleDateString() : '-';
-                    card.querySelector('.date-item .date-icon + span').textContent = 'Updated ' + (data.task.updated_at ? new Date(data.task.updated_at).toLocaleDateString() : '-');
-                    if (card.querySelector('.task-comments p')) {
-                        card.querySelector('.task-comments p').textContent = data.task.comments || '';
+                    const titleEl = card.querySelector('.task-title');
+                    if (titleEl) titleEl.textContent = data.task.title;
+                    const priorityBadge = card.querySelector('.priority-badge');
+                    if (priorityBadge) {
+                        priorityBadge.textContent = data.task.priority;
+                        priorityBadge.className = 'priority-badge priority-' + data.task.priority.toLowerCase();
                     }
+                    const statusBadge = card.querySelector('.status-badge');
+                    if (statusBadge) {
+                        statusBadge.textContent = data.task.status;
+                        statusBadge.className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
+                    }
+                    const progressHeader = card.querySelector('.progress-header span:last-child');
+                    if (progressHeader) progressHeader.textContent = data.task.progress + '%';
+                    const progressFill = card.querySelector('.progress-fill');
+                    if (progressFill) progressFill.style.width = data.task.progress + '%';
+                    const dueDateEl = card.querySelector('.due-date');
+                    if (dueDateEl) dueDateEl.textContent = data.task.due_date ? new Date(data.task.due_date).toLocaleDateString() : '-';
+                    const updatedDateEl = card.querySelector('.date-item .date-icon + span');
+                    if (updatedDateEl) updatedDateEl.textContent = 'Updated ' + (data.task.updated_at ? new Date(data.task.updated_at).toLocaleDateString() : '-');
+                    const commentsP = card.querySelector('.task-comments p');
+                    if (commentsP) commentsP.textContent = data.task.comments || '';
                     card.dataset.priority = data.task.priority;
                     card.dataset.status = data.task.status;
                     card.dataset.progress = data.task.progress;
@@ -197,31 +240,60 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update the table row in the DOM
                 const row = document.querySelector(`tr[data-task-id='${editTaskId}']`);
                 if (row) {
-                    row.querySelector('td:nth-child(1)').textContent = data.task.title;
-                    row.querySelector('td:nth-child(2) .status-badge').textContent = data.task.status;
-                    row.querySelector('td:nth-child(2) .status-badge').className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
-                    row.querySelector('td:nth-child(3) .priority-badge').textContent = data.task.priority;
-                    row.querySelector('td:nth-child(3) .priority-badge').className = 'priority-badge priority-' + data.task.priority.toLowerCase();
-                    // Assignee/Assigned By
+                    const tds = row.querySelectorAll('td');
+                    // tds[0]: checkbox (skip)
+                    // tds[1]: Title
+                    if (tds[1]) tds[1].textContent = data.task.title;
+                    // tds[2]: Status
+                    if (tds[2]) {
+                        let statusBadge = tds[2].querySelector('.status-badge');
+                        if (!statusBadge) {
+                            statusBadge = document.createElement('span');
+                            statusBadge.className = 'status-badge';
+                            tds[2].appendChild(statusBadge);
+                        }
+                        statusBadge.textContent = data.task.status;
+                        statusBadge.className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
+                    }
+                    // tds[3]: Priority
+                    if (tds[3]) {
+                        let priorityBadge = tds[3].querySelector('.priority-badge');
+                        if (!priorityBadge) {
+                            priorityBadge = document.createElement('span');
+                            priorityBadge.className = 'priority-badge';
+                            tds[3].appendChild(priorityBadge);
+                        }
+                        priorityBadge.textContent = data.task.priority;
+                        priorityBadge.className = 'priority-badge priority-' + data.task.priority.toLowerCase();
+                    }
+                    // tds[4]: Assignee/Assigned By
                     const userRole = document.body.getAttribute('data-user-role');
                     if (userRole === 'team_member') {
-                        row.querySelector('td:nth-child(4)').textContent = data.task.created_by_name || 'Manager';
+                        if (tds[4]) tds[4].textContent = data.task.created_by_name || 'Manager';
                     } else {
-                        row.querySelector('td:nth-child(4)').textContent = data.task.assignee ? data.task.assignee.name : '-';
+                        if (tds[4]) tds[4].textContent = data.task.assignee ? data.task.assignee.name : '-';
                     }
-                    row.querySelector('td:nth-child(5)').textContent = data.task.project ? data.task.project.name : '-';
-                    row.querySelector('td:nth-child(6)').textContent = data.task.due_date ? new Date(data.task.due_date).toLocaleDateString() : '-';
-                    row.querySelector('td:nth-child(7)').textContent = data.task.progress + '%';
+                    // tds[5]: Due Date
+                    if (tds[6]) tds[6].textContent = data.task.due_date ? new Date(data.task.due_date).toLocaleDateString() : '-';
+                    // tds[7]: Progress
+                    if (tds[7]) tds[7].textContent = data.task.progress + '%';
+                    // tds[8]: Actions (skip)
                 }
                 taskModal.classList.remove('active');
-                editTaskId = null;
+                resetModal();
             } else if (data.task) {
                 showMessage('Task created.');
                 window.location.reload();
+            } else if (data.message) {
+                showMessage(data.message, false);
+            } else {
+                showMessage('An error occurred. Please try again.', false);
             }
+        })
+        .catch(error => {
+            setLoading(false);
+            showMessage('An error occurred: ' + (error.message || error), false);
         });
-        // Only close modal for update, not for create
-        // taskModal.classList.remove('active');
     });
     // Progress slider
     const progressSlider = document.getElementById('taskProgress');
@@ -237,7 +309,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusFilter = document.getElementById('statusFilter');
     const priorityFilter = document.getElementById('priorityFilter');
     const assigneeFilter = document.getElementById('assigneeFilter');
-    const projectFilter = document.getElementById('projectFilter');
     const tasksGrid = document.getElementById('tasksGrid');
 
     function filterTasks() {
@@ -245,7 +316,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const status = statusFilter.value;
         const priority = priorityFilter.value;
         const assignee = assigneeFilter.value;
-        const project = projectFilter.value;
         const cards = tasksGrid.querySelectorAll('.task-card');
         let anyVisible = false;
         cards.forEach(card => {
@@ -253,13 +323,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const cardStatus = card.dataset.status;
             const cardPriority = card.dataset.priority;
             const cardAssignee = card.dataset.assigneeId;
-            const cardProject = card.dataset.projectId;
             let visible = true;
             if (search && !title.includes(search)) visible = false;
             if (status && cardStatus !== status) visible = false;
             if (priority && cardPriority !== priority) visible = false;
             if (assignee && cardAssignee !== assignee) visible = false;
-            if (project && cardProject !== project) visible = false;
             card.style.display = visible ? '' : 'none';
             if (visible) anyVisible = true;
         });
@@ -272,13 +340,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const rowStatus = tds[1].textContent.trim();
             const rowPriority = tds[2].textContent.trim();
             const rowAssignee = tds[3].textContent.trim();
-            const rowProject = tds[4].textContent.trim();
             let visible = true;
             if (search && !title.includes(search)) visible = false;
             if (status && rowStatus !== status) visible = false;
             if (priority && rowPriority !== priority) visible = false;
             if (assignee && assignee !== '' && rowAssignee !== assigneeFilter.options[assigneeFilter.selectedIndex].text) visible = false;
-            if (project && rowProject !== projectFilter.options[projectFilter.selectedIndex].text) visible = false;
             row.style.display = visible ? '' : 'none';
             if (visible) anyTableVisible = true;
         });
@@ -286,7 +352,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const emptyState = document.querySelector('.empty-state');
         if (emptyState) emptyState.style.display = anyVisible ? 'none' : '';
     }
-    [searchInput, statusFilter, priorityFilter, assigneeFilter, projectFilter].forEach(el => {
+    [searchInput, statusFilter, priorityFilter, assigneeFilter].forEach(el => {
         if (el) el.addEventListener('input', filterTasks);
         if (el && el.tagName === 'SELECT') el.addEventListener('change', filterTasks);
     });
@@ -296,25 +362,35 @@ document.addEventListener('DOMContentLoaded', function() {
         card.addEventListener('click', function(e) {
             // Prevent triggering when clicking the delete button
             if (e.target.closest('.delete-btn')) return;
-            // Set editTaskId globally so update works
-            editTaskId = card.dataset.taskId;
-            // Fallback: open modal and populate fields manually
-            const taskModal = document.getElementById('taskModal');
-            const taskForm = document.getElementById('taskForm');
-            taskModal.classList.add('active');
-            document.getElementById('submitBtn').textContent = '✏️ Update Task';
-            document.getElementById('modalTitle').textContent = 'Edit Task';
-            taskForm.querySelector('#taskTitle').value = card.querySelector('.task-title').textContent;
-            taskForm.querySelector('#taskDescription').value = card.dataset.description || '';
-            taskForm.querySelector('#taskProject').value = card.dataset.projectId || '';
-            taskForm.querySelector('#taskAssignee').value = card.dataset.assigneeId || '';
-            taskForm.querySelector('#taskPriority').value = card.dataset.priority || 'Medium';
-            taskForm.querySelector('#taskStatus').value = card.dataset.status || 'Not Started';
-            taskForm.querySelector('#taskStartDate').value = card.dataset.startDate || '';
-            taskForm.querySelector('#taskDueDate').value = card.dataset.dueDate || '';
-            taskForm.querySelector('#taskProgress').value = card.dataset.progress || 0;
-            taskForm.querySelector('#progressValue').textContent = card.dataset.progress || 0;
-            taskForm.querySelector('#taskComments').value = card.dataset.comments || '';
+            const taskId = card.dataset.taskId;
+            fetch(`/tasks/${taskId}/edit`, {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.task) {
+                    const task = data.task;
+                    const taskModal = document.getElementById('taskModal');
+                    const taskForm = document.getElementById('taskForm');
+                    taskModal.classList.add('active');
+                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
+                    document.getElementById('modalTitle').textContent = 'Edit Task';
+                    taskForm.querySelector('#taskTitle').value = task.title || '';
+                    taskForm.querySelector('#taskDescription').value = task.description || '';
+                    taskForm.querySelector('#taskAssignee').value = task.assignee_id || '';
+                    taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
+                    taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
+                    taskForm.querySelector('#taskStartDate').value = task.start_date || '';
+                    taskForm.querySelector('#taskDueDate').value = task.due_date || '';
+                    taskForm.querySelector('#taskProgress').value = task.progress || 0;
+                    taskForm.querySelector('#progressValue').textContent = task.progress || 0;
+                    taskForm.querySelector('#taskComments').value = task.comments || '';
+                    editTaskId = task.id;
+                } else {
+                    showMessage('Could not fetch task data.', false);
+                }
+            })
+            .catch(() => showMessage('Could not fetch task data.', false));
         });
     });
     // Toggle view logic
@@ -381,7 +457,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     bulkDeleteBtn.addEventListener('click', function() {
         const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
-        if (confirm('Are you sure you want to delete these ' + selectedTaskIds.length + ' tasks?')) {
+        Swal.fire({
+            title: 'Delete selected tasks?',
+            text: 'This action cannot be undone.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete them!'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
             fetch(`/tasks/bulk-delete`, {
                 method: 'POST',
                 headers: {
@@ -401,21 +486,141 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (row) row.remove();
                     });
                     updateBulkActions();
-                    showMessage('Tasks deleted.');
+                    Swal.fire('Deleted!', 'Tasks deleted.', 'success');
+                } else if (data.message) {
+                    Swal.fire('Error', data.message, 'error');
                 } else {
-                    showMessage('Error deleting tasks.', false);
+                    Swal.fire('Error', 'Error deleting tasks.', 'error');
                 }
             })
             .catch(error => {
-                console.error('Error deleting tasks:', error);
-                showMessage('Error deleting tasks.', false);
+                Swal.fire('Error', 'Error deleting tasks: ' + (error.message || error), 'error');
             });
-        }
+        });
     });
 
+    // Single task complete (card)
+    document.querySelectorAll('.complete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            Swal.fire({
+                title: 'Mark this task as completed?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#aaa',
+                confirmButtonText: 'Yes, complete it!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+                const card = this.closest('.task-card');
+                const id = card.dataset.taskId;
+                // Fetch the full task data first
+                fetch(`/tasks/${id}/edit`, {
+                    headers: { 'Accept': 'application/json' }
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.task) {
+                        const task = data.task;
+                        // Prepare full payload with status/progress overridden
+                        const payload = {
+                            title: task.title,
+                            description: task.description,
+                            assignee_id: task.assignee_id,
+                            priority: task.priority,
+                            status: 'Completed',
+                            progress: 100,
+                            start_date: task.start_date,
+                            due_date: task.due_date,
+                            comments: task.comments
+                        };
+                        fetch(`/tasks/${id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                                'Accept': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success || (data.task && data.task.status === 'Completed')) {
+                                card.remove();
+                                Swal.fire('Completed!', 'Task marked as completed and moved to history.', 'success');
+                            } else if (data.message) {
+                                Swal.fire('Error', data.message, 'error');
+                            } else {
+                                Swal.fire('Error', 'Error marking task as completed.', 'error');
+                            }
+                        })
+                        .catch(error => {
+                            Swal.fire('Error', 'Error marking task as completed: ' + (error.message || error), 'error');
+                        });
+                    } else {
+                        Swal.fire('Error', 'Could not fetch task data.', 'error');
+                    }
+                })
+                .catch(error => {
+                    Swal.fire('Error', 'Error fetching task data: ' + (error.message || error), 'error');
+                });
+            });
+        });
+    });
+    // Single task complete (table)
+    document.querySelectorAll('.table-complete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            Swal.fire({
+                title: 'Mark this task as completed?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#aaa',
+                confirmButtonText: 'Yes, complete it!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+                const row = this.closest('tr');
+                const id = row.dataset.taskId;
+                const card = document.querySelector(`.task-card[data-task-id='${id}']`);
+                fetch(`/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ status: 'Completed', progress: 100 }),
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success || (data.task && data.task.status === 'Completed')) {
+                        row.remove();
+                        if (card) card.remove();
+                        Swal.fire('Completed!', 'Task marked as completed and moved to history.', 'success');
+                    } else if (data.message) {
+                        Swal.fire('Error', data.message, 'error');
+                    } else {
+                        Swal.fire('Error', 'Error marking task as completed.', 'error');
+                    }
+                })
+                .catch(error => {
+                    Swal.fire('Error', 'Error marking task as completed: ' + (error.message || error), 'error');
+            });
+            });
+    });
+    });
     bulkCompleteBtn.addEventListener('click', function() {
         const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
-        if (confirm('Are you sure you want to mark these ' + selectedTaskIds.length + ' tasks as completed?')) {
+        Swal.fire({
+            title: 'Mark selected tasks as completed?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#aaa',
+            confirmButtonText: 'Yes, complete them!'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
             fetch(`/tasks/bulk-complete`, {
                 method: 'POST',
                 headers: {
@@ -430,43 +635,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     selectedTaskIds.forEach(id => {
                         const card = document.querySelector(`.task-card[data-task-id='${id}']`);
-                        if (card) {
-                            card.dataset.status = 'Completed';
-                            card.querySelector('.status-badge').textContent = 'Completed';
-                            card.querySelector('.status-badge').className = 'status-badge status-completed';
-                            card.querySelector('.progress-header span:last-child').textContent = '100%';
-                            card.querySelector('.progress-fill').style.width = '100%';
-                            card.querySelector('.due-date').textContent = '-'; // Clear due date
-                            card.dataset.dueDate = null;
-                        }
+                        if (card) card.remove();
                         const row = document.querySelector(`tr[data-task-id='${id}']`);
-                        if (row) {
-                            row.querySelector('td:nth-child(1)').textContent = card.querySelector('.task-title').textContent + ' (Completed)';
-                            row.querySelector('td:nth-child(2) .status-badge').textContent = 'Completed';
-                            row.querySelector('td:nth-child(2) .status-badge').className = 'status-badge status-completed';
-                            row.querySelector('td:nth-child(3) .priority-badge').textContent = 'Completed';
-                            row.querySelector('td:nth-child(3) .priority-badge').className = 'priority-badge priority-completed';
-                            row.querySelector('td:nth-child(6)').textContent = '-'; // Clear due date
-                            row.querySelector('td:nth-child(7)').textContent = '100%';
-                        }
+                        if (row) row.remove();
                     });
                     updateBulkActions();
-                    showMessage('Tasks marked as completed.');
+                    Swal.fire('Completed!', 'Tasks marked as completed and moved to history.', 'success');
+                } else if (data.message) {
+                    Swal.fire('Error', data.message, 'error');
                 } else {
-                    showMessage('Error marking tasks as completed.', false);
+                    Swal.fire('Error', 'Error marking tasks as completed.', 'error');
                 }
             })
             .catch(error => {
-                console.error('Error marking tasks as completed:', error);
-                showMessage('Error marking tasks as completed.', false);
+                Swal.fire('Error', 'Error marking tasks as completed: ' + (error.message || error), 'error');
             });
-        }
+        });
     });
 });
 </script>
 @endpush
 @section('content')
 <div class="tasks-container">
+
     <div class="tasks-header">
         <h1>Task Management</h1>
         <button id="toggleViewBtn" class="btn-secondary" style="margin-right: 1rem;">🔳 Table View</button>
@@ -501,12 +692,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <option value="{{ $user->id }}">{{ $user->name }}</option>
                 @endforeach
             </select>
-            <select id="projectFilter" name="projectFilter">
-                <option value="">All Projects</option>
-                @foreach ($projects as $project)
-                    <option value="{{ $project->id }}">{{ $project->name }}</option>
-                @endforeach
-            </select>
         </div>
     </div>
     <!-- Tasks Grid (Card View) -->
@@ -514,7 +699,6 @@ document.addEventListener('DOMContentLoaded', function() {
         @forelse ($tasks as $task)
             <div class="task-card" tabindex="0" style="cursor:pointer"
                 data-task-id="{{ $task->id }}"
-                data-project-id="{{ $task->project_id }}"
                 data-assignee-id="{{ $task->assignee_id }}"
                 data-priority="{{ $task->priority }}"
                 data-status="{{ $task->status }}"
@@ -538,10 +722,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
                 <h3 class="task-title">{{ $task->title }}</h3>
-                <div class="task-project">
-                    <span class="project-icon">👤</span>
-                    <span>{{ $task->project ? $task->project->name : '-' }}</span>
-                </div>
                 <div class="task-details">
                     @php $user = auth()->user(); @endphp
                     @if($user && $user->role && $user->role->name === 'team_member')
@@ -604,7 +784,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <th>Priority</th>
                     <th>@php $user = auth()->user(); @endphp
                         @if($user && $user->role && $user->role->name === 'team_member') Assigned By @else Assignee @endif</th>
-                    <th>Project</th>
                     <th>Due Date</th>
                     <th>Progress</th>
                     <th>Actions</th>
@@ -624,7 +803,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 {{ $task->assignee ? $task->assignee->name : '-' }}
                             @endif
                         </td>
-                        <td>{{ $task->project ? $task->project->name : '-' }}</td>
                         <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
                         <td>{{ $task->progress }}%</td>
                         <td>
@@ -653,15 +831,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="text" id="taskTitle" name="taskTitle" required>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label for="taskProject">Project *</label>
-                        <select id="taskProject" name="taskProject" required>
-                            <option value="">Select Project</option>
-                            @foreach ($projects as $project)
-                                <option value="{{ $project->id }}">{{ $project->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
                     <div class="form-group">
                         <label for="taskPriority">Priority *</label>
                         <select id="taskPriority" name="taskPriority" required>

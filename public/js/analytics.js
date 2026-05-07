@@ -61,8 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateTeamPerformance();
         }
         
-        // Update project performance
-        updateProjectPerformance();
+        // Remove all project-related JS logic and UI
     }
 
     function calculateUserStats(userTasks) {
@@ -284,35 +283,5 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateProjectPerformance() {
-        const projectStats = window.storageManager.getProjectStats();
-        const projectPerformanceGrid = document.getElementById('projectPerformanceGrid');
-
-        if (projectPerformanceGrid) {
-            projectPerformanceGrid.innerHTML = projectStats.slice(0, 3).map(project => `
-                <div class="project-performance-item">
-                    <div class="project-header">
-                        <div class="project-color" style="background-color: ${project.color};"></div>
-                        <div class="project-info">
-                            <h4>${project.name}</h4>
-                            <p>${project.progress}% complete</p>
-                        </div>
-                    </div>
-                    <div class="project-stats">
-                        <div class="project-stat">
-                            <span class="stat-label">Tasks:</span>
-                            <span class="stat-value">${project.taskCount}</span>
-                        </div>
-                        <div class="project-stat">
-                            <span class="stat-label">Done:</span>
-                            <span class="stat-value">${project.completedTasks}</span>
-                        </div>
-                    </div>
-                    <div class="project-progress-bar">
-                        <div class="project-progress-fill" style="width: ${project.progress}%; background-color: ${project.color};"></div>
-                    </div>
-                </div>
-            `).join('');
-        }
-    }
+    // Remove all project-related JS logic and UI
 });

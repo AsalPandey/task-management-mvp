@@ -9,29 +9,58 @@ class TeamDashboardController extends Controller
     public function index()
     {
         $user = auth()->user();
-        $tasks = \App\Models\Task::with('project')->where('assignee_id', $user->id)->get();
-        $totalTasks = $tasks->count();
-        $inProgressTasks = $tasks->where('status', 'In Progress')->count();
-        $overdueTasks = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
-        $avgProgress = $totalTasks ? round($tasks->avg('progress')) : 0;
-        $completionRate = $totalTasks ? round(($tasks->where('status', 'Completed')->count()) / $totalTasks * 100) : 0;
-        $priorityCounts = [
-            'High' => $tasks->where('priority', 'High')->count(),
-            'Medium' => $tasks->where('priority', 'Medium')->count(),
-            'Low' => $tasks->where('priority', 'Low')->count(),
-        ];
-        $statusCounts = [
-            'Completed' => 0, // will be set below
-            'In Progress' => $inProgressTasks,
-            'Overdue' => $overdueTasks,
-        ];
-        $overdueList = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed');
-        // Completed tasks today
+        $today = now()->toDateString();
+        
+        // Today's tasks for this team member (created today OR currently active)
+        $todayTasks = \App\Models\Task::where('assignee_id', $user->id)
+            ->where(function($query) use ($today) {
+                $query->whereDate('created_at', $today)
+                      ->orWhere('status', '!=', 'Completed');
+            })
+            ->get();
+            
+        // Current active tasks for this team member
+        $currentTasks = \App\Models\Task::where('assignee_id', $user->id)
+            ->where('status', '!=', 'Completed')
+            ->get();
+            
+        // Today's completed tasks
         $todayCompletedTasks = \App\Models\CompletedTask::where('assignee_id', $user->id)
-            ->whereDate('completed_at', now()->toDateString())
+            ->whereDate('completed_at', $today)
             ->count();
-        $statusCounts['Completed'] = $todayCompletedTasks;
-        // Productivity trend (last 7 days) and completed history
+            
+        // Today's metrics
+        $todayTotalTasks = $todayTasks->count();
+        $todayInProgressTasks = $todayTasks->where('status', 'In Progress')->count();
+        $todayOverdueTasks = $todayTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        $todayAvgProgress = $todayTotalTasks ? round($todayTasks->avg('progress')) : 0;
+        
+        // Current workload metrics
+        $currentTotalTasks = $currentTasks->count();
+        $currentInProgressTasks = $currentTasks->where('status', 'In Progress')->count();
+        $currentOverdueTasks = $currentTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        
+        // Completion rate (today's completed vs today's total)
+        $todayCompletionRate = $todayTotalTasks ? round($todayCompletedTasks / $todayTotalTasks * 100) : 0;
+        
+        // Today's priority breakdown
+        $todayPriorityCounts = [
+            'High' => $todayTasks->where('priority', 'High')->count(),
+            'Medium' => $todayTasks->where('priority', 'Medium')->count(),
+            'Low' => $todayTasks->where('priority', 'Low')->count(),
+        ];
+        
+        // Today's status breakdown
+        $todayStatusCounts = [
+            'Not Started' => $todayTasks->where('status', 'Not Started')->count(),
+            'In Progress' => $todayInProgressTasks,
+            'Completed' => $todayTasks->where('status', 'Completed')->count(),
+        ];
+        
+        // Today's overdue list
+        $todayOverdueList = $todayTasks->where('due_date', '<', now())->where('status', '!=', 'Completed');
+        
+        // Today's productivity (last 7 days for context)
         $days = collect(range(0, 6))->map(function($i) {
             return now()->subDays(6 - $i)->format('Y-m-d');
         });
@@ -41,14 +70,16 @@ class TeamDashboardController extends Controller
                 ->count();
             return [now()->parse($date)->format('D') => $count];
         });
-        $completedHistory = \App\Models\CompletedTask::with('project')
-            ->where('assignee_id', $user->id)
+        
+        // Recent completed tasks (last 7 days)
+        $recentCompletedHistory = \App\Models\CompletedTask::where('assignee_id', $user->id)
             ->where('completed_at', '>=', now()->subDays(7))
             ->orderBy('completed_at', 'desc')
             ->get();
-        // Notifications: last 5 assigned, completed, or overdue tasks for this user
+            
+        // Today's notifications
         $notifications = collect();
-        foreach ($tasks->sortByDesc('created_at')->take(5) as $task) {
+        foreach ($todayTasks->sortByDesc('created_at')->take(5) as $task) {
             if ($task->status === 'Completed') {
                 $notifications->push(['type' => 'completed', 'text' => "Task '{$task->title}' was completed."]);
             } elseif ($task->due_date && $task->due_date < now() && $task->status !== 'Completed') {
@@ -57,16 +88,25 @@ class TeamDashboardController extends Controller
                 $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."]);
             }
         }
+        
+        // Today's insights
         $achievements = [
             'Completed ' . $todayCompletedTasks . ' tasks today',
-            'Maintaining ' . $avgProgress . '% progress rate',
+            'Currently working on ' . $currentInProgressTasks . ' tasks',
+            'Today\'s progress: ' . $todayAvgProgress . '%',
         ];
         $improvements = [
-            'Focus on ' . $overdueTasks . ' overdue task(s)',
-            'Consider breaking down complex tasks',
+            'Focus on ' . $todayOverdueTasks . ' overdue task(s)',
+            'Maintain steady progress on current tasks',
+            'Prioritize high-priority tasks',
         ];
+        
         return view('team-dashboard', compact(
-            'user', 'tasks', 'totalTasks', 'todayCompletedTasks', 'inProgressTasks', 'overdueTasks', 'avgProgress', 'completionRate', 'priorityCounts', 'statusCounts', 'overdueList', 'productivity', 'notifications', 'achievements', 'improvements', 'completedHistory'
+            'user', 'todayTasks', 'currentTasks', 'todayTotalTasks', 'todayCompletedTasks', 
+            'todayInProgressTasks', 'todayOverdueTasks', 'todayAvgProgress', 'todayCompletionRate',
+            'currentTotalTasks', 'currentInProgressTasks', 'currentOverdueTasks',
+            'todayPriorityCounts', 'todayStatusCounts', 'todayOverdueList', 'productivity', 
+            'notifications', 'achievements', 'improvements', 'recentCompletedHistory'
         ));
     }
 }

@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->string('title');
             $table->text('description')->nullable();
-            $table->unsignedBigInteger('project_id')->nullable()->index();
             $table->unsignedBigInteger('assignee_id')->nullable()->index();
             $table->string('priority')->default('Medium');
             $table->string('status')->default('Not Started')->index();
@@ -26,7 +25,6 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->foreign('project_id')->references('id')->on('projects')->onDelete('set null');
             $table->foreign('assignee_id')->references('id')->on('users')->onDelete('set null');
         });
     }

@@ -3,6 +3,20 @@
 <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
 <link rel="stylesheet" href="{{ asset('css/login.css') }}">
 <link rel="stylesheet" href="{{ asset('css/common.css') }}">
+<style>
+body { background: #f7f8fa; }
+.login-container { max-width: 400px; margin: 3rem auto; padding: 2rem 1.5rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
+.login-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 2rem 1.5rem; }
+.login-header h1 { font-size: 1.5rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.login-header p { color: #888; font-size: 1.05rem; }
+.form-group { margin-bottom: 1.2rem; }
+.input-group { display: flex; align-items: center; background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; padding: 0.3rem 0.7rem; }
+.input-icon { margin-right: 0.5rem; color: #4f8cff; }
+input[type="email"], input[type="password"] { border: none; outline: none; background: none; font-size: 1rem; flex: 1; padding: 0.5rem 0; }
+.error-message { background: #ffeaea; color: #d33; border-radius: 8px; padding: 0.7rem 1rem; margin-bottom: 1rem; }
+button[type="submit"] { background: #4f8cff; color: #fff; border: none; border-radius: 8px; padding: 0.7rem 1.2rem; font-size: 1rem; cursor: pointer; width: 100%; margin-top: 0.5rem; }
+@media (max-width: 600px) { .login-container { padding: 1rem 0.2rem; } .login-card { padding: 1rem 0.5rem; } }
+</style>
 @endpush
 @section('content')
 <div class="login-container">

@@ -3,6 +3,20 @@
 <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
 <link rel="stylesheet" href="{{ asset('css/settings.css') }}">
 <link rel="stylesheet" href="{{ asset('css/common.css') }}">
+<style>
+body { background: #f7f8fa; }
+.settings-container { max-width: 900px; margin: 2rem auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
+.settings-header h1 { font-size: 1.5rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.settings-header p { color: #888; font-size: 1.05rem; }
+.settings-layout { display: flex; gap: 2rem; }
+.settings-sidebar { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; min-width: 180px; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 0.7rem; }
+.nav-item { background: none; border: none; color: #22223b; font-size: 1rem; padding: 0.7rem 1rem; border-radius: 8px; cursor: pointer; text-align: left; transition: background 0.15s; }
+.nav-item.active, .nav-item:hover { background: #eaf1ff; color: #4f8cff; }
+.settings-tab { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; flex: 1; }
+@media (max-width: 900px) { .settings-layout { flex-direction: column; gap: 1rem; } .settings-sidebar { min-width: 0; } }
+@media (max-width: 600px) { .settings-container { padding: 1rem 0.2rem; } }
+</style>
 @endpush
 @push('scripts')
 <script>

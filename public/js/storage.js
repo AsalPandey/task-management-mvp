@@ -2,7 +2,6 @@
 class StorageManager {
     constructor() {
         this.tasksKey = 'taskflow_tasks';
-        this.projectsKey = 'taskflow_projects';
         this.initializeDefaultData();
     }
 
@@ -109,68 +108,6 @@ class StorageManager {
             ];
             localStorage.setItem(this.tasksKey, JSON.stringify(defaultTasks));
         }
-
-        // Initialize default projects if not exists
-        if (!localStorage.getItem(this.projectsKey)) {
-            const defaultProjects = [
-                {
-                    id: '1',
-                    name: 'Website Revamp',
-                    color: '#3B82F6',
-                    description: 'Complete redesign of company website',
-                    createdAt: '2024-01-01T00:00:00Z',
-                    managerId: 'manager1',
-                    status: 'Active',
-                    progress: 65,
-                    taskCount: 3
-                },
-                {
-                    id: '2',
-                    name: 'Marketing Campaign',
-                    color: '#10B981',
-                    description: 'Q1 marketing initiatives',
-                    createdAt: '2024-01-02T00:00:00Z',
-                    managerId: 'manager1',
-                    status: 'Active',
-                    progress: 40,
-                    taskCount: 2
-                },
-                {
-                    id: '3',
-                    name: 'Sales Platform',
-                    color: '#F59E0B',
-                    description: 'CRM system development',
-                    createdAt: '2024-01-03T00:00:00Z',
-                    managerId: 'manager1',
-                    status: 'Active',
-                    progress: 80,
-                    taskCount: 4
-                },
-                {
-                    id: '4',
-                    name: 'Mobile App',
-                    color: '#EF4444',
-                    description: 'iOS and Android app development',
-                    createdAt: '2024-01-04T00:00:00Z',
-                    managerId: 'manager1',
-                    status: 'On Hold',
-                    progress: 25,
-                    taskCount: 2
-                },
-                {
-                    id: '5',
-                    name: 'Data Analytics',
-                    color: '#8B5CF6',
-                    description: 'Business intelligence dashboard',
-                    createdAt: '2024-01-05T00:00:00Z',
-                    managerId: 'manager1',
-                    status: 'Active',
-                    progress: 55,
-                    taskCount: 3
-                }
-            ];
-            localStorage.setItem(this.projectsKey, JSON.stringify(defaultProjects));
-        }
     }
 
     // Task Management
@@ -208,9 +145,6 @@ class StorageManager {
             tasks.push(newTask);
             this.saveTasks(tasks);
             
-            // Update project task count
-            this.updateProjectTaskCount(taskData.project, 1);
-            
             return { success: true, task: newTask };
         } catch (error) {
             console.error('Error adding task:', error);
@@ -244,15 +178,9 @@ class StorageManager {
     deleteTask(taskId) {
         try {
             const tasks = this.getTasks();
-            const taskToDelete = tasks.find(t => t.id === taskId);
             const filteredTasks = tasks.filter(t => t.id !== taskId);
             
             this.saveTasks(filteredTasks);
-            
-            // Update project task count
-            if (taskToDelete) {
-                this.updateProjectTaskCount(taskToDelete.project, -1);
-            }
             
             return { success: true };
         } catch (error) {
@@ -264,95 +192,6 @@ class StorageManager {
     getTasksByAssignee(assignee) {
         const tasks = this.getTasks();
         return tasks.filter(task => task.assignee === assignee);
-    }
-
-    // Project Management
-    getProjects() {
-        try {
-            return JSON.parse(localStorage.getItem(this.projectsKey) || '[]');
-        } catch (error) {
-            console.error('Error getting projects:', error);
-            return [];
-        }
-    }
-
-    saveProjects(projects) {
-        try {
-            localStorage.setItem(this.projectsKey, JSON.stringify(projects));
-            return true;
-        } catch (error) {
-            console.error('Error saving projects:', error);
-            return false;
-        }
-    }
-
-    addProject(projectData) {
-        try {
-            const projects = this.getProjects();
-            const newProject = {
-                id: Date.now().toString(),
-                createdAt: new Date().toISOString(),
-                managerId: 'manager1',
-                status: 'Active',
-                progress: 0,
-                taskCount: 0,
-                ...projectData
-            };
-
-            projects.push(newProject);
-            this.saveProjects(projects);
-            
-            return { success: true, project: newProject };
-        } catch (error) {
-            console.error('Error adding project:', error);
-            return { success: false, message: error.message };
-        }
-    }
-
-    updateProject(projectId, updates) {
-        try {
-            const projects = this.getProjects();
-            const projectIndex = projects.findIndex(p => p.id === projectId);
-            
-            if (projectIndex === -1) {
-                throw new Error('Project not found');
-            }
-
-            projects[projectIndex] = { ...projects[projectIndex], ...updates };
-            this.saveProjects(projects);
-            
-            return { success: true, project: projects[projectIndex] };
-        } catch (error) {
-            console.error('Error updating project:', error);
-            return { success: false, message: error.message };
-        }
-    }
-
-    deleteProject(projectId) {
-        try {
-            const projects = this.getProjects();
-            const filteredProjects = projects.filter(p => p.id !== projectId);
-            
-            this.saveProjects(filteredProjects);
-            return { success: true };
-        } catch (error) {
-            console.error('Error deleting project:', error);
-            return { success: false, message: error.message };
-        }
-    }
-
-    updateProjectTaskCount(projectName, change) {
-        try {
-            const projects = this.getProjects();
-            const projectIndex = projects.findIndex(p => p.name === projectName);
-            
-            if (projectIndex !== -1) {
-                projects[projectIndex].taskCount = Math.max(0, projects[projectIndex].taskCount + change);
-                this.saveProjects(projects);
-            }
-        } catch (error) {
-            console.error('Error updating project task count:', error);
-        }
     }
 
     // Statistics
@@ -385,33 +224,6 @@ class StorageManager {
                 overdueTasks: 0,
                 averageProgress: 0
             };
-        }
-    }
-
-    getProjectStats() {
-        try {
-            const projects = this.getProjects();
-            const tasks = this.getTasks();
-            
-            return projects.map(project => {
-                const projectTasks = tasks.filter(task => task.project === project.name);
-                const completedTasks = projectTasks.filter(task => task.status === 'Completed').length;
-                const totalTasks = projectTasks.length;
-                const actualProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                
-                return {
-                    ...project,
-                    taskCount: totalTasks,
-                    progress: actualProgress,
-                    completedTasks,
-                    overdueTasks: projectTasks.filter(task => 
-                        new Date(task.dueDate) < new Date() && task.status !== 'Completed'
-                    ).length
-                };
-            });
-        } catch (error) {
-            console.error('Error getting project stats:', error);
-            return [];
         }
     }
 }

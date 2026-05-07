@@ -62,9 +62,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusFilter = document.getElementById('statusFilter');
         const priorityFilter = document.getElementById('priorityFilter');
         const assigneeFilter = document.getElementById('assigneeFilter');
-        const projectFilter = document.getElementById('projectFilter');
 
-        [searchInput, statusFilter, priorityFilter, assigneeFilter, projectFilter].forEach(input => {
+        [searchInput, statusFilter, priorityFilter, assigneeFilter].forEach(input => {
             if (input) {
                 input.addEventListener('input', filterTasks);
                 input.addEventListener('change', filterTasks);
@@ -110,11 +109,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     <h3 class="task-title" onclick="editTask('${task.id}')">${task.toDo}</h3>
                     
-                    <div class="task-project">
-                        <span class="project-icon">👤</span>
-                        <span>${task.project}</span>
-                    </div>
-
                     <div class="task-assignee">
                         <div class="assignee-info">
                             <div class="assignee-avatar">${getInitials(task.assignee)}</div>
@@ -165,20 +159,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusFilter = document.getElementById('statusFilter').value;
         const priorityFilter = document.getElementById('priorityFilter').value;
         const assigneeFilter = document.getElementById('assigneeFilter').value;
-        const projectFilter = document.getElementById('projectFilter').value;
 
         const tasks = window.storageManager.getTasks();
         
         const filteredTasks = tasks.filter(task => {
             const matchesSearch = task.toDo.toLowerCase().includes(searchTerm) ||
-                                task.project.toLowerCase().includes(searchTerm) ||
                                 task.assignee.toLowerCase().includes(searchTerm);
             const matchesStatus = !statusFilter || task.status === statusFilter;
             const matchesPriority = !priorityFilter || task.priority === priorityFilter;
             const matchesAssignee = !assigneeFilter || task.assignee === assigneeFilter;
-            const matchesProject = !projectFilter || task.project === projectFilter;
 
-            return matchesSearch && matchesStatus && matchesPriority && matchesAssignee && matchesProject;
+            return matchesSearch && matchesStatus && matchesPriority && matchesAssignee;
         });
 
         renderTasks(filteredTasks);
@@ -210,8 +201,6 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.innerHTML = '💾 Update Task';
             
             // Fill form with task data
-            document.getElementById('taskProject').value = task.project;
-            document.getElementById('taskPriority').value = task.priority;
             document.getElementById('taskDescription').value = task.toDo;
             document.getElementById('taskAssignee').value = task.assignee;
             document.getElementById('taskStatus').value = task.status;
@@ -244,13 +233,11 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         
         const taskData = {
-            project: document.getElementById('taskProject').value,
             toDo: document.getElementById('taskDescription').value,
             assignee: document.getElementById('taskAssignee').value,
-            assignedTo: document.getElementById('taskAssignee').value,
+            status: document.getElementById('taskStatus').value,
             dueDate: document.getElementById('taskDueDate').value,
             priority: document.getElementById('taskPriority').value,
-            status: document.getElementById('taskStatus').value,
             comments: document.getElementById('taskComments').value,
             startDate: document.getElementById('taskStartDate').value,
             progress: parseInt(document.getElementById('taskProgress').value)

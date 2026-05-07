@@ -8,18 +8,20 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use App\Models\Task;
 
-class TaskDeadlineReminderNotification extends Notification
+class TaskOverdueNotification extends Notification
 {
     use Queueable;
 
     protected $task;
+    protected $daysOverdue;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct(Task $task)
+    public function __construct(Task $task, $daysOverdue = null)
     {
         $this->task = $task;
+        $this->daysOverdue = $daysOverdue ?? now()->diffInDays($task->due_date);
     }
 
     /**
@@ -42,12 +44,13 @@ class TaskDeadlineReminderNotification extends Notification
         $progress = $this->task->progress;
         
         return (new MailMessage)
-            ->subject('Task Deadline Reminder: ' . $this->task->title)
-            ->line("Your task '{$this->task->title}' is due tomorrow ({$dueDate}).")
+            ->subject('Task Overdue: ' . $this->task->title)
+            ->line("Your task '{$this->task->title}' is overdue by {$this->daysOverdue} day(s).")
+            ->line("Due Date: {$dueDate}")
             ->line("Priority: {$priority}")
             ->line("Current Progress: {$progress}%")
             ->action('View Task', url('/tasks'))
-            ->line('Please ensure timely completion!');
+            ->line('Please complete this task as soon as possible!');
     }
 
     /**
@@ -67,8 +70,9 @@ class TaskDeadlineReminderNotification extends Notification
             'due_date' => $dueDate,
             'priority' => $priority,
             'progress' => $progress,
-            'message' => "Task '{$this->task->title}' is due tomorrow ({$dueDate}). Priority: {$priority}, Progress: {$progress}%",
-            'type' => 'task_deadline_reminder'
+            'days_overdue' => $this->daysOverdue,
+            'message' => "Task '{$this->task->title}' is overdue by {$this->daysOverdue} day(s). Priority: {$priority}, Progress: {$progress}%",
+            'type' => 'task_overdue'
         ];
     }
-}
+} 

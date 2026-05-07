@@ -18,16 +18,7 @@ class UsersTableSeeder extends Seeder
                 'name' => 'Manager User',
                 'email' => 'manager@example.com',
                 'password' => bcrypt('password'),
-                'role_id' => $roles['manager'],
-                'email_verified_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Team Leader User',
-                'email' => 'teamleader@example.com',
-                'password' => bcrypt('password'),
-                'role_id' => $roles['teamleader'],
+                'role_id' => $roles['manager'],php
                 'email_verified_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),

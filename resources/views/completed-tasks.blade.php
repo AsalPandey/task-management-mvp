@@ -17,10 +17,36 @@ tr.reverted, tr.reverted td { opacity: 0.5; pointer-events: none; }
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.revert-btn').forEach(btn => {
+    console.log('Completed tasks JS loaded');
+    const messageContainer = document.getElementById('messageContainer');
+    function showMessage(msg, success = true) {
+        if (!messageContainer) return;
+        messageContainer.textContent = msg;
+        messageContainer.style.display = 'block';
+        messageContainer.className = 'message-container ' + (success ? 'success' : 'error');
+        setTimeout(() => { messageContainer.style.display = 'none'; }, 3000);
+    }
+    const revertBtns = document.querySelectorAll('.revert-btn');
+    console.log('Revert buttons:', revertBtns);
+    revertBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
+            console.log('Revert button clicked', id);
             const row = this.closest('tr');
+            const originalText = this.textContent;
+            const button = this;
+            Swal.fire({
+                title: 'Revert this task?',
+                text: 'This will move the task back to active tasks.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#aaa',
+                confirmButtonText: 'Yes, revert!'
+            }).then((result) => {
+                if (!result.isConfirmed) return;
+                button.disabled = true;
+                button.textContent = '⏳ Reverting...';
             fetch(`/history/revert/${id}`, {
                 method: 'POST',
                 headers: {
@@ -28,11 +54,38 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Accept': 'application/json',
                 },
             })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
+                .then(async r => {
+                    let data;
+                    try {
+                        data = await r.json();
+                    } catch (e) {
+                        console.error('Non-JSON response:', r);
+                        const text = await r.text();
+                        Swal.fire('Error', `Server error (status ${r.status}): ${text.substring(0, 200)}`, 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                        return;
+                    }
+                    console.log('Revert response:', data);
+                    if (r.ok && data.success) {
                     row.remove();
-                }
+                        Swal.fire('Reverted!', 'Task reverted successfully.', 'success');
+                    } else if (data && data.message) {
+                        Swal.fire('Error', data.message, 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                    } else {
+                        Swal.fire('Error', 'Failed to revert task.', 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    Swal.fire('Error', 'Network or server error: ' + (error.message || error), 'error');
+                    button.disabled = false;
+                    button.textContent = originalText;
+                });
             });
         });
     });
@@ -41,6 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
 @endpush
 @section('content')
 <div class="tasks-container">
+    <div id="messageContainer" class="message-container" style="display: none;"></div>
     <h1>Completed Tasks History</h1>
     <table class="completed-table">
         <thead>

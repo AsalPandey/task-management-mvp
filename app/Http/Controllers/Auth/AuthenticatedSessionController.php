@@ -39,7 +39,7 @@ class AuthenticatedSessionController extends Controller
         if ($user && $user->role && $user->role->name === 'team_member') {
             return redirect()->intended(route('team-dashboard', absolute: false));
         }
-        // Default: teamleader or others
+        // Default: redirect to dashboard
         return redirect()->intended(route('dashboard', absolute: false));
     }
 

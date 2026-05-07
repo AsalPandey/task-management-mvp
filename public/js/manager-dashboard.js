@@ -136,9 +136,6 @@ document.addEventListener('DOMContentLoaded', function() {
             case 'tasks':
                 loadTasksPage();
                 break;
-            case 'projects':
-                loadProjectsPage();
-                break;
             case 'analytics':
                 loadAnalyticsPage();
                 break;
@@ -154,43 +151,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function loadTasksPage() {
         const tasksContent = document.getElementById('tasks');
         tasksContent.innerHTML = '<iframe src="tasks.html" style="width: 100%; height: 80vh; border: none; border-radius: 8px;"></iframe>';
-    }
-
-    function loadProjectsPage() {
-        const projectsContent = document.getElementById('projects');
-        projectsContent.innerHTML = '<div class="loading">Loading projects...</div>';
-        
-        // Simulate loading
-        setTimeout(() => {
-            projectsContent.innerHTML = `
-                <div class="page-header">
-                    <h2>Projects</h2>
-                    <p>Manage and track your project portfolio</p>
-                </div>
-                <div class="projects-grid">
-                    <div class="project-card">
-                        <h3>Website Revamp</h3>
-                        <p>Complete redesign of company website</p>
-                        <div class="project-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 65%; background: #3B82F6;"></div>
-                            </div>
-                            <span>65%</span>
-                        </div>
-                    </div>
-                    <div class="project-card">
-                        <h3>Marketing Campaign</h3>
-                        <p>Q1 marketing initiatives</p>
-                        <div class="project-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 40%; background: #10B981;"></div>
-                            </div>
-                            <span>40%</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }, 500);
     }
 
     function loadAnalyticsPage() {

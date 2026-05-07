@@ -34,7 +34,7 @@ class SendTaskDeadlineReminders extends Command
             ->get();
         foreach ($tasks as $task) {
             if ($task->assignee) {
-                $task->assignee->notify(new TaskDeadlineReminderNotification());
+                $task->assignee->notify(new TaskDeadlineReminderNotification($task));
             }
         }
         $this->info('Task deadline reminders sent.');

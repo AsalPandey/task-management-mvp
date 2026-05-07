@@ -13,17 +13,41 @@ class ManagerDashboardController extends Controller
     // Blade: Initial dashboard load
     public function __invoke()
     {
-        $projects = Project::with('tasks.assignee')->get();
-        $tasks = Task::with(['project', 'assignee'])->get();
-        $completedTasks = CompletedTask::with(['project', 'assignee'])->get();
-        $totalTasks = $tasks->count() + $completedTasks->count();
-        $completedTasksCount = $completedTasks->count();
-        $progress = $totalTasks ? round($completedTasksCount / $totalTasks * 100) : 0;
-        $recentTasks = $tasks->sortByDesc('created_at')->take(5)->concat($completedTasks->sortByDesc('completed_at')->take(5))->sortByDesc(function($task) {
-            return $task->created_at ?? $task->completed_at;
-        })->take(5);
+        // Today's focus - only current active tasks and today's completions
+        $today = now()->toDateString();
+        
+        // Today's active tasks (created today OR currently active)
+        $todayActiveTasks = Task::with(['assignee'])
+            ->where(function($query) use ($today) {
+                $query->whereDate('created_at', $today)
+                      ->orWhere('status', '!=', 'Completed');
+            })
+            ->get();
+            
+        // Today's completed tasks
+        $todayCompletedTasks = CompletedTask::with(['assignee'])
+            ->whereDate('completed_at', $today)
+            ->get();
+            
+        // Current active tasks (not completed)
+        $currentActiveTasks = Task::with(['assignee'])
+            ->where('status', '!=', 'Completed')
+            ->get();
+            
+        // Dashboard metrics for today
+        $todayTotalTasks = $todayActiveTasks->count();
+        $todayCompletedCount = $todayCompletedTasks->count();
+        $currentActiveCount = $currentActiveTasks->count();
+        $todayProgress = $todayTotalTasks ? round($todayCompletedCount / $todayTotalTasks * 100) : 0;
+        
+        // Recent activity (last 5 tasks created or completed today)
+        $recentTasks = $todayActiveTasks->sortByDesc('created_at')->take(3)
+            ->concat($todayCompletedTasks->sortByDesc('completed_at')->take(2))
+            ->sortByDesc(function($task) {
+                return $task->created_at ?? $task->completed_at;
+            })->take(5);
 
-        // Notifications: last 5 assigned, completed, or overdue tasks
+        // Today's notifications
         $notifications = collect();
         foreach ($recentTasks as $task) {
             if (($task->status ?? null) === 'Completed') {
@@ -35,56 +59,88 @@ class ManagerDashboardController extends Controller
             }
         }
 
-        // Chart: Tasks by Status
-        $statusCounts = $tasks->groupBy('status')->map->count();
-        $completedStatusCount = $completedTasks->count();
-        $statusCounts['Completed'] = $completedStatusCount;
-        // Chart: Tasks by Priority
-        $priorityCounts = $tasks->groupBy('priority')->map->count();
-        foreach ($completedTasks->groupBy('priority') as $priority => $group) {
-            $priorityCounts[$priority] = ($priorityCounts[$priority] ?? 0) + $group->count();
-        }
-        // Chart: Active Projects
-        $activeProjects = $projects->where('status', 'active');
-        // Team Workload: tasks per assignee
-        $teamWorkload = $tasks->groupBy(fn($t) => $t->assignee ? $t->assignee->name : 'Unassigned')->map->count();
-        foreach ($completedTasks->groupBy(fn($t) => $t->assignee ? $t->assignee->name : 'Unassigned') as $assignee => $group) {
-            $teamWorkload[$assignee] = ($teamWorkload[$assignee] ?? 0) + $group->count();
-        }
-        // Overdue Tasks (only from active tasks)
-        $overdueTasks = $tasks->where('due_date', '<', now())->where('status', '!=', 'Completed');
-        // Insights: Key Achievements & Improvements (simple logic)
+        // Today's charts - only current active tasks
+        $statusCounts = $currentActiveTasks->groupBy('status')->map->count();
+        $priorityCounts = $currentActiveTasks->groupBy('priority')->map->count();
+        
+        // Today's overdue tasks
+        $todayOverdueTasks = $currentActiveTasks->where('due_date', '<', now());
+        
+        // Today's insights
         $achievements = [
-            'Completed ' . $completedTasksCount . ' tasks successfully',
-            'Maintaining ' . $progress . '% average progress rate',
-            'Most tasks completed on schedule',
+            'Completed ' . $todayCompletedCount . ' tasks today',
+            'Currently managing ' . $currentActiveCount . ' active tasks',
+            'Today\'s progress: ' . $todayProgress . '%',
         ];
         $improvements = [
-            'Focus on ' . $overdueTasks->count() . ' overdue task(s)',
+            'Focus on ' . $todayOverdueTasks->count() . ' overdue task(s)',
             'Balance high-priority task load',
-            'Consider breaking down complex tasks',
+            'Monitor task progress throughout the day',
         ];
 
         return view('manager-dashboard', compact(
-            'projects', 'tasks', 'progress', 'recentTasks',
-            'statusCounts', 'priorityCounts', 'activeProjects',
-            'teamWorkload', 'overdueTasks', 'achievements', 'improvements', 'notifications'
+            'todayActiveTasks', 'todayCompletedTasks', 'currentActiveTasks',
+            'todayTotalTasks', 'todayCompletedCount', 'currentActiveCount', 'todayProgress',
+            'recentTasks', 'statusCounts', 'priorityCounts',
+            'todayOverdueTasks', 'achievements', 'improvements', 'notifications'
         ));
     }
 
     // AJAX: Create a new task
     public function storeTask(Request $request)
     {
-        $task = Task::create($request->all());
-        return response()->json($task);
+        try {
+            $data = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'assignee_id' => 'nullable|exists:users,id',
+                'priority' => 'required|string',
+                'status' => 'required|string',
+                'progress' => 'required|integer|min:0|max:100',
+                'start_date' => 'nullable|date',
+                'due_date' => 'nullable|date',
+                'comments' => 'nullable|string',
+            ]);
+
+            // Progress must be 100% to mark as completed
+            if ($data['status'] === 'Completed' && $data['progress'] < 100) {
+                return response()->json(['success' => false, 'message' => 'Progress must be 100% to mark task as completed.'], 422);
+            }
+
+            $task = Task::create($data);
+            return response()->json(['success' => true, 'task' => $task]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error creating task.', 'error' => $e->getMessage()], 500);
+        }
     }
 
     // AJAX: Update a task
     public function updateTask(Request $request, $id)
     {
-        $task = Task::findOrFail($id);
-        $task->update($request->all());
-        return response()->json($task);
+        try {
+            $task = Task::findOrFail($id);
+            $data = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'assignee_id' => 'nullable|exists:users,id',
+                'priority' => 'required|string',
+                'status' => 'required|string',
+                'progress' => 'required|integer|min:0|max:100',
+                'start_date' => 'nullable|date',
+                'due_date' => 'nullable|date',
+                'comments' => 'nullable|string',
+            ]);
+
+            // Progress must be 100% to mark as completed
+            if ($data['status'] === 'Completed' && $data['progress'] < 100) {
+                return response()->json(['success' => false, 'message' => 'Progress must be 100% to mark task as completed.'], 422);
+            }
+
+            $task->update($data);
+            return response()->json(['success' => true, 'task' => $task]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error updating task.', 'error' => $e->getMessage()], 500);
+        }
     }
 
     // AJAX: Delete a task

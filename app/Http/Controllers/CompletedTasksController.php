@@ -5,6 +5,7 @@ use App\Models\CompletedTask;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
 use App\Models\TaskHistory;
+use App\Notifications\TaskRevertedNotification;
 
 class CompletedTasksController extends Controller
 {
@@ -13,13 +14,13 @@ class CompletedTasksController extends Controller
         $user = auth()->user();
         $oneWeekAgo = now()->subDays(7);
         if ($user && $user->role && $user->role->name === 'team_member') {
-            $completed = CompletedTask::with(['project', 'assignee'])
+            $completed = CompletedTask::with(['assignee'])
                 ->where('assignee_id', $user->id)
                 ->where('completed_at', '>=', $oneWeekAgo)
                 ->orderByDesc('completed_at')
                 ->paginate(15);
         } else {
-            $completed = CompletedTask::with(['project', 'assignee'])
+            $completed = CompletedTask::with(['assignee'])
                 ->where('completed_at', '>=', $oneWeekAgo)
                 ->orderByDesc('completed_at')
                 ->paginate(15);
@@ -31,10 +32,9 @@ class CompletedTasksController extends Controller
         DB::beginTransaction();
         try {
             $completed = CompletedTask::findOrFail($id);
-            // Prevent duplicate revert (by title, project, and assignee)
+            // Prevent duplicate revert (by title and assignee only)
             $exists = \App\Models\Task::where([
                 ['title', $completed->title],
-                ['project_id', $completed->project_id],
                 ['assignee_id', $completed->assignee_id],
             ])->where('status', '!=', 'Completed')->exists();
             if (!$exists) {
@@ -43,7 +43,8 @@ class CompletedTasksController extends Controller
                 unset($taskData['completed_at']);
                 unset($taskData['reverted']);
                 $taskData['status'] = 'In Progress';
-                $taskData['progress'] = 0;
+                // Preserve original progress instead of resetting to 0
+                // $taskData['progress'] = 0; // Remove this line
                 $task = Task::create($taskData);
                 // Audit trail: reverted
                 TaskHistory::create([
@@ -52,8 +53,12 @@ class CompletedTasksController extends Controller
                     'action' => 'reverted',
                     'changes' => json_encode($taskData),
                 ]);
-                // Notification placeholder
-                // event(new \App\Events\TaskReverted($task));
+
+                // Notify the assignee that the task has been reverted
+                if ($task->assignee) {
+                    $task->assignee->notify(new TaskRevertedNotification($task, auth()->user()));
+                }
+
                 $completed->delete();
                 DB::commit();
                 return response()->json(['success' => true, 'task' => $task]);
