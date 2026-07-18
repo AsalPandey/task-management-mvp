@@ -18,15 +18,20 @@
                 <p>Task Management System</p>
             </div>
         </div>
-        <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="Open menu">☰</button>
-        <nav class="nav-tabs">
+        <button
+            id="mobileMenuBtn"
+            class="mobile-menu-btn"
+            type="button"
+            aria-label="Open primary navigation"
+            aria-controls="primaryNavigation"
+            aria-expanded="false"
+        ><span aria-hidden="true">&#9776;</span></button>
+        <nav id="primaryNavigation" class="nav-tabs" aria-label="Primary navigation">
             @php $user = auth()->user(); @endphp
-            {{-- DEBUG: Show user info --}}
-            {{-- {{ dd($user) }} --}}
             <a href="{{
-                $user && $user->role && $user->role->name === 'manager' ? route('manager.dashboard') :
+                $user && $user->role && in_array($user->role->name, ['manager', 'project_manager'], true) ? route('manager.dashboard') :
                 ($user && $user->role && $user->role->name === 'team_member' ? route('team-dashboard') : route('dashboard'))
-            }}" class="nav-tab{{ (request()->routeIs('manager.dashboard') || request()->routeIs('project-manager.dashboard') || request()->routeIs('team-dashboard')) ? ' active' : '' }}">
+            }}" class="nav-tab{{ (request()->routeIs('manager.dashboard') || request()->routeIs('project-manager.dashboard') || request()->routeIs('team-dashboard')) ? ' active' : '' }}"{{ (request()->routeIs('manager.dashboard') || request()->routeIs('project-manager.dashboard') || request()->routeIs('team-dashboard')) ? ' aria-current=page' : '' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect x="3" y="3" width="7" height="7" stroke="currentColor" stroke-width="2"/>
                     <rect x="14" y="3" width="7" height="7" stroke="currentColor" stroke-width="2"/>
@@ -35,7 +40,13 @@
                 </svg>
                 Dashboard
             </a>
-            <a href="{{ route('tasks') }}" class="nav-tab{{ request()->routeIs('tasks') ? ' active' : '' }}">
+            <a href="{{ route('projects') }}" class="nav-tab{{ request()->routeIs('projects*') ? ' active' : '' }}"{{ request()->routeIs('projects*') ? ' aria-current=page' : '' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                Projects
+            </a>
+            <a href="{{ route('tasks') }}" class="nav-tab{{ request()->routeIs('tasks*') ? ' active' : '' }}"{{ request()->routeIs('tasks*') ? ' aria-current=page' : '' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
                     <path d="M16 3v4M8 3v4" stroke="currentColor" stroke-width="2"/>
@@ -43,13 +54,13 @@
                 Tasks
             </a>
             @if($user && $user->role && $user->role->name !== 'team_member')
-            <a href="{{ route('analytics') }}" class="nav-tab{{ request()->routeIs('analytics') ? ' active' : '' }}">
+            <a href="{{ route('analytics') }}" class="nav-tab{{ request()->routeIs('analytics*') ? ' active' : '' }}"{{ request()->routeIs('analytics*') ? ' aria-current=page' : '' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <polyline points="22,12 18,12 15,21 9,3 6,12 2,12" stroke="currentColor" stroke-width="2"/>
                 </svg>
                 Analytics
             </a>
-            <a href="{{ route('team-management') }}" class="nav-tab{{ request()->routeIs('team-management') ? ' active' : '' }}">
+            <a href="{{ route('team-management') }}" class="nav-tab{{ request()->routeIs('team-management*') ? ' active' : '' }}"{{ request()->routeIs('team-management*') ? ' aria-current=page' : '' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2"/>
                     <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
@@ -59,6 +70,13 @@
                 Team
             </a>
             @endif
+            <a href="{{ route('settings') }}" class="nav-tab{{ request()->routeIs('settings*') ? ' active' : '' }}"{{ request()->routeIs('settings*') ? ' aria-current=page' : '' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-.4-1.1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 .4 1.1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.1.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.1.4 1.7 1.7 0 0 0-.6 1z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                Settings
+            </a>
         </nav>
         <div class="header-actions">
             <!-- Notifications Bell -->
@@ -149,14 +167,47 @@
                 
                 // Mobile menu toggle
                 const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-                const navTabs = document.querySelector('.nav-tabs');
+                const navTabs = document.getElementById('primaryNavigation');
                 if (mobileMenuBtn && navTabs) {
+                    const mobileViewport = window.matchMedia('(max-width: 768px)');
+                    const setMobileMenuState = function(isOpen, returnFocus = false) {
+                        const shouldOpen = mobileViewport.matches && isOpen;
+
+                        navTabs.classList.toggle('open', shouldOpen);
+                        mobileMenuBtn.setAttribute('aria-expanded', String(shouldOpen));
+                        mobileMenuBtn.setAttribute(
+                            'aria-label',
+                            shouldOpen ? 'Close primary navigation' : 'Open primary navigation'
+                        );
+
+                        if (returnFocus) {
+                            mobileMenuBtn.focus();
+                        }
+                    };
+
                     mobileMenuBtn.addEventListener('click', function(e) {
                         e.stopPropagation();
-                        navTabs.classList.toggle('open');
+                        setMobileMenuState(!navTabs.classList.contains('open'));
                     });
+
+                    navTabs.addEventListener('click', function(e) {
+                        if (e.target.closest('a')) {
+                            setMobileMenuState(false);
+                        }
+                    });
+
                     document.addEventListener('click', function() {
-                        navTabs.classList.remove('open');
+                        setMobileMenuState(false);
+                    });
+
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'Escape' && navTabs.classList.contains('open')) {
+                            setMobileMenuState(false, true);
+                        }
+                    });
+
+                    mobileViewport.addEventListener('change', function() {
+                        setMobileMenuState(false);
                     });
                 }
             });
@@ -184,7 +235,7 @@
                         }
                     }
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(() => {});
             }
             
             function markAllAsRead() {
@@ -209,7 +260,7 @@
                         updateNotificationCount();
                     }
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(() => {});
             }
             
             function updateNotificationCount() {
@@ -254,6 +305,7 @@
 .header-actions { display: flex; align-items: center; gap: 1.2rem; }
 .user-info { color: #4f8cff; font-weight: 600; font-size: 1rem; margin-right: 0.7rem; }
 .logout-btn { background: none; border: none; cursor: pointer; margin-left: 0.5rem; }
+.mobile-menu-btn { display: none; }
 .notifications-dropdown { position: relative; display: inline-block; }
 
 /* Notification Bell Styles */
@@ -503,10 +555,121 @@
     margin: 0;
 }
 
+@media (max-width: 900px) { .header-content { flex-direction: column; align-items: flex-start; padding: 0.7rem 0.7rem; } .nav-tabs { margin-left: 0; gap: 0.7rem; } }
+
 @media (max-width: 768px) {
+    .header-content {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.5rem;
+        gap: 0.35rem;
+    }
+
+    .logo-section,
+    .logo-text,
+    .header-actions,
+    .user-info {
+        min-width: 0;
+    }
+
+    .logo-section {
+        gap: 0.35rem;
+    }
+
+    .logo-text h1,
+    .user-info {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .logo-text h1 {
+        font-size: 1rem;
+    }
+
+    .logo-text p {
+        display: none;
+    }
+
+    .mobile-menu-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        background: none;
+        border: none;
+        border-radius: 8px;
+        color: #4f8cff;
+        cursor: pointer;
+        font-size: 1.7rem;
+        line-height: 1;
+    }
+
+    .mobile-menu-btn:hover {
+        background: #f4f8ff;
+    }
+
+    .mobile-menu-btn:focus-visible {
+        outline: 3px solid #4f8cff;
+        outline-offset: 2px;
+    }
+
+    .nav-tabs {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1001;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        max-height: calc(100vh - 4rem);
+        margin-left: 0;
+        overflow-y: auto;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        box-shadow: 0 8px 16px rgba(60, 72, 88, 0.12);
+    }
+
+    .nav-tabs.open {
+        display: flex;
+    }
+
+    .nav-tab {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.75rem 1rem;
+        overflow-wrap: anywhere;
+    }
+
+    .header-actions {
+        gap: 0.25rem;
+    }
+
+    .user-info {
+        max-width: clamp(3rem, 18vw, 7rem);
+        margin-right: 0;
+    }
+
+    .logout-btn {
+        margin-left: 0;
+        padding: 0.4rem;
+    }
+
     .notifications-panel {
-        width: 320px;
-        right: -20px;
+        position: fixed;
+        top: 4rem;
+        right: 0.5rem;
+        left: 0.5rem;
+        width: auto;
+        max-width: none;
     }
     
     .notifications-content {
@@ -526,7 +689,5 @@
     }
 }
 
-@media (max-width: 900px) { .header-content { flex-direction: column; align-items: flex-start; padding: 0.7rem 0.7rem; } .nav-tabs { margin-left: 0; gap: 0.7rem; } }
-@media (max-width: 600px) { .header-content { flex-direction: row; padding: 0.7rem 0.3rem; } .nav-tabs { display: none; position: absolute; top: 3.5rem; left: 0; right: 0; background: #fff; flex-direction: column; gap: 0; box-shadow: 0 2px 8px rgba(60,72,88,0.07); border-bottom: 1px solid #e5e7eb; } .nav-tabs.open { display: flex; } .mobile-menu-btn { display: block; background: none; border: none; font-size: 1.7rem; color: #4f8cff; margin-left: 1rem; } }
-.mobile-menu-btn { display: none; }
-</style> 
+@media (max-width: 480px) { .user-info { display: none; } }
+</style>

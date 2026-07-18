@@ -2,17 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Models\Task;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Task;
 
 class TaskOverdueNotification extends Notification
 {
     use Queueable;
 
     protected $task;
+
     protected $daysOverdue;
 
     /**
@@ -42,9 +42,9 @@ class TaskOverdueNotification extends Notification
         $dueDate = $this->task->due_date->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
-        
+
         return (new MailMessage)
-            ->subject('Task Overdue: ' . $this->task->title)
+            ->subject('Task Overdue: '.$this->task->title)
             ->line("Your task '{$this->task->title}' is overdue by {$this->daysOverdue} day(s).")
             ->line("Due Date: {$dueDate}")
             ->line("Priority: {$priority}")
@@ -63,7 +63,7 @@ class TaskOverdueNotification extends Notification
         $dueDate = $this->task->due_date->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
-        
+
         return [
             'task_id' => $this->task->id,
             'task_title' => $this->task->title,
@@ -72,7 +72,7 @@ class TaskOverdueNotification extends Notification
             'progress' => $progress,
             'days_overdue' => $this->daysOverdue,
             'message' => "Task '{$this->task->title}' is overdue by {$this->daysOverdue} day(s). Priority: {$priority}, Progress: {$progress}%",
-            'type' => 'task_overdue'
+            'type' => 'task_overdue',
         ];
     }
-} 
+}

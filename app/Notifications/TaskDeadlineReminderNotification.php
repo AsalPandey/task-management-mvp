@@ -2,11 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Models\Task;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Task;
 
 class TaskDeadlineReminderNotification extends Notification
 {
@@ -40,9 +39,9 @@ class TaskDeadlineReminderNotification extends Notification
         $dueDate = $this->task->due_date->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
-        
+
         return (new MailMessage)
-            ->subject('Task Deadline Reminder: ' . $this->task->title)
+            ->subject('Task Deadline Reminder: '.$this->task->title)
             ->line("Your task '{$this->task->title}' is due tomorrow ({$dueDate}).")
             ->line("Priority: {$priority}")
             ->line("Current Progress: {$progress}%")
@@ -60,7 +59,7 @@ class TaskDeadlineReminderNotification extends Notification
         $dueDate = $this->task->due_date->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
-        
+
         return [
             'task_id' => $this->task->id,
             'task_title' => $this->task->title,
@@ -68,7 +67,7 @@ class TaskDeadlineReminderNotification extends Notification
             'priority' => $priority,
             'progress' => $progress,
             'message' => "Task '{$this->task->title}' is due tomorrow ({$dueDate}). Priority: {$priority}, Progress: {$progress}%",
-            'type' => 'task_deadline_reminder'
+            'type' => 'task_deadline_reminder',
         ];
     }
 }

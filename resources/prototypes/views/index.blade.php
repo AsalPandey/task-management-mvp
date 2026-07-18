@@ -78,50 +78,9 @@ button[type="submit"] { background: #4f8cff; color: #fff; border: none; border-r
             </button>
         </form>
         <div class="demo-credentials">
-            <h3>Demo Credentials:</h3>
-            <div class="credentials">
-                <div class="credential-item">
-                    <div class="credential-header">
-                        <strong>Manager Account</strong>
-                        <span class="credential-badge manager">Manager</span>
-                    </div>
-                    <div class="credential-details">
-                        <span>asalpandey44@gmail.com</span>
-                        <span>PLMokn!@#123</span>
-                    </div>
-                </div>
-                <div class="credential-item">
-                    <div class="credential-header">
-                        <strong>Team Member - Aniket</strong>
-                        <span class="credential-badge team">Team</span>
-                    </div>
-                    <div class="credential-details">
-                        <span>aniket@techcorp.com</span>
-                        <span>aniket123</span>
-                    </div>
-                </div>
-                <div class="credential-item">
-                    <div class="credential-header">
-                        <strong>Team Member - Achyut</strong>
-                        <span class="credential-badge team">Team</span>
-                    </div>
-                    <div class="credential-details">
-                        <span>achyut@techcorp.com</span>
-                        <span>achyut123</span>
-                    </div>
-                </div>
-                <div class="credential-item">
-                    <div class="credential-header">
-                        <strong>Team Member - Bishal</strong>
-                        <span class="credential-badge team">Team</span>
-                    </div>
-                    <div class="credential-details">
-                        <span>bishal@techcorp.com</span>
-                        <span>bishal123</span>
-                    </div>
-                </div>
-            </div>
+            <h3>Archived Prototype</h3>
+            <p>No accounts or credentials are included. This interface is historical reference material only.</p>
         </div>
     </div>
 </div>
-@endSection 
+@endSection

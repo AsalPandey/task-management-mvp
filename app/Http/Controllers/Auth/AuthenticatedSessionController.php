@@ -27,18 +27,24 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
         $request->session()->regenerate();
         $user = $request->user();
-        if ($user && !$user->active) {
+        if ($user && ! $user->active) {
             Auth::guard('web')->logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
+
             return redirect('/login')->withErrors(['email' => 'Your account has been deactivated.']);
         }
+        $user?->forceFill(['last_login_at' => now()])->save();
         if ($user && $user->role && $user->role->name === 'manager') {
+            return redirect()->intended(route('manager.dashboard', absolute: false));
+        }
+        if ($user && $user->role && $user->role->name === 'project_manager') {
             return redirect()->intended(route('manager.dashboard', absolute: false));
         }
         if ($user && $user->role && $user->role->name === 'team_member') {
             return redirect()->intended(route('team-dashboard', absolute: false));
         }
+
         // Default: redirect to dashboard
         return redirect()->intended(route('dashboard', absolute: false));
     }

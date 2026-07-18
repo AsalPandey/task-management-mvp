@@ -2,19 +2,20 @@
 
 namespace App\Notifications;
 
+use App\Models\CompletedTask;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Task;
-use App\Models\CompletedTask;
 
 class TaskCompletedNotification extends Notification
 {
     use Queueable;
 
     protected $task;
+
     protected $completedBy;
+
     protected $isForAssignee;
 
     /**
@@ -44,19 +45,19 @@ class TaskCompletedNotification extends Notification
     {
         $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
         $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
-        
+
         if ($this->isForAssignee) {
             return (new MailMessage)
-                ->subject('Task Completed: ' . $taskTitle)
+                ->subject('Task Completed: '.$taskTitle)
                 ->line("Great job! You have completed the task '{$taskTitle}'.")
-                ->line("Task was completed on: " . now()->format('M d, Y H:i'))
+                ->line('Task was completed on: '.now()->format('M d, Y H:i'))
                 ->action('View Completed Tasks', url('/completed-tasks'))
                 ->line('Keep up the excellent work!');
         } else {
             return (new MailMessage)
-                ->subject('Task Completed by Team Member: ' . $taskTitle)
+                ->subject('Task Completed by Team Member: '.$taskTitle)
                 ->line("The task '{$taskTitle}' has been completed by {$completedByName}.")
-                ->line("Task was completed on: " . now()->format('M d, Y H:i'))
+                ->line('Task was completed on: '.now()->format('M d, Y H:i'))
                 ->action('View Completed Tasks', url('/completed-tasks'))
                 ->line('Thank you for managing the team!');
         }
@@ -72,7 +73,7 @@ class TaskCompletedNotification extends Notification
         $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
         $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
         $completedAt = $this->getFormattedCompletedAt();
-        
+
         if ($this->isForAssignee) {
             return [
                 'task_id' => $this->task->id,
@@ -80,7 +81,7 @@ class TaskCompletedNotification extends Notification
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,
                 'message' => "Task '{$taskTitle}' has been completed successfully!",
-                'type' => 'task_completed_assignee'
+                'type' => 'task_completed_assignee',
             ];
         } else {
             return [
@@ -89,7 +90,7 @@ class TaskCompletedNotification extends Notification
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,
                 'message' => "Task '{$taskTitle}' was completed by {$completedByName}.",
-                'type' => 'task_completed_assignor'
+                'type' => 'task_completed_assignor',
             ];
         }
     }
@@ -108,7 +109,8 @@ class TaskCompletedNotification extends Notification
             // If it's a string, try to parse it
             if (is_string($this->task->completed_at)) {
                 try {
-                    $date = \Carbon\Carbon::parse($this->task->completed_at);
+                    $date = Carbon::parse($this->task->completed_at);
+
                     return $date->format('M d, Y H:i');
                 } catch (\Exception $e) {
                     return $this->task->completed_at;

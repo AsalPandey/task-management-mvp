@@ -2,18 +2,19 @@
 
 namespace App\Notifications;
 
+use App\Models\Task;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Task;
 
 class TaskUpdatedNotification extends Notification
 {
     use Queueable;
 
     protected $task;
+
     protected $changes;
+
     protected $updatedBy;
 
     /**
@@ -43,9 +44,9 @@ class TaskUpdatedNotification extends Notification
     {
         $updatedByName = $this->updatedBy ? $this->updatedBy->name : 'System';
         $changeSummary = $this->getChangeSummary();
-        
+
         return (new MailMessage)
-            ->subject('Task Updated: ' . $this->task->title)
+            ->subject('Task Updated: '.$this->task->title)
             ->line("The task '{$this->task->title}' has been updated by {$updatedByName}.")
             ->line($changeSummary)
             ->action('View Task', url('/tasks'))
@@ -61,14 +62,14 @@ class TaskUpdatedNotification extends Notification
     {
         $updatedByName = $this->updatedBy ? $this->updatedBy->name : 'System';
         $changeSummary = $this->getChangeSummary();
-        
+
         return [
             'task_id' => $this->task->id,
             'task_title' => $this->task->title,
             'updated_by' => $updatedByName,
             'changes' => $this->changes,
             'message' => "Task '{$this->task->title}' was updated by {$updatedByName}. {$changeSummary}",
-            'type' => 'task_updated'
+            'type' => 'task_updated',
         ];
     }
 
@@ -106,10 +107,10 @@ class TaskUpdatedNotification extends Notification
                     $summary[] = 'Assignee changed';
                     break;
                 default:
-                    $summary[] = ucfirst($field) . ' updated';
+                    $summary[] = ucfirst($field).' updated';
             }
         }
 
         return implode(', ', $summary);
     }
-} 
+}

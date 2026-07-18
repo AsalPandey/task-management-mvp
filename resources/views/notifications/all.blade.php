@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         })
-        .catch(error => console.error('Error:', error));
+        .catch(() => {});
     };
     
     // AJAX mark all as read
@@ -127,8 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     markAllBtn.remove();
                 }
             })
-            .catch(error => {
-                console.error('Error:', error);
+            .catch(() => {
                 markAllBtn.disabled = false;
                 markAllBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Mark all as read';
             });
@@ -358,4 +357,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }
 </style>
-@endsection 
+@endsection

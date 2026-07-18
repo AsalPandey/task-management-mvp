@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\Task;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class TaskPolicy
 {
@@ -13,7 +12,7 @@ class TaskPolicy
      */
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->hasAnyRole(['manager', 'project_manager', 'team_member']);
     }
 
     /**
@@ -21,7 +20,15 @@ class TaskPolicy
      */
     public function view(User $user, Task $task): bool
     {
-        return true;
+        if ($user->hasRole('manager')) {
+            return true;
+        }
+
+        if ($user->hasRole('project_manager')) {
+            return $task->project && (int) $task->project->project_manager_id === (int) $user->id;
+        }
+
+        return (int) $task->assignee_id === (int) $user->id;
     }
 
     /**
@@ -29,7 +36,7 @@ class TaskPolicy
      */
     public function create(User $user): bool
     {
-        return true;
+        return $user->hasAnyRole(['manager', 'project_manager']);
     }
 
     /**
@@ -37,7 +44,7 @@ class TaskPolicy
      */
     public function update(User $user, Task $task): bool
     {
-        return true;
+        return $this->view($user, $task);
     }
 
     /**
@@ -45,12 +52,13 @@ class TaskPolicy
      */
     public function delete(User $user, Task $task): bool
     {
-        return true;
+        return $user->hasRole('manager')
+            || ($user->hasRole('project_manager') && $task->project && (int) $task->project->project_manager_id === (int) $user->id);
     }
 
     public function bulkActions(User $user): bool
     {
-        return true;
+        return $user->hasAnyRole(['manager', 'project_manager']);
     }
 
     /**

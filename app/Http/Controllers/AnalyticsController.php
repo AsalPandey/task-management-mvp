@@ -2,40 +2,74 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\CompletedTask;
+use App\Models\Task;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
 {
     public function index(Request $request)
     {
-        // Role-based access control
-        $authUser = auth()->user();
-        if (!$authUser || $authUser->role->name !== 'manager') {
-            abort(403, 'Only managers can access analytics.');
-        }
+        abort_unless(auth()->user()->hasAnyRole(['manager', 'project_manager']), 403);
 
-        $dateFrom = $request->input('dateFrom');
+        return view('analytics', $this->analyticsData($request));
+    }
+
+    public function exportCsv(Request $request): StreamedResponse
+    {
+        abort_unless(auth()->user()->hasAnyRole(['manager', 'project_manager']), 403);
+        $data = $this->analyticsData($request);
+
+        return response()->streamDownload(function () use ($data) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Metric', 'Value']);
+            fputcsv($out, ['Active Tasks', $data['totalActiveTasks']]);
+            fputcsv($out, ['Completed Tasks', $data['totalCompletedTasks']]);
+            fputcsv($out, ['In Progress Tasks', $data['inProgressTasks']]);
+            fputcsv($out, ['Overdue Tasks', $data['overdueTasks']]);
+            fputcsv($out, ['Completion Rate', $data['completionRate'].'%']);
+            fputcsv($out, []);
+            fputcsv($out, ['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate']);
+            foreach ($data['teamPerformance'] as $member) {
+                fputcsv($out, [
+                    $member['name'],
+                    $member['total'],
+                    $member['completed'],
+                    $member['overdue'],
+                    $member['completionRate'].'%',
+                ]);
+            }
+            fclose($out);
+        }, 'task-management-analytics.csv', [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function exportPdf(Request $request)
+    {
+        abort_unless(auth()->user()->hasAnyRole(['manager', 'project_manager']), 403);
+        $data = $this->analyticsData($request);
+
+        return response()->view('analytics-export', $data);
+    }
+
+    private function analyticsData(Request $request): array
+    {
+        $dateFrom = $request->input('dateFrom') ?: now()->subDays(7)->format('Y-m-d');
         $dateTo = $request->input('dateTo') ?: now()->format('Y-m-d');
         $assigneeId = $request->input('assignee');
 
-        // Overall team analytics (not today-specific)
-        $activeTasksQuery = \App\Models\Task::query();
-        if ($assigneeId) $activeTasksQuery->where('assignee_id', $assigneeId);
-        if ($dateFrom && $dateTo) {
-            $activeTasksQuery->whereBetween('created_at', [$dateFrom, $dateTo]);
-        }
-        $activeTasks = $activeTasksQuery->get();
+        $activeTasksQuery = $this->visibleTaskQuery()
+            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
+            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']));
+        $completedTasksQuery = $this->visibleCompletedTaskQuery()
+            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
+            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']));
 
-        // Historical completed tasks
-        $completedTasksQuery = CompletedTask::query();
-        if ($assigneeId) $completedTasksQuery->where('assignee_id', $assigneeId);
-        if ($dateFrom && $dateTo) {
-            $completedTasksQuery->whereBetween('completed_at', [$dateFrom, $dateTo]);
-        }
-        $completedTasks = $completedTasksQuery->get();
-
-        // Overall team metrics
+        $activeTasks = $activeTasksQuery->with('assignee')->get();
+        $completedTasks = $completedTasksQuery->with('assignee')->get();
         $totalActiveTasks = $activeTasks->count();
         $totalCompletedTasks = $completedTasks->count();
         $totalTasksForRate = $totalActiveTasks + $totalCompletedTasks;
@@ -43,77 +77,45 @@ class AnalyticsController extends Controller
         $overdueTasks = $activeTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
         $completionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
         $avgProgress = $activeTasks->count() ? round($activeTasks->avg('progress')) : 0;
-
-        // Overall priority breakdown (all active tasks)
         $priorityCounts = $activeTasks->groupBy('priority')->map->count();
-        
-        // Overall status breakdown (all active tasks)
         $statusCounts = $activeTasks->groupBy('status')->map->count();
-        
-        // Historical productivity trend (last 30 days)
-        $days = collect(range(0, 29))->map(function($i) {
-            return now()->subDays(29 - $i)->format('Y-m-d');
-        });
-        $productivity = $days->mapWithKeys(function($date) use ($completedTasksQuery) {
-            $count = (clone $completedTasksQuery)->whereDate('completed_at', $date)->count();
-            return [\Carbon\Carbon::parse($date)->format('M d') => $count];
-        });
-        
-        // Historical overdue trend
-        $overdueTrend = $days->mapWithKeys(function($date) use ($activeTasksQuery) {
-            $count = (clone $activeTasksQuery)->where('due_date', '<', $date)->where('status', '!=', 'Completed')->count();
-            return [\Carbon\Carbon::parse($date)->format('M d') => $count];
-        });
 
-        $users = \App\Models\User::with(['role', 'tasks'])->get();
+        $days = collect(range(0, 29))->map(fn ($i) => now()->subDays(29 - $i));
+        $productivity = $days->mapWithKeys(fn ($date) => [
+            $date->format('M d') => (clone $completedTasksQuery)->whereDate('completed_at', $date)->count(),
+        ]);
+        $overdueTrend = $days->mapWithKeys(fn ($date) => [
+            $date->format('M d') => (clone $activeTasksQuery)->where('due_date', '<', $date)->where('status', '!=', 'Completed')->count(),
+        ]);
 
-        // Overall team performance (historical)
-        $teamPerformance = $users->map(function($user) use ($dateFrom, $dateTo, $assigneeId) {
-            // Skip if assignee filter is set and doesn't match this user
-            if ($assigneeId && $user->id != $assigneeId) {
+        $users = $this->visibleUsers()->with(['role', 'tasks'])->get();
+        $teamPerformance = $users->map(function ($user) use ($dateFrom, $dateTo, $assigneeId) {
+            if ($assigneeId && (int) $user->id !== (int) $assigneeId) {
                 return null;
             }
-            
-            $active = $user->tasks();
-            if ($dateFrom && $dateTo) {
-                $active->whereBetween('created_at', [$dateFrom, $dateTo]);
-            }
-            $active = $active->get();
-            $completed = CompletedTask::where('assignee_id', $user->id);
-            if ($dateFrom && $dateTo) {
-                $completed->whereBetween('completed_at', [$dateFrom, $dateTo]);
-            }
-            $completed = $completed->get();
+
+            $active = $this->visibleTaskQuery()
+                ->where('assignee_id', $user->id)
+                ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']))
+                ->get();
+            $completed = $this->visibleCompletedTaskQuery()
+                ->where('assignee_id', $user->id)
+                ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']))
+                ->get();
             $total = $active->count() + $completed->count();
             $completedCount = $completed->count();
-            $overdue = $active->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
-            $completionRate = $total ? round($completedCount / $total * 100) : 0;
+
             return [
                 'name' => $user->name,
                 'avatar' => strtoupper(substr($user->name, 0, 2)),
                 'total' => $total,
                 'completed' => $completedCount,
-                'overdue' => $overdue,
-                'completionRate' => $completionRate,
+                'overdue' => $active->where('due_date', '<', now())->where('status', '!=', 'Completed')->count(),
+                'completionRate' => $total ? round($completedCount / $total * 100) : 0,
             ];
-        })->filter(); // Remove null entries
+        })->filter()->values();
 
-        // Overall insights (not today-specific)
-        $achievements = [
-            'Team completed ' . $totalCompletedTasks . ' tasks in selected period',
-            'Maintaining ' . $avgProgress . '% average progress rate',
-            'Overall completion rate: ' . $completionRate . '%',
-        ];
-        $improvements = [
-            'Address ' . $overdueTasks . ' overdue task(s)',
-            'Balance high-priority task distribution',
-            'Monitor team productivity trends',
-        ];
-
-        // Last updated
-        $lastUpdated = \App\Models\Task::latest('updated_at')->value('updated_at');
-
-        return view('analytics', [
+        return [
             'activeTasks' => $activeTasks,
             'completedTasks' => $completedTasks,
             'totalActiveTasks' => $totalActiveTasks,
@@ -127,9 +129,55 @@ class AnalyticsController extends Controller
             'productivity' => $productivity,
             'overdueTrend' => $overdueTrend,
             'teamPerformance' => $teamPerformance,
-            'achievements' => $achievements,
-            'improvements' => $improvements,
-            'lastUpdated' => $lastUpdated,
-        ]);
+            'achievements' => [
+                'Team completed '.$totalCompletedTasks.' tasks in selected period',
+                'Maintaining '.$avgProgress.'% average progress rate',
+                'Overall completion rate: '.$completionRate.'%',
+            ],
+            'improvements' => [
+                'Address '.$overdueTasks.' overdue task(s)',
+                'Balance high-priority task distribution',
+                'Monitor team productivity trends',
+            ],
+            'lastUpdated' => (clone $this->visibleTaskQuery())->latest('updated_at')->value('updated_at'),
+            'users' => $users,
+        ];
+    }
+
+    private function visibleTaskQuery()
+    {
+        $user = auth()->user();
+
+        if ($user->hasRole('manager')) {
+            return Task::query();
+        }
+
+        return Task::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
+    }
+
+    private function visibleCompletedTaskQuery()
+    {
+        $user = auth()->user();
+
+        if ($user->hasRole('manager')) {
+            return CompletedTask::query();
+        }
+
+        return CompletedTask::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
+    }
+
+    private function visibleUsers()
+    {
+        $user = auth()->user();
+
+        if ($user->hasRole('manager')) {
+            return User::query()
+                ->where('active', true)
+                ->whereHas('role', fn ($query) => $query->whereIn('name', ['project_manager', 'team_member']));
+        }
+
+        return User::query()
+            ->where('active', true)
+            ->whereHas('projects', fn ($query) => $query->where('project_manager_id', $user->id));
     }
 }

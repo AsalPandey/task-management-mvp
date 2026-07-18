@@ -33,6 +33,89 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById(tab).classList.add('active');
         });
     });
+
+    const csrf = document.querySelector('meta[name=csrf-token]').content;
+    const profileForm = document.getElementById('profileForm');
+    const passwordForm = document.getElementById('passwordForm');
+    const preferencesButton = document.getElementById('savePreferencesBtn');
+
+    function showMessage(id, message, type = 'success') {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = 'block';
+        el.className = `message-container ${type}`;
+        el.textContent = message;
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrf,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.message || Object.values(data.errors || {})[0]?.[0] || 'Request failed.');
+        }
+        return data;
+    }
+
+    if (profileForm) {
+        profileForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            try {
+                const data = await postJson('{{ route('settings.profile') }}', {
+                    name: document.getElementById('profileFullName').value,
+                    email: document.getElementById('profileEmail').value,
+                    timezone: '{{ $user->timezone ?: config('app.timezone') }}',
+                });
+                document.getElementById('profileName').textContent = data.user.name;
+                showMessage('profileMessage', 'Profile updated.');
+            } catch (error) {
+                showMessage('profileMessage', error.message, 'error');
+            }
+        });
+    }
+
+    if (passwordForm) {
+        passwordForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            try {
+                const password = document.getElementById('newPassword').value;
+                await postJson('{{ route('settings.profile') }}', {
+                    name: document.getElementById('profileFullName').value,
+                    email: document.getElementById('profileEmail').value,
+                    current_password: document.getElementById('currentPassword').value,
+                    password: password,
+                    password_confirmation: document.getElementById('confirmPassword').value,
+                });
+                passwordForm.reset();
+                showMessage('securityMessage', 'Password updated.');
+            } catch (error) {
+                showMessage('securityMessage', error.message, 'error');
+            }
+        });
+    }
+
+    if (preferencesButton) {
+        preferencesButton.addEventListener('click', async function() {
+            try {
+                await postJson('{{ route('settings.preferences') }}', {
+                    task_assigned: document.getElementById('taskAssigned').checked,
+                    task_completed: document.getElementById('taskCompleted').checked,
+                    deadline_reminder: document.getElementById('deadlineReminder').checked,
+                    team_updates: document.getElementById('teamUpdates').checked,
+                });
+                showMessage('profileMessage', 'Preferences saved.');
+            } catch (error) {
+                showMessage('profileMessage', error.message, 'error');
+            }
+        });
+    }
 });
 </script>
 @endpush
@@ -60,7 +143,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="nav-icon">🛡️</span>
                     <span class="nav-label">Security</span>
                 </button>
-                <!-- Removed Preferences tab -->
             </div>
         </div>
         <!-- Main Content -->
@@ -144,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn-primary">💾 Save Preferences</button>
+                    <button type="button" class="btn-primary" id="savePreferencesBtn">💾 Save Preferences</button>
                 </div>
             </div>
             <!-- Security Tab -->
@@ -163,11 +245,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="form-group">
                             <label for="newPassword">New Password</label>
-                            <input type="password" id="newPassword" placeholder="Enter new password" required minlength="6">
+                            <input type="password" id="newPassword" placeholder="Enter new password" required minlength="8">
                         </div>
                         <div class="form-group">
                             <label for="confirmPassword">Confirm New Password</label>
-                            <input type="password" id="confirmPassword" placeholder="Confirm new password" required minlength="6">
+                            <input type="password" id="confirmPassword" placeholder="Confirm new password" required minlength="8">
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn-primary">🔒 Update Password</button>
@@ -196,8 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             </div>
-            <!-- Remove Preferences Tab Content -->
         </div>
     </div>
 </div>
-@endsection 
+@endsection

@@ -1,78 +1,48 @@
 <?php
+
 namespace App\Http\Controllers;
-use Illuminate\Http\Request;
+
 use App\Models\CompletedTask;
-use App\Models\Task;
-use Illuminate\Support\Facades\DB;
-use App\Models\TaskHistory;
-use App\Notifications\TaskRevertedNotification;
+use App\Services\TaskLifecycleService;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class CompletedTasksController extends Controller
 {
+    use AuthorizesRequests;
+
     public function index()
     {
-        $user = auth()->user();
-        $oneWeekAgo = now()->subDays(7);
-        if ($user && $user->role && $user->role->name === 'team_member') {
-            $completed = CompletedTask::with(['assignee'])
-                ->where('assignee_id', $user->id)
-                ->where('completed_at', '>=', $oneWeekAgo)
-                ->orderByDesc('completed_at')
-                ->paginate(15);
-        } else {
-            $completed = CompletedTask::with(['assignee'])
-                ->where('completed_at', '>=', $oneWeekAgo)
-                ->orderByDesc('completed_at')
-                ->paginate(15);
-        }
+        $completed = $this->visibleCompletedTasks()
+            ->with(['project', 'assignee', 'completer'])
+            ->where('completed_at', '>=', now()->subDays(7))
+            ->latest('completed_at')
+            ->paginate(15);
+
         return view('completed-tasks', compact('completed'));
     }
-    public function revert($id)
+
+    public function revert(CompletedTask $completedTask, TaskLifecycleService $tasks)
     {
-        DB::beginTransaction();
-        try {
-            $completed = CompletedTask::findOrFail($id);
-            // Prevent duplicate revert (by title and assignee only)
-            $exists = \App\Models\Task::where([
-                ['title', $completed->title],
-                ['assignee_id', $completed->assignee_id],
-            ])->where('status', '!=', 'Completed')->exists();
-            if (!$exists) {
-                $taskData = $completed->toArray();
-                unset($taskData['id']); // Let DB assign new ID
-                unset($taskData['completed_at']);
-                unset($taskData['reverted']);
-                $taskData['status'] = 'In Progress';
-                // Preserve original progress instead of resetting to 0
-                // $taskData['progress'] = 0; // Remove this line
-                $task = Task::create($taskData);
-                // Audit trail: reverted
-                TaskHistory::create([
-                    'task_id' => $task->id,
-                    'user_id' => auth()->id(),
-                    'action' => 'reverted',
-                    'changes' => json_encode($taskData),
-                ]);
+        $this->authorize('revert', $completedTask);
 
-                // Notify the assignee that the task has been reverted
-                if ($task->assignee) {
-                    $task->assignee->notify(new TaskRevertedNotification($task, auth()->user()));
-                }
+        $task = $tasks->revert($completedTask, auth()->user());
 
-                $completed->delete();
-                DB::commit();
-                return response()->json(['success' => true, 'task' => $task]);
-            } else {
-                DB::rollBack();
-                return response()->json(['success' => false, 'message' => 'Task already active.'], 409);
-            }
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Server Error',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        return response()->json(['success' => true, 'task' => $task]);
     }
-} 
+
+    private function visibleCompletedTasks()
+    {
+        $user = auth()->user();
+
+        if ($user->hasRole('manager')) {
+            return CompletedTask::withTrashed();
+        }
+
+        if ($user->hasRole('project_manager')) {
+            return CompletedTask::withTrashed()
+                ->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
+        }
+
+        return CompletedTask::withTrashed()->where('assignee_id', $user->id);
+    }
+}

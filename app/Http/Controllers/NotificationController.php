@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-
 class NotificationController extends Controller
 {
     public function markAsRead($id)
@@ -13,10 +11,11 @@ class NotificationController extends Controller
         if ($notification) {
             $notification->markAsRead();
         }
-        
+
         if (request()->expectsJson()) {
             return response()->json(['success' => true]);
         }
+
         return back();
     }
 
@@ -24,10 +23,11 @@ class NotificationController extends Controller
     {
         $user = auth()->user();
         $user->unreadNotifications->markAsRead();
-        
+
         if (request()->expectsJson()) {
             return response()->json(['success' => true]);
         }
+
         return back();
     }
 
@@ -35,6 +35,7 @@ class NotificationController extends Controller
     {
         $user = auth()->user();
         $notifications = $user->notifications()->orderBy('created_at', 'desc')->paginate(20);
+
         return view('notifications.all', compact('notifications'));
     }
-} 
+}

@@ -29,14 +29,14 @@ body { background: #f7f8fa; }
         <label for="assigneeFilter">Assignee:</label>
         <select id="assigneeFilter" name="assignee" aria-label="Assignee filter">
             <option value="">All Team Members</option>
-            @foreach(\App\Models\User::all() as $user)
+            @foreach($users as $user)
                 <option value="{{ $user->id }}" @if(request('assignee') == $user->id) selected @endif>{{ $user->name }}</option>
             @endforeach
         </select>
         <button type="submit" class="btn-small btn-primary">Apply</button>
         <button type="button" class="btn-small" id="resetFilters">Reset</button>
-        <button type="button" class="export-btn" id="exportCSV">Export CSV</button>
-        <button type="button" class="export-btn" id="exportPDF">Export PDF</button>
+        <button type="button" class="export-btn" id="exportCSV" data-export-url="{{ route('analytics.export.csv', request()->query()) }}">Export CSV</button>
+        <button type="button" class="export-btn" id="exportPDF" data-export-url="{{ route('analytics.export.pdf', request()->query()) }}">Export PDF</button>
     </form>
     <!-- No data message -->
     <div id="noDataMsg" style="display:none; color:#888; text-align:center; margin:2rem 0; font-size:1.1rem;">No data for selected range.</div>
@@ -257,25 +257,11 @@ new Chart(ctxOverdue, {
     },
     options: { responsive: true, plugins: { legend: { display: false } } }
 });
-// Export CSV (now includes all charts)
 document.getElementById('exportCSV').onclick = function() {
-    let csv = 'Priority,Count\n';
-    Object.entries(priorityData).forEach(([k,v]) => { csv += `${k},${v}\n`; });
-    csv += '\nStatus,Count\n';
-    Object.entries(statusData).forEach(([k,v]) => { csv += `${k},${v}\n`; });
-    csv += '\nDay,Completed\n';
-    Object.entries(productivityData).forEach(([k,v]) => { csv += `${k},${v}\n`; });
-    csv += '\nDay,Overdue\n';
-    Object.entries(overdueTrendData).forEach(([k,v]) => { csv += `${k},${v}\n`; });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'analytics.csv'; a.click();
-    URL.revokeObjectURL(url);
+    window.location.href = this.dataset.exportUrl;
 };
-// Export PDF (basic, using browser print)
 document.getElementById('exportPDF').onclick = function() {
-    window.print();
+    window.open(this.dataset.exportUrl, '_blank');
 };
 </script>
-@endpush 
+@endpush

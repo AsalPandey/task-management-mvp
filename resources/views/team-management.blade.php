@@ -42,6 +42,7 @@ body { background: #f7f8fa; }
 .modal-content { border-radius: 14px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.09); }
 .modal-header h3 { font-size: 1.2rem; font-weight: 700; color: #22223b; }
 .modal-form input, .modal-form select, .modal-form textarea { border-radius: 8px; border: 1px solid #e5e7eb; font-size: 1rem; padding: 0.6rem 1rem; margin-bottom: 1rem; background: #f8fafc; }
+.project-list { color: #555; text-align: right; max-width: 55%; overflow-wrap: anywhere; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
 @media (max-width: 900px) { .team-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .team-grid { grid-template-columns: 1fr; } .team-container { padding: 1rem 0.2rem; } }
@@ -141,8 +142,8 @@ document.addEventListener('DOMContentLoaded', function() {
             deleteMemberId = card.dataset.memberId;
             const memberName = card.querySelector('h3').textContent;
             Swal.fire({
-                title: `Remove ${memberName}?`,
-                text: 'This action cannot be undone.',
+                title: 'Remove team member?',
+                text: `Remove ${memberName}? This action cannot be undone.`,
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
@@ -171,13 +172,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const addMemberFormEl = document.getElementById('addMemberForm');
     const createAccountBtn = document.getElementById('createAccountBtn');
     if (addMemberFormEl && createAccountBtn) {
-        addMemberFormEl.addEventListener('input', function() {
+        const updateCreateButton = function() {
             const name = addMemberFormEl.querySelector('#memberName').value.trim();
             const email = addMemberFormEl.querySelector('#memberEmail').value.trim();
             const password = addMemberFormEl.querySelector('#memberPassword').value.trim();
             const role = addMemberFormEl.querySelector('#memberRole').value;
-            createAccountBtn.disabled = !(name && email && password && role);
-        });
+            createAccountBtn.disabled = !(name && email && password.length >= 8 && role);
+        };
+        addMemberFormEl.addEventListener('input', updateCreateButton);
+        addMemberFormEl.addEventListener('change', updateCreateButton);
     }
     // Fix add member form submission
     addMemberFormEl?.addEventListener('submit', function(e) {
@@ -229,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     // Edit member
-    editMemberForm.addEventListener('submit', function(e) {
+    editMemberForm?.addEventListener('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(editMemberForm);
         const id = formData.get('editMemberId');
@@ -279,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     // Delete member (modal confirm)
-    document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+    document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
         fetch(`/team-management/${deleteMemberId}`, {
             method: 'DELETE',
             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
@@ -371,7 +374,9 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             <h1>Team Management</h1>
             <p>Manage your team members and their access</p>
         </div>
-        <button id="addMemberBtn" class="btn-primary">➕ Add Team Member</button>
+        @if(auth()->user()->hasRole('manager'))
+            <button id="addMemberBtn" class="btn-primary">➕ Add Team Member</button>
+        @endif
     </div>
     <div style="margin:1rem 0; max-width:400px;">
         <input type="text" id="teamSearch" class="form-control" placeholder="Search team members by name or email..." style="width:100%; padding:0.5rem 1rem; border-radius:6px; border:1px solid #ccc;">
@@ -379,7 +384,10 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <div id="teamGrid" class="team-grid">
         @forelse ($users as $user)
-            <div class="member-card @if(auth()->id() === $user->id) current-user @endif" data-member-id="{{ $user->id }}" style="cursor:pointer;">
+            <div class="member-card @if(auth()->id() === $user->id) current-user @endif"
+                data-member-id="{{ $user->id }}"
+                data-project-ids="{{ $user->projects->pluck('id')->implode(',') }}"
+                style="cursor:pointer;">
                 <div class="member-header">
                     <div class="member-avatar">{{ strtoupper(substr($user->name, 0, 2)) }}</div>
                     <div class="member-info">
@@ -387,8 +395,10 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                         <p>{{ $user->email }}</p>
                     </div>
                     <div class="member-actions">
+                        @if(auth()->user()->hasRole('manager'))
                         <button class="action-btn edit-btn" title="Edit Member">✏️</button>
                         <button class="action-btn delete-btn" title="Delete Member">🗑️</button>
+                        @endif
                     </div>
                 </div>
                 <div class="member-details">
@@ -399,6 +409,10 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                     <div class="detail-item">
                         <span class="detail-label">Login ID:</span>
                         <span class="detail-value">{{ $user->email }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Projects:</span>
+                        <span class="detail-value project-list">{{ $user->projects->pluck('name')->implode(', ') ?: '-' }}</span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Joined:</span>
@@ -436,6 +450,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             {{ $users->links() }}
         </div>
     @endif
+    @if(auth()->user()->hasRole('manager'))
     <!-- Add Member Modal -->
     <div id="addMemberModal" class="modal">
         <div class="modal-content">
@@ -454,7 +469,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                 </div>
                 <div class="form-group">
                     <label for="memberPassword">Password *</label>
-                    <input type="password" id="memberPassword" name="memberPassword" placeholder="Enter password" required>
+                    <input type="password" id="memberPassword" name="memberPassword" placeholder="Enter password" required minlength="8">
                 </div>
                 <div class="form-group">
                     <label for="memberRole">Role *</label>
@@ -491,7 +506,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                 </div>
                 <div class="form-group">
                     <label for="editMemberPassword">Password</label>
-                    <input type="password" id="editMemberPassword" name="editMemberPassword" placeholder="Enter new password (leave blank to keep current)">
+                    <input type="password" id="editMemberPassword" name="editMemberPassword" placeholder="Enter new password (leave blank to keep current)" minlength="8">
                 </div>
                 <div class="form-group">
                     <label for="editMemberRole">Role *</label>
@@ -526,5 +541,6 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             </div>
         </div>
     </div>
+    @endif
 </div>
-@endsection 
+@endsection

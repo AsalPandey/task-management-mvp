@@ -3,14 +3,15 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, SoftDeletes;
 
     /**
@@ -24,6 +25,8 @@ class User extends Authenticatable
         'password',
         'active',
         'role_id',
+        'timezone',
+        'notification_preferences',
     ];
 
     /**
@@ -46,6 +49,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'active' => 'boolean',
+            'notification_preferences' => 'array',
         ];
     }
 
@@ -59,13 +64,49 @@ class User extends Authenticatable
         return $this->role && $this->role->name === $roleName;
     }
 
+    public function hasAnyRole(array $roleNames): bool
+    {
+        return $this->role && in_array($this->role->name, $roleNames, true);
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        if (! $this->relationLoaded('role')) {
+            $this->load('role.permissions');
+        } elseif ($this->role && ! $this->role->relationLoaded('permissions')) {
+            $this->role->load('permissions');
+        }
+
+        return (bool) $this->role?->permissions->contains('name', $permission);
+    }
+
     public function tasks()
     {
         return $this->hasMany(Task::class, 'assignee_id');
     }
 
+    public function managedProjects()
+    {
+        return $this->hasMany(Project::class, 'project_manager_id');
+    }
+
+    public function projects()
+    {
+        return $this->belongsToMany(Project::class)->withTimestamps()->withPivot('added_by');
+    }
+
+    public function createdTasks()
+    {
+        return $this->hasMany(Task::class, 'created_by');
+    }
+
+    public function assignedTasks()
+    {
+        return $this->hasMany(Task::class, 'assigned_by');
+    }
+
     public function isActive()
     {
-        return $this->active;
+        return (bool) $this->active;
     }
 }

@@ -3,17 +3,15 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use App\Models\Task;
-use App\Models\CompletedTask;
 
 class TaskRevertedNotification extends Notification
 {
     use Queueable;
 
     protected $task;
+
     protected $revertedBy;
 
     /**
@@ -42,12 +40,12 @@ class TaskRevertedNotification extends Notification
     {
         $revertedByName = $this->revertedBy ? $this->revertedBy->name : 'System';
         $taskTitle = $this->task->title;
-        
+
         return (new MailMessage)
-            ->subject('Task Reverted: ' . $taskTitle)
+            ->subject('Task Reverted: '.$taskTitle)
             ->line("The completed task '{$taskTitle}' has been reverted to active status by {$revertedByName}.")
-            ->line("The task is now back in your active tasks list.")
-            ->line("Status: In Progress")
+            ->line('The task is now back in your active tasks list.')
+            ->line('Status: In Progress')
             ->action('View Task', url('/tasks'))
             ->line('Please continue working on this task.');
     }
@@ -61,14 +59,14 @@ class TaskRevertedNotification extends Notification
     {
         $revertedByName = $this->revertedBy ? $this->revertedBy->name : 'System';
         $taskTitle = $this->task->title;
-        
+
         return [
             'task_id' => $this->task->id,
             'task_title' => $taskTitle,
             'reverted_by' => $revertedByName,
             'reverted_at' => now()->format('M d, Y H:i'),
             'message' => "Task '{$taskTitle}' was reverted to active status by {$revertedByName}.",
-            'type' => 'task_reverted'
+            'type' => 'task_reverted',
         ];
     }
-} 
+}

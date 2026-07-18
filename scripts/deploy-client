@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: scripts/deploy-client <client-slug> [forge-deploy-hook-url]" >&2
+    exit 1
+fi
+
+client="$1"
+hook="${2:-}"
+env_name="FORGE_DEPLOY_HOOK_$(echo "$client" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g')"
+
+if [[ -z "$hook" ]]; then
+    hook="${!env_name:-${FORGE_DEPLOY_HOOK:-}}"
+fi
+
+if [[ -z "$hook" ]]; then
+    echo "Missing deploy hook. Set $env_name or FORGE_DEPLOY_HOOK, or pass the hook URL as the second argument." >&2
+    exit 1
+fi
+
+echo "Triggering Forge deployment for $client..."
+curl --fail --silent --show-error --request POST "$hook" >/dev/null
+echo "Deploy hook accepted. Check Laravel Forge for deployment progress."

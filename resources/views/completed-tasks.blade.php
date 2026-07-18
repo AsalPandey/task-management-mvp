@@ -17,7 +17,6 @@ tr.reverted, tr.reverted td { opacity: 0.5; pointer-events: none; }
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Completed tasks JS loaded');
     const messageContainer = document.getElementById('messageContainer');
     function showMessage(msg, success = true) {
         if (!messageContainer) return;
@@ -27,11 +26,9 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => { messageContainer.style.display = 'none'; }, 3000);
     }
     const revertBtns = document.querySelectorAll('.revert-btn');
-    console.log('Revert buttons:', revertBtns);
     revertBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             const id = this.dataset.id;
-            console.log('Revert button clicked', id);
             const row = this.closest('tr');
             const originalText = this.textContent;
             const button = this;
@@ -59,16 +56,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         data = await r.json();
                     } catch (e) {
-                        console.error('Non-JSON response:', r);
                         const text = await r.text();
                         Swal.fire('Error', `Server error (status ${r.status}): ${text.substring(0, 200)}`, 'error');
                         button.disabled = false;
                         button.textContent = originalText;
                         return;
                     }
-                    console.log('Revert response:', data);
                     if (r.ok && data.success) {
-                    row.remove();
+                        row.classList.add('reverted');
+                        button.textContent = 'Reverted';
+                        button.classList.remove('revert-btn');
+                        button.disabled = true;
                         Swal.fire('Reverted!', 'Task reverted successfully.', 'success');
                     } else if (data && data.message) {
                         Swal.fire('Error', data.message, 'error');
@@ -81,7 +79,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 })
                 .catch(error => {
-                    console.error('Fetch error:', error);
                     Swal.fire('Error', 'Network or server error: ' + (error.message || error), 'error');
                     button.disabled = false;
                     button.textContent = originalText;
@@ -124,9 +121,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</td>
                     <td>
                         @if(!$task->reverted)
-                        <button class="btn-small btn-primary revert-btn" data-id="{{ $task->id }}">Revert</button>
+                            @can('revert', $task)
+                                <button class="btn-small btn-primary revert-btn" data-id="{{ $task->id }}">Revert</button>
+                            @else
+                                <span aria-label="Revert unavailable">&mdash;</span>
+                            @endcan
                         @else
-                        <button class="btn-small btn-primary" disabled>Reverted</button>
+                            <button class="btn-small btn-primary" disabled>Reverted</button>
                         @endif
                     </td>
                 </tr>
@@ -141,4 +142,4 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     @endif
 </div>
-@endsection 
+@endsection

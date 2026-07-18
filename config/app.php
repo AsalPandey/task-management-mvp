@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'Task Management'),
 
     /*
     |--------------------------------------------------------------------------
@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'setup_token' => env('APP_SETUP_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
@@ -65,7 +67,7 @@ return [
     |
     */
 
-    'timezone' => 'Asia/Kathmandu',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Kathmandu'),
 
     /*
     |--------------------------------------------------------------------------

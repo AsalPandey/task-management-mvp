@@ -29,7 +29,21 @@ body { background: #f7f8fa; }
 @endpush
 
 @push('scripts')
+@php
+    $projectMembersForScript = $projects->mapWithKeys(function ($project) {
+        return [
+            $project->id => $project->members->map(function ($member) {
+                return [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                ];
+            })->values(),
+        ];
+    });
+@endphp
 <script>
+window.projectMembers = @json($projectMembersForScript);
+
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching logic
     const navTabs = document.querySelectorAll('.nav-tab');
@@ -56,6 +70,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const progressSlider = document.getElementById('taskProgress');
     const progressValue = document.getElementById('progressValue');
     const messageContainer = document.getElementById('messageContainer');
+    const taskProjectSelect = document.getElementById('taskProject');
+    const taskAssigneeSelect = document.getElementById('taskAssignee');
+    const projectMembers = window.projectMembers || {};
+
+    function populateAssignees(projectId, selectedId = '') {
+        if (!taskAssigneeSelect) return;
+
+        taskAssigneeSelect.innerHTML = '<option value="">Select Team Member</option>';
+        (projectMembers[projectId] || []).forEach(member => {
+            const option = document.createElement('option');
+            option.value = member.id;
+            option.textContent = member.name;
+            if (String(member.id) === String(selectedId)) {
+                option.selected = true;
+            }
+            taskAssigneeSelect.appendChild(option);
+        });
+    }
 
     function showMessage(msg, success = true) {
         Swal.fire({
@@ -78,7 +110,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function resetModal() {
         taskForm.reset();
         setLoading(false);
-        showMessage('', true);
         if (progressValue) progressValue.textContent = '0';
     }
 
@@ -86,6 +117,9 @@ document.addEventListener('DOMContentLoaded', function() {
         newTaskBtn.addEventListener('click', function() {
             resetModal();
             document.getElementById('taskStartDate').value = new Date().toISOString().split('T')[0];
+            if (taskProjectSelect) {
+                populateAssignees(taskProjectSelect.value);
+            }
             taskModal.classList.add('active');
         });
     }
@@ -109,6 +143,12 @@ document.addEventListener('DOMContentLoaded', function() {
         progressSlider.addEventListener('input', function() {
             progressValue.textContent = this.value;
         });
+    }
+    if (taskProjectSelect) {
+        taskProjectSelect.addEventListener('change', function() {
+            populateAssignees(this.value);
+        });
+        populateAssignees(taskProjectSelect.value);
     }
     // Add submit handler for feedback (AJAX example, adapt as needed)
     if (taskForm) {
@@ -255,27 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // --- Dynamic Assignee Dropdown ---
-    {{-- Removed projectMembers and taskProjectSelect/taskAssigneeSelect logic --}}
-    // function updateAssigneeOptions() {
-    //     const projectId = taskProjectSelect.value;
-    //     taskAssigneeSelect.innerHTML = '<option value="">Select Team Member</option>';
-    //     if (projectId && projectMembers[projectId]) {
-    //         Object.entries(projectMembers[projectId]).forEach(([id, name]) => {
-    //             const opt = document.createElement('option');
-    //             opt.value = id;
-    //             opt.textContent = name;
-    //             taskAssigneeSelect.appendChild(opt);
-    //         });
-    //     }
-    // }
-    // if (taskProjectSelect && taskAssigneeSelect) {
-    //     taskProjectSelect.addEventListener('change', updateAssigneeOptions);
-    //     // On modal open, update assignees if project is pre-selected
-    //     if (taskProjectSelect.value) updateAssigneeOptions();
-    // }
-
-
 });
 </script>
 @endpush
@@ -413,7 +432,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         @endforelse
                     </div>
                 </div>
-                {{-- Removed obsolete activeProjects section --}}
             </div>
 
             <!-- Overdue Tasks -->
@@ -447,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="notification-icon">
                                 @if($note['type'] === 'completed')✅@elseif($note['type'] === 'overdue')⏰@else📥@endif
                             </span>
-                            <span>{!! $note['text'] !!}</span>
+                            <span>{{ $note['text'] }}</span>
                         </div>
                     @empty
                         <div class="notification-item">No recent notifications.</div>
@@ -531,6 +549,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
             </div>
             <form id="taskForm" class="modal-form">
+                <div class="form-group">
+                    <label for="taskTitle">Task Title *</label>
+                    <input type="text" id="taskTitle" name="taskTitle" required>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="taskPriority">Priority *</label>
@@ -545,12 +567,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label for="taskDescription">Task Description *</label>
                     <textarea id="taskDescription" name="taskDescription" rows="3" placeholder="Describe the task..." required></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="taskProject">Project *</label>
+                    <select id="taskProject" name="taskProject" required>
+                        <option value="">Select Project</option>
+                        @foreach ($projects as $project)
+                            <option value="{{ $project->id }}">{{ $project->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="taskAssignee">Assign To *</label>
                         <select id="taskAssignee" name="taskAssignee" required>
                             <option value="">Select Team Member</option>
-                            {{-- Will be dynamically populated based on project selection --}}
                         </select>
                     </div>
                     <div class="form-group">

@@ -12,7 +12,10 @@
         "php": "^8.2",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "pusher/pusher-php-server": "^7.2"
+        "league/flysystem-aws-s3-v3": "^3.32",
+        "pusher/pusher-php-server": "^7.2",
+        "sentry/sentry-laravel": "^4.25",
+        "spatie/laravel-backup": "^9.3"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.16",

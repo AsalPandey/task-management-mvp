@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const title = taskCard.querySelector('h4').textContent;
             if (!confirm('Mark task "' + title + '" as completed?')) return;
             this.disabled = true;
-            this.textContent = '⏳ Completing...';
+            this.textContent = 'Completing...';
             const taskId = taskCard.dataset.taskId;
             fetch(`/tasks/${taskId}`, {
                 method: 'PUT',
@@ -197,21 +197,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (data.message) {
                     showMessage(data.message, false);
                     this.disabled = false;
-                    this.textContent = 'Update Progress';
+                    this.textContent = 'Mark Complete';
                 } else {
                     showMessage('Error marking task as completed.', false);
                     this.disabled = false;
-                    this.textContent = 'Update Progress';
+                    this.textContent = 'Mark Complete';
                 }
             })
             .catch(error => {
                 showMessage('Error: ' + (error.message || error), false);
                 this.disabled = false;
-                this.textContent = 'Update Progress';
+                this.textContent = 'Mark Complete';
             });
         });
     });
-    // TODO: Add AJAX for progress update modal if/when implemented
 });
 </script>
 @endpush
@@ -235,7 +234,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="notification-icon">
                                 @if($note['type'] === 'completed')✅@elseif($note['type'] === 'overdue')⏰@else📥@endif
                             </span>
-                            <span>{!! $note['text'] !!}</span>
+                            <span>{{ $note['text'] }}</span>
                         </div>
                     @empty
                         <div class="notification-item">No recent notifications.</div>
@@ -357,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <p class="priority">{{ $task->priority }} priority</p>
                             </div>
                             <div class="task-actions">
-                                <a href="#" class="btn-small btn-primary">Update Progress</a>
+                                <a href="#" class="btn-small btn-primary">Mark Complete</a>
                             </div>
                         </div>
                     @empty
@@ -376,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="deadline-task">
                             <div class="task-info">
                                 <h4>{{ $task->title }}</h4>
-                                <p>Project: -</p>
+                                <p>Project: {{ $task->project ? $task->project->name : '-' }}</p>
                             </div>
                             <div class="task-meta">
                                 <p>Due: {{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</p>
@@ -430,7 +429,7 @@ document.addEventListener('DOMContentLoaded', function() {
             @foreach($recentCompletedHistory as $task)
                 <tr>
                     <td><span style="font-size:1.1rem;">{{ $task->title }}</span></td>
-                    <td><span style="color:#888;">-</span></td>
+                    <td><span style="color:#888;">{{ $task->project ? $task->project->name : '-' }}</span></td>
                     <td><span style="color:#38b6ff; font-weight:500;">{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</span></td>
                 </tr>
             @endforeach
@@ -459,4 +458,4 @@ document.addEventListener('DOMContentLoaded', function() {
     <p id="progressDescription">Average completion across {{ $todayTotalTasks }} tasks</p>
 </div>
 </div>
-@endsection 
+@endsection

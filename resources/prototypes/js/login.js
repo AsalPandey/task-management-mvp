@@ -111,32 +111,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Auto-fill demo credentials
-    window.fillCredentials = function(type) {
-        const credentials = {
-            manager: { email: 'asalpandey44@gmail.com', password: 'PLMokn!@#123' },
-            team1: { email: 'aniket@techcorp.com', password: 'aniket123' },
-            team2: { email: 'achyut@techcorp.com', password: 'achyut123' },
-            team3: { email: 'bishal@techcorp.com', password: 'bishal123' }
-        };
-
-        if (credentials[type]) {
-            emailInput.value = credentials[type].email;
-            passwordInput.value = credentials[type].password;
-            
-            // Add visual feedback
-            emailInput.style.background = 'rgba(59, 130, 246, 0.1)';
-            passwordInput.style.background = 'rgba(59, 130, 246, 0.1)';
-            
-            setTimeout(() => {
-                emailInput.style.background = '';
-                passwordInput.style.background = '';
-            }, 1000);
-            
-            emailInput.focus();
-        }
-    };
-
     // Input validation and styling
     [emailInput, passwordInput].forEach(input => {
         input.addEventListener('input', function() {

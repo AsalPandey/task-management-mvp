@@ -2,238 +2,266 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CompletedTask;
+use App\Models\Role;
+use App\Models\Task;
+use App\Models\User;
+use App\Notifications\AccountStatusChangedNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class TeamManagementController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $authUser = auth()->user();
-        // Only show team members (not managers)
-        $users = \App\Models\User::with('role')
-            ->whereHas('role', function($q) { $q->where('name', 'team_member'); })
-            ->orderBy('created_at', 'desc')->paginate(12);
-        $roles = \App\Models\Role::all();
+        abort_unless($authUser->hasAnyRole(['manager', 'project_manager']), 403);
+
+        $users = $this->manageableUsers()
+            ->with(['role', 'projects:id,name'])
+            ->when($request->input('search'), function ($query, string $search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
+            ->latest()
+            ->paginate(12)
+            ->withQueryString();
+
+        $roles = $authUser->hasRole('manager')
+            ? Role::query()->orderBy('id')->get()
+            : collect();
+
         return view('team-management', compact('users', 'roles'));
     }
 
     public function store(Request $request)
     {
-        $user = auth()->user();
-        if (!$user || $user->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can add members.'], 403);
-        }
+        $authUser = auth()->user();
+        abort_unless($authUser->hasRole('manager'), 403);
+        $this->assertOnlyFields($request, ['name', 'email', 'password', 'role_id']);
+
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
-            'role_id' => 'required|exists:roles,id',
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', Rule::unique('users', 'email')],
+            'password' => ['required', 'string', 'min:8'],
+            'role_id' => ['required', 'exists:roles,id'],
         ]);
-        $role = \App\Models\Role::find($data['role_id']);
-        // Only managers can assign manager roles
-        if ($role->name === 'manager' && $user->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can assign manager roles.'], 403);
-        }
-        $data['password'] = bcrypt($data['password']);
-        $user = \App\Models\User::create($data);
+
+        $data['password'] = Hash::make($data['password']);
+        $data['active'] = true;
+        $user = User::query()->create($data);
+
         return response()->json($user->load('role'));
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, User $user)
     {
         $authUser = auth()->user();
-        if (!$authUser || $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can edit members.'], 403);
-        }
-        $user = \App\Models\User::findOrFail($id);
+        $this->assertCanManageGlobalAccount($authUser, $user);
+        $this->assertOnlyFields($request, ['name', 'email', 'password', 'role_id']);
+
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $id,
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
+            'role_id' => ['sometimes', 'required', 'exists:roles,id'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
+
+        if (! empty($data['password'])) {
+            $data['password'] = Hash::make($data['password']);
+        } else {
+            unset($data['password']);
+        }
+
         $user->update($data);
+
         return response()->json($user->load('role'));
     }
 
-    public function destroy($id)
+    public function destroy(User $user)
     {
         $authUser = auth()->user();
-        if (!$authUser || $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can delete members.'], 403);
+        $this->assertCanManageGlobalAccount($authUser, $user);
+
+        $activeTasks = Task::query()->where('assignee_id', $user->id)->exists();
+        $completedTasks = CompletedTask::query()->where('assignee_id', $user->id)->exists();
+        if ($activeTasks || $completedTasks) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete a user with assigned tasks. Deactivate the user or reassign their tasks first.',
+            ], 409);
         }
-        $user = \App\Models\User::findOrFail($id);
-        // Only managers can delete other managers
-        if ($user->role && $user->role->name === 'manager' && $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can delete other managers.'], 403);
-        }
-        $activeTasks = \App\Models\Task::where('assignee_id', $id)->count();
-        $completedTasks = \App\Models\CompletedTask::where('assignee_id', $id)->count();
-        if ($activeTasks > 0 || $completedTasks > 0) {
-            return response()->json(['success' => false, 'message' => 'Cannot delete user with assigned tasks. Please reassign or delete all tasks first.'], 409);
-        }
+
         $user->delete();
+
         return response()->json(['success' => true]);
     }
 
-    public function activate($id)
+    public function activate(User $user)
     {
         $authUser = auth()->user();
-        if (!$authUser || $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can activate members.'], 403);
-        }
-        $user = \App\Models\User::findOrFail($id);
-        if ($user->role && $user->role->name === 'manager' && $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can activate other managers.'], 403);
-        }
-        $user->active = true;
-        $user->save();
-        return response()->json(['success' => true]);
-    }
-    public function deactivate($id)
-    {
-        $authUser = auth()->user();
-        if (!$authUser || $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can deactivate members.'], 403);
-        }
-        $user = \App\Models\User::findOrFail($id);
-        if ($user->role && $user->role->name === 'manager' && $authUser->role->name !== 'manager') {
-            return response()->json(['success' => false, 'message' => 'Only managers can deactivate other managers.'], 403);
-        }
-        $user->active = false;
-        $user->save();
+        $this->assertCanManageGlobalAccount($authUser, $user);
+        $user->forceFill(['active' => true])->save();
+        $user->notify(new AccountStatusChangedNotification(true, $authUser));
+
         return response()->json(['success' => true]);
     }
 
-    public function analytics($id)
+    public function deactivate(User $user)
     {
         $authUser = auth()->user();
-        // Only allow self or manager
-        if ($authUser->id != $id && $authUser->role->name !== 'manager') {
+        $this->assertCanManageGlobalAccount($authUser, $user);
+        abort_if($user->is($authUser), 422, 'You cannot deactivate your own account.');
+
+        $user->forceFill(['active' => false])->save();
+        $user->notify(new AccountStatusChangedNotification(false, $authUser));
+
+        return response()->json(['success' => true]);
+    }
+
+    public function analytics(User $user)
+    {
+        $authUser = auth()->user();
+        if (! $authUser->hasRole('manager') && ! $authUser->hasRole('project_manager') && ! $authUser->is($user)) {
             abort(403, 'Unauthorized.');
         }
-        
-        $user = \App\Models\User::with('role')->findOrFail($id);
-        
-        // Individual performance analytics (comprehensive)
-        $allTasks = \App\Models\Task::where('assignee_id', $user->id)->get();
-        $allCompletedTasks = \App\Models\CompletedTask::where('assignee_id', $user->id)->get();
-        
-        // Overall performance metrics
+
+        if ($authUser->hasRole('project_manager')) {
+            $allowed = $authUser->is($user)
+                || $user->projects()->where('project_manager_id', $authUser->id)->exists();
+            abort_unless($allowed || $authUser->is($user), 403);
+        }
+
+        $allTasksQuery = Task::query()->where('assignee_id', $user->id);
+        $allCompletedTasksQuery = CompletedTask::query()->where('assignee_id', $user->id);
+
+        if ($authUser->hasRole('project_manager') && ! $authUser->is($user)) {
+            $allTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));
+            $allCompletedTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));
+        }
+
+        $allTasks = $allTasksQuery->get();
+        $allCompletedTasks = $allCompletedTasksQuery->get();
         $totalTasks = $allTasks->count();
         $totalCompletedTasks = $allCompletedTasks->count();
         $totalTasksForRate = $totalTasks + $totalCompletedTasks;
         $overallCompletionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
-        
-        // Current active tasks
         $currentActiveTasks = $allTasks->where('status', '!=', 'Completed');
         $currentInProgressTasks = $currentActiveTasks->where('status', 'In Progress')->count();
         $currentOverdueTasks = $currentActiveTasks->where('due_date', '<', now())->count();
         $currentAvgProgress = $currentActiveTasks->count() ? round($currentActiveTasks->avg('progress')) : 0;
-        
-        // Priority distribution
         $priorityCounts = [
             'High' => $allTasks->where('priority', 'High')->count(),
             'Medium' => $allTasks->where('priority', 'Medium')->count(),
             'Low' => $allTasks->where('priority', 'Low')->count(),
         ];
-        
-        // Status distribution
         $statusCounts = [
             'Not Started' => $allTasks->where('status', 'Not Started')->count(),
             'In Progress' => $allTasks->where('status', 'In Progress')->count(),
-            'Completed' => $allTasks->where('status', 'Completed')->count(),
+            'Completed' => $allCompletedTasks->count(),
         ];
-        
-        // Performance trends (last 30 days)
-        $days = collect(range(0, 29))->map(function($i) {
-            return now()->subDays(29 - $i)->format('Y-m-d');
-        });
-        
-        // Daily completion trend
-        $dailyCompletionTrend = $days->mapWithKeys(function($date) use ($user) {
-            $count = \App\Models\CompletedTask::where('assignee_id', $user->id)
+        $dailyCompletionTrend = collect(range(0, 29))->mapWithKeys(function ($i) use ($allCompletedTasksQuery) {
+            $date = now()->subDays(29 - $i);
+
+            return [$date->format('M d') => (clone $allCompletedTasksQuery)
                 ->whereDate('completed_at', $date)
-                ->count();
-            return [\Carbon\Carbon::parse($date)->format('M d') => $count];
+                ->count()];
         });
-        
-        // Daily task creation trend
-        $dailyTaskCreationTrend = $days->mapWithKeys(function($date) use ($user) {
-            $count = \App\Models\Task::where('assignee_id', $user->id)
+        $dailyTaskCreationTrend = collect(range(0, 29))->mapWithKeys(function ($i) use ($allTasksQuery) {
+            $date = now()->subDays(29 - $i);
+
+            return [$date->format('M d') => (clone $allTasksQuery)
                 ->whereDate('created_at', $date)
-                ->count();
-            return [\Carbon\Carbon::parse($date)->format('M d') => $count];
+                ->count()];
         });
-        
-        // Monthly performance (last 6 months)
-        $months = collect(range(0, 5))->map(function($i) {
-            return now()->subMonths(5 - $i)->format('Y-m');
-        });
-        
-        $monthlyPerformance = $months->mapWithKeys(function($month) use ($user) {
-            $startOfMonth = \Carbon\Carbon::parse($month . '-01');
-            $endOfMonth = $startOfMonth->copy()->endOfMonth();
-            
-            $created = \App\Models\Task::where('assignee_id', $user->id)
-                ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
-                ->count();
-                
-            $completed = \App\Models\CompletedTask::where('assignee_id', $user->id)
-                ->whereBetween('completed_at', [$startOfMonth, $endOfMonth])
-                ->count();
-                
-            return [$startOfMonth->format('M Y') => [
+        $monthlyPerformance = collect(range(0, 5))->mapWithKeys(function ($i) use ($allTasksQuery, $allCompletedTasksQuery) {
+            $start = now()->subMonths(5 - $i)->startOfMonth();
+            $end = $start->copy()->endOfMonth();
+            $created = (clone $allTasksQuery)->whereBetween('created_at', [$start, $end])->count();
+            $completed = (clone $allCompletedTasksQuery)->whereBetween('completed_at', [$start, $end])->count();
+
+            return [$start->format('M Y') => [
                 'created' => $created,
                 'completed' => $completed,
-                'rate' => ($created + $completed) ? round($completed / ($created + $completed) * 100) : 0
+                'rate' => ($created + $completed) ? round($completed / ($created + $completed) * 100) : 0,
             ]];
         });
-        
-        // Recent activity (last 10 tasks)
         $recentActivity = $allTasks->sortByDesc('created_at')->take(5)
             ->concat($allCompletedTasks->sortByDesc('completed_at')->take(5))
-            ->sortByDesc(function($task) {
-                return $task->created_at ?? $task->completed_at;
-            })->take(10);
-            
-        // Performance insights
+            ->sortByDesc(fn ($task) => $task->completed_at ?? $task->created_at)
+            ->take(10);
         $achievements = [
-            'Completed ' . $totalCompletedTasks . ' tasks overall',
-            'Current completion rate: ' . $overallCompletionRate . '%',
-            'Average progress on active tasks: ' . $currentAvgProgress . '%',
+            'Completed '.$totalCompletedTasks.' tasks overall',
+            'Current completion rate: '.$overallCompletionRate.'%',
+            'Average progress on active tasks: '.$currentAvgProgress.'%',
         ];
-        
         $improvements = [
-            'Address ' . $currentOverdueTasks . ' overdue task(s)',
+            'Address '.$currentOverdueTasks.' overdue task(s)',
             'Focus on high-priority tasks',
             'Maintain consistent daily progress',
         ];
-        
-        // Performance comparison (if manager viewing team member)
         $teamComparison = null;
-        if ($authUser->role->name === 'manager' && $authUser->id !== $user->id) {
-            $allTeamMembers = \App\Models\User::whereHas('role', function($q) {
-                $q->where('name', 'team_member');
-            })->get();
-            
-            $teamComparison = $allTeamMembers->map(function($member) {
-                $memberTasks = \App\Models\Task::where('assignee_id', $member->id)->count();
-                $memberCompleted = \App\Models\CompletedTask::where('assignee_id', $member->id)->count();
-                $memberRate = ($memberTasks + $memberCompleted) ? round($memberCompleted / ($memberTasks + $memberCompleted) * 100) : 0;
-                
-                return [
-                    'name' => $member->name,
-                    'total_tasks' => $memberTasks + $memberCompleted,
-                    'completion_rate' => $memberRate,
-                ];
-            })->sortByDesc('completion_rate');
-        }
-        
+
         return view('team-member-analytics', compact(
-            'user', 'allTasks', 'allCompletedTasks', 'totalTasks', 'totalCompletedTasks', 
-            'overallCompletionRate', 'currentActiveTasks', 'currentInProgressTasks', 
-            'currentOverdueTasks', 'currentAvgProgress', 'priorityCounts', 'statusCounts',
-            'dailyCompletionTrend', 'dailyTaskCreationTrend', 'monthlyPerformance',
-            'recentActivity', 'achievements', 'improvements', 'teamComparison'
+            'user',
+            'allTasks',
+            'allCompletedTasks',
+            'totalTasks',
+            'totalCompletedTasks',
+            'overallCompletionRate',
+            'currentActiveTasks',
+            'currentInProgressTasks',
+            'currentOverdueTasks',
+            'currentAvgProgress',
+            'priorityCounts',
+            'statusCounts',
+            'dailyCompletionTrend',
+            'dailyTaskCreationTrend',
+            'monthlyPerformance',
+            'recentActivity',
+            'achievements',
+            'improvements',
+            'teamComparison',
         ));
+    }
+
+    private function manageableUsers()
+    {
+        $authUser = auth()->user();
+
+        if ($authUser->hasRole('manager')) {
+            return User::query()->whereKeyNot($authUser->id);
+        }
+
+        return User::query()
+            ->whereHas('role', fn ($query) => $query->where('name', 'team_member'))
+            ->whereHas('projects', fn ($query) => $query->where('project_manager_id', $authUser->id));
+    }
+
+    private function assertCanManageGlobalAccount(User $authUser, User $user): void
+    {
+        abort_unless($authUser->hasRole('manager'), 403);
+        abort_if($authUser->is($user), 403, 'Use the self-service profile and password routes for your own account.');
+    }
+
+    private function assertOnlyFields(Request $request, array $allowed): void
+    {
+        $unexpected = collect($request->keys())
+            ->reject(fn (string $field) => in_array($field, ['_token', '_method'], true))
+            ->diff($allowed)
+            ->values()
+            ->all();
+
+        if ($unexpected === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'fields' => 'Unsupported fields: '.implode(', ', $unexpected).'. Project membership changes must use the project membership endpoints.',
+        ]);
     }
 }

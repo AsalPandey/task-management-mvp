@@ -8,15 +8,32 @@ body { background: #f7f8fa; }
 .tasks-container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
 .tasks-header h1 { font-size: 1.7rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
 .filters-card { background: #f8fafc; border-radius: 12px; box-shadow: none; padding: 1.2rem 1rem; margin-bottom: 2rem; }
+.filter-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; }
+.filter-actions .btn-secondary { text-decoration: none; }
+.filter-errors { color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+.filter-errors ul { margin: 0.4rem 0 0 1.25rem; }
+.task-results-summary { color: #4b5563; font-size: 0.95rem; margin: -1rem 0 1.25rem; }
+.pagination-wrapper { margin-top: 1.5rem; }
 .tasks-table { background: #f8fafc; border-radius: 12px; box-shadow: none; }
 @media (max-width: 900px) { .tasks-table th, .tasks-table td { padding: 0.5rem 0.5rem; } }
 @media (max-width: 600px) { .tasks-container { padding: 1rem 0.2rem; } }
 </style>
 @endpush
 @push('scripts')
+@php
+    $projectMembersForScript = $projects->mapWithKeys(function ($project) {
+        return [
+            $project->id => $project->members->map(function ($member) {
+                return [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                ];
+            })->values(),
+        ];
+    });
+@endphp
 <script>
-// Output projectMembers as a JS object
-// console.log('projectMembers:', window.projectMembers); // DEBUG
+window.projectMembers = @json($projectMembersForScript);
 
 document.addEventListener('DOMContentLoaded', function() {
     // Modal logic
@@ -25,7 +42,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const taskForm = document.getElementById('taskForm');
     const modalClose = taskModal ? taskModal.querySelector('.modal-close') : null;
     const messageContainer = document.getElementById('messageContainer');
+    const taskProjectSelect = document.getElementById('taskProject');
+    const taskAssigneeSelect = document.getElementById('taskAssignee');
+    const projectMembers = window.projectMembers || {};
+    const canManageTasks = document.body.dataset.userRole !== 'team_member';
     let editTaskId = null;
+
+    if (!canManageTasks) {
+        newTaskBtn?.style.setProperty('display', 'none');
+        document.querySelectorAll('.delete-btn, .table-delete-btn, #bulkActions, #selectAllTasks, .task-checkbox').forEach(el => {
+            el.style.display = 'none';
+        });
+    }
+
+    function populateAssignees(projectId, selectedId = '') {
+        if (!taskAssigneeSelect) return;
+
+        taskAssigneeSelect.innerHTML = '<option value="">Select Team Member</option>';
+        (projectMembers[projectId] || []).forEach(member => {
+            const option = document.createElement('option');
+            option.value = member.id;
+            option.textContent = member.name;
+            if (String(member.id) === String(selectedId)) {
+                option.selected = true;
+            }
+            taskAssigneeSelect.appendChild(option);
+        });
+    }
 
     function showMessage(msg, success = true) {
         Swal.fire({
@@ -71,9 +114,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 startDateInput.value = `${yyyy}-${mm}-${dd}`;
             }
             // Populate assignees when opening new task modal
-            const taskProject = document.getElementById('taskProject');
-            if (taskProject) {
-                populateAssignees(taskProject.value);
+            if (taskProjectSelect) {
+                populateAssignees(taskProjectSelect.value);
             }
         });
     }
@@ -109,7 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
-                    taskForm.querySelector('#taskAssignee').value = task.assignee_id || '';
+                    taskForm.querySelector('#taskProject').value = task.project_id || '';
+                    populateAssignees(task.project_id || '', task.assignee_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
                     taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
@@ -211,6 +254,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (card) {
                     const titleEl = card.querySelector('.task-title');
                     if (titleEl) titleEl.textContent = data.task.title;
+                    const projectEl = card.querySelector('.task-project');
+                    if (projectEl) projectEl.textContent = 'Project: ' + (data.task.project ? data.task.project.name : '-');
                     const priorityBadge = card.querySelector('.priority-badge');
                     if (priorityBadge) {
                         priorityBadge.textContent = data.task.priority;
@@ -233,6 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (commentsP) commentsP.textContent = data.task.comments || '';
                     card.dataset.priority = data.task.priority;
                     card.dataset.status = data.task.status;
+                    card.dataset.projectId = data.task.project_id;
                     card.dataset.progress = data.task.progress;
                     card.dataset.dueDate = data.task.due_date;
                     card.dataset.startDate = data.task.start_date;
@@ -244,36 +290,38 @@ document.addEventListener('DOMContentLoaded', function() {
                     // tds[0]: checkbox (skip)
                     // tds[1]: Title
                     if (tds[1]) tds[1].textContent = data.task.title;
-                    // tds[2]: Status
-                    if (tds[2]) {
-                        let statusBadge = tds[2].querySelector('.status-badge');
+                    // tds[2]: Project
+                    if (tds[2]) tds[2].textContent = data.task.project ? data.task.project.name : '-';
+                    // tds[3]: Status
+                    if (tds[3]) {
+                        let statusBadge = tds[3].querySelector('.status-badge');
                         if (!statusBadge) {
                             statusBadge = document.createElement('span');
                             statusBadge.className = 'status-badge';
-                            tds[2].appendChild(statusBadge);
+                            tds[3].appendChild(statusBadge);
                         }
                         statusBadge.textContent = data.task.status;
                         statusBadge.className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
                     }
-                    // tds[3]: Priority
-                    if (tds[3]) {
-                        let priorityBadge = tds[3].querySelector('.priority-badge');
+                    // tds[4]: Priority
+                    if (tds[4]) {
+                        let priorityBadge = tds[4].querySelector('.priority-badge');
                         if (!priorityBadge) {
                             priorityBadge = document.createElement('span');
                             priorityBadge.className = 'priority-badge';
-                            tds[3].appendChild(priorityBadge);
+                            tds[4].appendChild(priorityBadge);
                         }
                         priorityBadge.textContent = data.task.priority;
                         priorityBadge.className = 'priority-badge priority-' + data.task.priority.toLowerCase();
                     }
-                    // tds[4]: Assignee/Assigned By
+                    // tds[5]: Assignee/Assigned By
                     const userRole = document.body.getAttribute('data-user-role');
                     if (userRole === 'team_member') {
-                        if (tds[4]) tds[4].textContent = data.task.created_by_name || 'Manager';
+                        if (tds[5]) tds[5].textContent = data.task.created_by_name || 'Manager';
                     } else {
-                        if (tds[4]) tds[4].textContent = data.task.assignee ? data.task.assignee.name : '-';
+                        if (tds[5]) tds[5].textContent = data.task.assignee ? data.task.assignee.name : '-';
                     }
-                    // tds[5]: Due Date
+                    // tds[6]: Due Date
                     if (tds[6]) tds[6].textContent = data.task.due_date ? new Date(data.task.due_date).toLocaleDateString() : '-';
                     // tds[7]: Progress
                     if (tds[7]) tds[7].textContent = data.task.progress + '%';
@@ -303,59 +351,14 @@ document.addEventListener('DOMContentLoaded', function() {
             progressValue.textContent = this.value;
         });
     }
-
-    // --- Task Filtering ---
-    const searchInput = document.getElementById('searchTasks');
-    const statusFilter = document.getElementById('statusFilter');
-    const priorityFilter = document.getElementById('priorityFilter');
-    const assigneeFilter = document.getElementById('assigneeFilter');
-    const tasksGrid = document.getElementById('tasksGrid');
-
-    function filterTasks() {
-        const search = searchInput.value.toLowerCase();
-        const status = statusFilter.value;
-        const priority = priorityFilter.value;
-        const assignee = assigneeFilter.value;
-        const cards = tasksGrid.querySelectorAll('.task-card');
-        let anyVisible = false;
-        cards.forEach(card => {
-            const title = card.querySelector('.task-title').textContent.toLowerCase();
-            const cardStatus = card.dataset.status;
-            const cardPriority = card.dataset.priority;
-            const cardAssignee = card.dataset.assigneeId;
-            let visible = true;
-            if (search && !title.includes(search)) visible = false;
-            if (status && cardStatus !== status) visible = false;
-            if (priority && cardPriority !== priority) visible = false;
-            if (assignee && cardAssignee !== assignee) visible = false;
-            card.style.display = visible ? '' : 'none';
-            if (visible) anyVisible = true;
+    if (taskProjectSelect) {
+        taskProjectSelect.addEventListener('change', function() {
+            populateAssignees(this.value);
         });
-        // Table view filtering
-        const rows = document.querySelectorAll('#tasksTableWrapper tbody tr');
-        let anyTableVisible = false;
-        rows.forEach(row => {
-            const tds = row.querySelectorAll('td');
-            const title = tds[0].textContent.toLowerCase();
-            const rowStatus = tds[1].textContent.trim();
-            const rowPriority = tds[2].textContent.trim();
-            const rowAssignee = tds[3].textContent.trim();
-            let visible = true;
-            if (search && !title.includes(search)) visible = false;
-            if (status && rowStatus !== status) visible = false;
-            if (priority && rowPriority !== priority) visible = false;
-            if (assignee && assignee !== '' && rowAssignee !== assigneeFilter.options[assigneeFilter.selectedIndex].text) visible = false;
-            row.style.display = visible ? '' : 'none';
-            if (visible) anyTableVisible = true;
-        });
-        // Show/hide empty state
-        const emptyState = document.querySelector('.empty-state');
-        if (emptyState) emptyState.style.display = anyVisible ? 'none' : '';
+        populateAssignees(taskProjectSelect.value);
     }
-    [searchInput, statusFilter, priorityFilter, assigneeFilter].forEach(el => {
-        if (el) el.addEventListener('input', filterTasks);
-        if (el && el.tagName === 'SELECT') el.addEventListener('change', filterTasks);
-    });
+
+    const tasksGrid = document.getElementById('tasksGrid');
 
     // Make task cards clickable
     document.querySelectorAll('.task-card').forEach(card => {
@@ -377,7 +380,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
-                    taskForm.querySelector('#taskAssignee').value = task.assignee_id || '';
+                    taskForm.querySelector('#taskProject').value = task.project_id || '';
+                    populateAssignees(task.project_id || '', task.assignee_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
                     taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
@@ -526,6 +530,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const payload = {
                             title: task.title,
                             description: task.description,
+                            project_id: task.project_id,
                             assignee_id: task.assignee_id,
                             priority: task.priority,
                             status: 'Completed',
@@ -666,40 +671,81 @@ document.addEventListener('DOMContentLoaded', function() {
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <!-- Filters -->
     <div class="filters-card">
-        <div class="filters-grid">
-            <div class="search-group">
-                <div class="search-input">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="searchTasks" name="searchTasks" placeholder="Search tasks...">
-                </div>
+        @if ($errors->any())
+            <div class="filter-errors" role="alert">
+                <strong>Some filters could not be applied.</strong>
+                <ul>
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
             </div>
-            <select id="statusFilter" name="statusFilter">
-                <option value="">All Status</option>
-                <option value="Not Started">Not Started</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="On Hold">On Hold</option>
-            </select>
-            <select id="priorityFilter" name="priorityFilter">
-                <option value="">All Priority</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-            </select>
-            <select id="assigneeFilter" name="assigneeFilter">
-                <option value="">All Assignees</option>
-                @foreach ($assignees as $user)
-                    <option value="{{ $user->id }}">{{ $user->name }}</option>
-                @endforeach
-            </select>
-        </div>
+        @endif
+        <form method="GET" action="{{ route('tasks') }}" id="taskFilters">
+            <div class="filters-grid">
+                <div class="search-group">
+                    <div class="search-input">
+                        <span class="search-icon">🔍</span>
+                        <input
+                            type="search"
+                            id="searchTasks"
+                            name="search"
+                            value="{{ $filters['search'] ?? '' }}"
+                            maxlength="200"
+                            placeholder="Search tasks..."
+                            aria-label="Search tasks"
+                        >
+                    </div>
+                </div>
+                <select id="statusFilter" name="status" aria-label="Filter tasks by status">
+                    <option value="">All Status</option>
+                    @foreach (\App\Models\Task::STATUSES as $status)
+                        <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $status }}</option>
+                    @endforeach
+                </select>
+                <select id="priorityFilter" name="priority" aria-label="Filter tasks by priority">
+                    <option value="">All Priority</option>
+                    @foreach (\App\Models\Task::PRIORITIES as $priority)
+                        <option value="{{ $priority }}" @selected(($filters['priority'] ?? '') === $priority)>{{ $priority }}</option>
+                    @endforeach
+                </select>
+                <select id="projectFilter" name="project" aria-label="Filter tasks by project">
+                    <option value="">All Projects</option>
+                    @foreach ($filterProjects as $project)
+                        <option value="{{ $project->id }}" @selected((string) ($filters['project'] ?? '') === (string) $project->id)>{{ $project->name }}</option>
+                    @endforeach
+                </select>
+                <select id="assigneeFilter" name="assignee" aria-label="Filter tasks by assignee">
+                    <option value="">All Assignees</option>
+                    @foreach ($assignees as $assignee)
+                        <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button type="submit" class="btn-primary">Apply filters</button>
+                @if ($hasActiveFilters)
+                    <a href="{{ route('tasks') }}" class="btn-secondary">Clear filters</a>
+                @endif
+            </div>
+        </form>
     </div>
+    <p class="task-results-summary" role="status">
+        @if ($tasks->total() > 0)
+            Showing {{ $tasks->firstItem() }}&ndash;{{ $tasks->lastItem() }} of {{ $tasks->total() }} {{ $hasActiveFilters ? 'matching ' : '' }}tasks
+        @elseif ($hasActiveFilters)
+            No tasks match the selected filters.
+        @else
+            No tasks are currently available.
+        @endif
+    </p>
     <!-- Tasks Grid (Card View) -->
     <div id="tasksGrid" class="tasks-grid">
         @forelse ($tasks as $task)
             <div class="task-card" tabindex="0" style="cursor:pointer"
                 data-task-id="{{ $task->id }}"
                 data-assignee-id="{{ $task->assignee_id }}"
+                data-project-id="{{ $task->project_id }}"
                 data-priority="{{ $task->priority }}"
                 data-status="{{ $task->status }}"
                 data-start-date="{{ $task->start_date }}"
@@ -723,9 +769,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <h3 class="task-title">{{ $task->title }}</h3>
                 <div class="task-details">
+                    <span class="task-project">Project: {{ $task->project ? $task->project->name : '-' }}</span>
                     @php $user = auth()->user(); @endphp
                     @if($user && $user->role && $user->role->name === 'team_member')
-                        <span class="task-assigned-by">Assigned by: {{ $task->created_by ? ($assignees->find($task->created_by)->name ?? 'Manager') : 'Manager' }}</span>
+                        <span class="task-assigned-by">Assigned by: {{ $task->creator?->name ?? 'Manager' }}</span>
                     @else
                         <span class="task-assignee">Assignee: {{ $task->assignee ? $task->assignee->name : '-' }}</span>
                     @endif
@@ -763,8 +810,13 @@ document.addEventListener('DOMContentLoaded', function() {
         @empty
             <div class="empty-state">
                 <div class="empty-icon">📋</div>
-                <h3>No tasks found</h3>
-                <p>Create your first task to get started!</p>
+                @if ($hasActiveFilters)
+                    <h3>No tasks match your filters</h3>
+                    <p>Try changing your filters or <a href="{{ route('tasks') }}">clear all filters</a>.</p>
+                @else
+                    <h3>No tasks available</h3>
+                    <p>{{ $user->can('create', \App\Models\Task::class) ? 'Create your first task to get started!' : 'Tasks assigned to you will appear here.' }}</p>
+                @endif
             </div>
         @endforelse
     </div>
@@ -780,6 +832,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr>
                     <th><input type="checkbox" id="selectAllTasks"></th>
                     <th>Title</th>
+                    <th>Project</th>
                     <th>Status</th>
                     <th>Priority</th>
                     <th>@php $user = auth()->user(); @endphp
@@ -794,11 +847,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     <tr data-task-id="{{ $task->id }}">
                         <td><input type="checkbox" class="task-checkbox" value="{{ $task->id }}"></td>
                         <td>{{ $task->title }}</td>
+                        <td>{{ $task->project ? $task->project->name : '-' }}</td>
                         <td><span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span></td>
                         <td><span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span></td>
                         <td>
                             @if($user && $user->role && $user->role->name === 'team_member')
-                                {{ $task->created_by ? ($assignees->find($task->created_by)->name ?? 'Manager') : 'Manager' }}
+                                {{ $task->creator?->name ?? 'Manager' }}
                             @else
                                 {{ $task->assignee ? $task->assignee->name : '-' }}
                             @endif
@@ -813,6 +867,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 @endforeach
             </tbody>
         </table>
+    </div>
+    <div class="pagination-wrapper">
+        {{ $tasks->onEachSide(1)->links() }}
     </div>
     <!-- History Button at the bottom -->
     <div style="margin: 3rem auto 0 auto; text-align: center;">
@@ -844,14 +901,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     <label for="taskDescription">Task Description *</label>
                     <textarea id="taskDescription" name="taskDescription" rows="3" placeholder="Describe the task..." required></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="taskProject">Project *</label>
+                    <select id="taskProject" name="taskProject" required>
+                        <option value="">Select Project</option>
+                        @foreach ($projects as $project)
+                            <option value="{{ $project->id }}">{{ $project->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="taskAssignee">Assign To *</label>
                         <select id="taskAssignee" name="taskAssignee" required>
                             <option value="">Select Team Member</option>
-                            @foreach ($assignees as $user)
-                                <option value="{{ $user->id }}">{{ $user->name }}</option>
-                            @endforeach
                         </select>
                     </div>
                     <div class="form-group">
@@ -897,4 +960,4 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 </div>
-@endsection 
+@endsection

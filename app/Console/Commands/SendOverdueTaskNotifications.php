@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\Task;
 use App\Notifications\TaskOverdueNotification;
+use Illuminate\Console\Command;
 
 class SendOverdueTaskNotifications extends Command
 {
@@ -25,10 +25,12 @@ class SendOverdueTaskNotifications extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
-        $overdueTasks = Task::where('status', '!=', 'Completed')
+        $overdueTasks = Task::query()
+            ->where('status', '!=', 'Completed')
             ->where('due_date', '<', now())
+            ->whereNull('overdue_notification_sent_at')
             ->with('assignee')
             ->get();
 
@@ -36,10 +38,13 @@ class SendOverdueTaskNotifications extends Command
         foreach ($overdueTasks as $task) {
             if ($task->assignee) {
                 $task->assignee->notify(new TaskOverdueNotification($task));
+                $task->forceFill(['overdue_notification_sent_at' => now()])->save();
                 $notificationCount++;
             }
         }
 
         $this->info("Sent {$notificationCount} overdue task notifications.");
+
+        return self::SUCCESS;
     }
-} 
+}

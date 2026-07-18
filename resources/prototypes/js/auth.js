@@ -1,69 +1,32 @@
 // Authentication System
 class AuthSystem {
     constructor() {
-        this.storageKey = 'taskflow_current_user';
-        this.usersKey = 'taskflow_users';
+        this.currentUser = null;
+        this.users = [];
         this.initializeDefaultUsers();
     }
 
     initializeDefaultUsers() {
-        if (!localStorage.getItem(this.usersKey)) {
-            const defaultUsers = [
-                {
-                    id: 'manager1',
-                    email: 'asalpandey44@gmail.com',
-                    name: 'Asal Pandey',
-                    role: 'manager',
-                    companyId: '1',
-                    createdAt: '2024-01-01T00:00:00Z',
-                    password: 'PLMokn!@#123',
-                },
-                {
-                    id: '1',
-                    email: 'aniket@techcorp.com',
-                    name: 'Aniket',
-                    role: 'team',
-                    companyId: '1',
-                    createdAt: '2024-01-02T00:00:00Z',
-                    password: 'aniket123',
-                },
-                {
-                    id: '2',
-                    email: 'achyut@techcorp.com',
-                    name: 'Achyut',
-                    role: 'team',
-                    companyId: '1',
-                    createdAt: '2024-01-02T00:00:00Z',
-                    password: 'achyut123',
-                },
-                {
-                    id: '3',
-                    email: 'bishal@techcorp.com',
-                    name: 'Bishal',
-                    role: 'team',
-                    companyId: '1',
-                    createdAt: '2024-01-02T00:00:00Z',
-                    password: 'bishal123',
-                }
-            ];
-            localStorage.setItem(this.usersKey, JSON.stringify(defaultUsers));
-        }
+        // Archived UI reference only. No users or credentials are provisioned.
+        this.users = [];
     }
 
     async login(email, password) {
         try {
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const user = users.find(u => u.email === email && u.password === password);
             
             if (user) {
                 // Update last login
                 const updatedUser = { ...user, lastLogin: new Date().toISOString() };
                 const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
-                localStorage.setItem(this.usersKey, JSON.stringify(updatedUsers));
+                this.users = updatedUsers;
                 
                 // Save current session
-                localStorage.setItem(this.storageKey, JSON.stringify(updatedUser));
-                return { success: true, user: updatedUser };
+                const sessionUser = { ...updatedUser };
+                delete sessionUser.password;
+                this.currentUser = sessionUser;
+                return { success: true, user: sessionUser };
             }
             
             return { success: false, message: 'Invalid email or password' };
@@ -75,8 +38,7 @@ class AuthSystem {
 
     getCurrentUser() {
         try {
-            const userData = localStorage.getItem(this.storageKey);
-            return userData ? JSON.parse(userData) : null;
+            return this.currentUser;
         } catch (error) {
             console.error('Error getting current user:', error);
             return null;
@@ -84,7 +46,7 @@ class AuthSystem {
     }
 
     logout() {
-        localStorage.removeItem(this.storageKey);
+        this.currentUser = null;
         window.location.href = '/index.html';
     }
 
@@ -112,7 +74,7 @@ class AuthSystem {
     // Team Management Functions
     getTeamMembers() {
         try {
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const currentUser = this.getCurrentUser();
             if (!currentUser) return [];
             
@@ -127,7 +89,7 @@ class AuthSystem {
 
     addTeamMember(memberData) {
         try {
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const currentUser = this.getCurrentUser();
             
             if (!currentUser || currentUser.role !== 'manager') {
@@ -150,7 +112,7 @@ class AuthSystem {
             };
 
             users.push(newMember);
-            localStorage.setItem(this.usersKey, JSON.stringify(users));
+            this.users = users;
             
             return { success: true, member: newMember };
         } catch (error) {
@@ -161,7 +123,7 @@ class AuthSystem {
 
     updateTeamMember(memberId, updates) {
         try {
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const currentUser = this.getCurrentUser();
             
             if (!currentUser || currentUser.role !== 'manager') {
@@ -179,7 +141,7 @@ class AuthSystem {
             }
 
             users[memberIndex] = { ...users[memberIndex], ...updates };
-            localStorage.setItem(this.usersKey, JSON.stringify(users));
+            this.users = users;
             
             return { success: true, member: users[memberIndex] };
         } catch (error) {
@@ -190,7 +152,7 @@ class AuthSystem {
 
     removeTeamMember(memberId) {
         try {
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const currentUser = this.getCurrentUser();
             
             if (!currentUser || currentUser.role !== 'manager') {
@@ -198,7 +160,7 @@ class AuthSystem {
             }
 
             const filteredUsers = users.filter(u => u.id !== memberId);
-            localStorage.setItem(this.usersKey, JSON.stringify(filteredUsers));
+            this.users = filteredUsers;
             
             return { success: true };
         } catch (error) {
@@ -212,14 +174,15 @@ class AuthSystem {
             const currentUser = this.getCurrentUser();
             if (!currentUser) throw new Error('Not authenticated');
 
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const userIndex = users.findIndex(u => u.id === currentUser.id);
             
             if (userIndex === -1) throw new Error('User not found');
 
             users[userIndex] = { ...users[userIndex], ...updates };
-            localStorage.setItem(this.usersKey, JSON.stringify(users));
-            localStorage.setItem(this.storageKey, JSON.stringify(users[userIndex]));
+            this.users = users;
+            this.currentUser = { ...users[userIndex] };
+            delete this.currentUser.password;
             
             return { success: true };
         } catch (error) {
@@ -233,7 +196,7 @@ class AuthSystem {
             const currentUser = this.getCurrentUser();
             if (!currentUser) throw new Error('Not authenticated');
 
-            const users = JSON.parse(localStorage.getItem(this.usersKey) || '[]');
+            const users = [...this.users];
             const user = users.find(u => u.id === currentUser.id);
             
             if (!user || user.password !== currentPassword) {
@@ -242,7 +205,7 @@ class AuthSystem {
 
             const userIndex = users.findIndex(u => u.id === currentUser.id);
             users[userIndex].password = newPassword;
-            localStorage.setItem(this.usersKey, JSON.stringify(users));
+            this.users = users;
             
             return { success: true };
         } catch (error) {

@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\Task;
 use App\Notifications\TaskDeadlineReminderNotification;
+use Illuminate\Console\Command;
 
 class SendTaskDeadlineReminders extends Command
 {
@@ -20,23 +20,32 @@ class SendTaskDeadlineReminders extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Send one-time reminders for tasks due tomorrow';
 
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
-        $tomorrow = now()->addDay()->startOfDay();
-        $tasks = Task::where('status', '!=', 'Completed')
+        $tomorrow = now()->addDay()->toDateString();
+        $tasks = Task::query()
+            ->where('status', '!=', 'Completed')
             ->whereDate('due_date', $tomorrow)
+            ->whereNull('deadline_reminder_sent_at')
             ->with('assignee')
             ->get();
+
+        $notificationCount = 0;
         foreach ($tasks as $task) {
             if ($task->assignee) {
                 $task->assignee->notify(new TaskDeadlineReminderNotification($task));
+                $task->forceFill(['deadline_reminder_sent_at' => now()])->save();
+                $notificationCount++;
             }
         }
-        $this->info('Task deadline reminders sent.');
+
+        $this->info("Sent {$notificationCount} deadline reminder notifications.");
+
+        return self::SUCCESS;
     }
 }
