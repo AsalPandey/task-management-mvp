@@ -11,6 +11,7 @@ use App\Http\Controllers\SetupController;
 use App\Http\Controllers\TasksController;
 use App\Http\Controllers\TeamDashboardController;
 use App\Http\Controllers\TeamManagementController;
+use App\Http\Middleware\EnsureTaskCorrelationId;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -58,15 +59,19 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
     Route::delete('/projects/{project}/remove-member', [ProjectsController::class, 'removeMember'])->name('projects.members.remove');
 
     Route::get('/tasks', [TasksController::class, 'index'])->name('tasks');
-    Route::post('/tasks', [TasksController::class, 'store'])->middleware('throttle:30,1')->name('tasks.store');
-    Route::put('/tasks/{task}', [TasksController::class, 'update'])->name('tasks.update');
-    Route::delete('/tasks/{task}', [TasksController::class, 'destroy'])->name('tasks.destroy');
-    Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
-    Route::post('/tasks/bulk-complete', [TasksController::class, 'bulkComplete'])->name('tasks.bulk-complete');
+    Route::middleware(EnsureTaskCorrelationId::class)->group(function () {
+        Route::post('/tasks', [TasksController::class, 'store'])->middleware('throttle:30,1')->name('tasks.store');
+        Route::put('/tasks/{task}', [TasksController::class, 'update'])->name('tasks.update');
+        Route::delete('/tasks/{task}', [TasksController::class, 'destroy'])->name('tasks.destroy');
+        Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
+        Route::post('/tasks/bulk-complete', [TasksController::class, 'bulkComplete'])->name('tasks.bulk-complete');
+    });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 
     Route::get('/history', [CompletedTasksController::class, 'index'])->name('completed-tasks');
-    Route::post('/history/revert/{completedTask}', [CompletedTasksController::class, 'revert'])->name('completed-tasks.revert');
+    Route::post('/history/revert/{completedTask}', [CompletedTasksController::class, 'revert'])
+        ->middleware(EnsureTaskCorrelationId::class)
+        ->name('completed-tasks.revert');
 
     Route::get('/team-management', [TeamManagementController::class, 'index'])->name('team-management');
     Route::post('/team-management', [TeamManagementController::class, 'store'])->name('team-management.store');

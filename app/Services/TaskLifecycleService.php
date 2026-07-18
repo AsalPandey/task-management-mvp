@@ -12,15 +12,38 @@ use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskRevertedNotification;
 use App\Notifications\TaskUpdatedNotification;
+use App\ValueObjects\TaskOperationContext;
+use DateTimeInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class TaskLifecycleService
 {
-    public function create(array $data, User $actor): Task|CompletedTask
+    private const TASK_EVENT_FIELDS = [
+        'project_id',
+        'title',
+        'description',
+        'assignee_id',
+        'priority',
+        'status',
+        'progress',
+        'start_date',
+        'due_date',
+        'comments',
+    ];
+
+    private const MAX_TASK_UID_ATTEMPTS = 5;
+
+    public function __construct(private readonly TaskEventRecorder $eventRecorder) {}
+
+    public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task|CompletedTask
     {
-        return DB::transaction(function () use ($data, $actor) {
+        $context ??= TaskOperationContext::system($actor->id);
+
+        return DB::transaction(function () use ($data, $actor, $context) {
             $data['created_by'] = $actor->id;
             $data['assigned_by'] = $actor->id;
             $project = $this->assertProjectAccess($data['project_id'], $actor);
@@ -28,8 +51,14 @@ class TaskLifecycleService
             $this->assertAssigneeIsProjectMember($data['project_id'], $data['assignee_id'] ?? null);
             $this->assertCompletionState($data);
 
-            $task = Task::query()->create($data);
+            $task = $this->createTaskWithUidRetry($data);
             $this->recordHistory($task, 'created', $data, $actor);
+            $this->eventRecorder->record(
+                $task,
+                TaskEventRecorder::CREATED,
+                $context,
+                $this->createdEventChanges($task),
+            );
 
             if ($task->assignee) {
                 $task->assignee->notify(new TaskAssignedNotification($task, $actor));
@@ -43,11 +72,14 @@ class TaskLifecycleService
         });
     }
 
-    public function update(Task $task, array $data, User $actor): Task|CompletedTask
+    public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task|CompletedTask
     {
-        return DB::transaction(function () use ($task, $data, $actor) {
+        $context ??= TaskOperationContext::system($actor->id);
+
+        return DB::transaction(function () use ($task, $data, $actor, $context) {
             $task->load(['project', 'assignee']);
             $old = $task->toArray();
+            $beforeEventValues = $this->taskEventValues($task);
 
             if ($actor->hasRole('team_member')) {
                 $data = array_intersect_key($data, array_flip(['status', 'progress', 'comments']));
@@ -86,6 +118,16 @@ class TaskLifecycleService
             $task->update($merged);
             $task->refresh()->load(['project', 'assignee']);
             $this->recordHistory($task, 'updated', ['old' => $old, 'new' => $merged], $actor);
+            $changedFields = $this->updatedEventChanges($beforeEventValues, $this->taskEventValues($task));
+
+            if ($changedFields !== []) {
+                $this->eventRecorder->record(
+                    $task,
+                    TaskEventRecorder::UPDATED,
+                    $context,
+                    $changedFields,
+                );
+            }
 
             if ($task->assignee && (int) $task->assignee_id !== (int) $actor->id) {
                 $task->assignee->notify(new TaskUpdatedNotification($task, $merged, $actor));
@@ -191,7 +233,7 @@ class TaskLifecycleService
                 $taskData['updated_at'],
             );
 
-            $task = Task::query()->create($taskData);
+            $task = $this->createTaskWithUidRetry($taskData);
             $this->recordHistory($task, 'reverted', $taskData, $actor, $completedTask);
 
             $completedTask->forceFill([
@@ -256,6 +298,70 @@ class TaskLifecycleService
                 'progress' => 'Progress must be 100% to mark a task as completed.',
             ]);
         }
+    }
+
+    private function createTaskWithUidRetry(array $data): Task
+    {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= self::MAX_TASK_UID_ATTEMPTS; $attempt++) {
+            try {
+                return Task::query()->create($data);
+            } catch (UniqueConstraintViolationException $exception) {
+                if (! str_contains(strtolower($exception->getMessage()), 'task_uid')) {
+                    throw $exception;
+                }
+
+                $lastException = $exception;
+            }
+        }
+
+        throw new RuntimeException(
+            'Unable to assign a unique UID to a new task after bounded retries.',
+            previous: $lastException,
+        );
+    }
+
+    private function createdEventChanges(Task $task): array
+    {
+        return collect($this->taskEventValues($task))
+            ->map(fn ($value) => ['before' => null, 'after' => $value])
+            ->all();
+    }
+
+    private function updatedEventChanges(array $before, array $after): array
+    {
+        $changes = [];
+
+        foreach (self::TASK_EVENT_FIELDS as $field) {
+            if ($before[$field] !== $after[$field]) {
+                $changes[$field] = [
+                    'before' => $before[$field],
+                    'after' => $after[$field],
+                ];
+            }
+        }
+
+        return $changes;
+    }
+
+    private function taskEventValues(Task $task): array
+    {
+        return collect(self::TASK_EVENT_FIELDS)
+            ->mapWithKeys(function (string $field) use ($task) {
+                $value = $task->getAttribute($field);
+
+                if ($value instanceof DateTimeInterface) {
+                    $value = $value->format('Y-m-d');
+                }
+
+                if (in_array($field, ['project_id', 'assignee_id', 'progress'], true) && $value !== null) {
+                    $value = (int) $value;
+                }
+
+                return [$field => $value];
+            })
+            ->all();
     }
 
     private function recordHistory(Task $task, string $action, array $changes, User $actor, ?CompletedTask $completedTask = null): void

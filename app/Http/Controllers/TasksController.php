@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
 use App\Http\Requests\TaskUpdateRequest;
@@ -10,6 +11,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
+use App\ValueObjects\TaskOperationContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -83,7 +85,14 @@ class TasksController extends Controller
 
     public function store(TaskStoreRequest $request, TaskLifecycleService $tasks)
     {
-        $task = $tasks->create($request->validated(), $request->user());
+        $task = $tasks->create(
+            $request->validated(),
+            $request->user(),
+            TaskOperationContext::web(
+                $request->user(),
+                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            ),
+        );
 
         return response()->json([
             'success' => true,
@@ -94,7 +103,15 @@ class TasksController extends Controller
 
     public function update(TaskUpdateRequest $request, Task $task, TaskLifecycleService $tasks)
     {
-        $updated = $tasks->update($task, $request->validated(), $request->user());
+        $updated = $tasks->update(
+            $task,
+            $request->validated(),
+            $request->user(),
+            TaskOperationContext::web(
+                $request->user(),
+                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            ),
+        );
 
         return response()->json([
             'success' => true,

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\UlidGenerator;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -31,6 +32,7 @@ class Task extends Model
     protected $casts = [
         'start_date' => 'date',
         'due_date' => 'date',
+        'completed_at' => 'datetime',
         'deadline_reminder_sent_at' => 'datetime',
         'overdue_notification_sent_at' => 'datetime',
     ];
@@ -38,6 +40,21 @@ class Task extends Model
     public const STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
 
     public const PRIORITIES = ['Low', 'Medium', 'High'];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Task $task) {
+            if (! $task->task_uid) {
+                $task->task_uid = app(UlidGenerator::class)->generate();
+            }
+        });
+
+        static::updating(function (Task $task) {
+            if ($task->isDirty('task_uid')) {
+                $task->task_uid = $task->getRawOriginal('task_uid');
+            }
+        });
+    }
 
     public function project()
     {
@@ -54,6 +71,11 @@ class Task extends Model
         return $this->hasMany(TaskHistory::class);
     }
 
+    public function events()
+    {
+        return $this->hasMany(TaskEvent::class)->orderBy('sequence');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -62,5 +84,10 @@ class Task extends Model
     public function assigner()
     {
         return $this->belongsTo(User::class, 'assigned_by');
+    }
+
+    public function completedBy()
+    {
+        return $this->belongsTo(User::class, 'completed_by');
     }
 }
