@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const revertBtns = document.querySelectorAll('.revert-btn');
     revertBtns.forEach(btn => {
         btn.addEventListener('click', function() {
-            const id = this.dataset.id;
+            const url = this.dataset.url;
             const row = this.closest('tr');
             const originalText = this.textContent;
             const button = this;
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!result.isConfirmed) return;
                 button.disabled = true;
                 button.textContent = '⏳ Reverting...';
-            fetch(`/history/revert/${id}`, {
+            fetch(url, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
@@ -63,10 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     if (r.ok && data.success) {
-                        row.classList.add('reverted');
-                        button.textContent = 'Reverted';
-                        button.classList.remove('revert-btn');
-                        button.disabled = true;
+                        row.remove();
                         Swal.fire('Reverted!', 'Task reverted successfully.', 'success');
                     } else if (data && data.message) {
                         Swal.fire('Error', data.message, 'error');
@@ -108,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </thead>
         <tbody>
             @forelse($completed as $task)
-                <tr @if($task->reverted) class="reverted" @endif
+                <tr
                     data-description="{{ htmlspecialchars($task->description ?? '', ENT_QUOTES) }}"
                     data-comments="{{ htmlspecialchars($task->comments ?? '', ENT_QUOTES) }}"
                 >
@@ -120,15 +117,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
                     <td>{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</td>
                     <td>
-                        @if(!$task->reverted)
-                            @can('revert', $task)
-                                <button class="btn-small btn-primary revert-btn" data-id="{{ $task->id }}">Revert</button>
-                            @else
-                                <span aria-label="Revert unavailable">&mdash;</span>
-                            @endcan
+                        @can('reopen', $task)
+                            <button class="btn-small btn-primary revert-btn" data-url="{{ route('tasks.reopen', $task) }}">Revert</button>
                         @else
-                            <button class="btn-small btn-primary" disabled>Reverted</button>
-                        @endif
+                            <span aria-label="Revert unavailable">&mdash;</span>
+                        @endcan
                     </td>
                 </tr>
             @empty

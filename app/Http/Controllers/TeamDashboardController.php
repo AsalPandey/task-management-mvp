@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CompletedTask;
-use App\Models\Task;
+use App\Services\TaskReadService;
 
 class TeamDashboardController extends Controller
 {
+    public function __construct(private readonly TaskReadService $taskReads) {}
+
     public function index()
     {
         $user = auth()->user();
@@ -14,22 +15,18 @@ class TeamDashboardController extends Controller
         $today = now()->toDateString();
 
         // Today's tasks for this team member (created today OR currently active)
-        $todayTasks = Task::where('assignee_id', $user->id)
+        $todayTasks = $this->taskReads->activeVisibleTo($user)
             ->with(['project', 'creator'])
-            ->where(function ($query) use ($today) {
-                $query->whereDate('created_at', $today)
-                    ->orWhere('status', '!=', 'Completed');
-            })
             ->get();
 
         // Current active tasks for this team member
-        $currentTasks = Task::where('assignee_id', $user->id)
+        $currentTasks = $this->taskReads->activeVisibleTo($user)
             ->with(['project', 'creator'])
-            ->where('status', '!=', 'Completed')
             ->get();
 
         // Today's completed tasks
-        $todayCompletedTasks = CompletedTask::where('assignee_id', $user->id)
+        $completedTasksQuery = $this->taskReads->completedVisibleTo($user);
+        $todayCompletedTasks = (clone $completedTasksQuery)
             ->whereDate('completed_at', $today)
             ->count();
 
@@ -58,7 +55,7 @@ class TeamDashboardController extends Controller
         $todayStatusCounts = [
             'Not Started' => $todayTasks->where('status', 'Not Started')->count(),
             'In Progress' => $todayInProgressTasks,
-            'Completed' => $todayTasks->where('status', 'Completed')->count(),
+            'Completed' => $todayCompletedTasks,
         ];
 
         // Today's overdue list
@@ -68,8 +65,8 @@ class TeamDashboardController extends Controller
         $days = collect(range(0, 6))->map(function ($i) {
             return now()->subDays(6 - $i)->format('Y-m-d');
         });
-        $productivity = $days->mapWithKeys(function ($date) use ($user) {
-            $count = CompletedTask::where('assignee_id', $user->id)
+        $productivity = $days->mapWithKeys(function ($date) use ($completedTasksQuery) {
+            $count = (clone $completedTasksQuery)
                 ->whereDate('completed_at', $date)
                 ->count();
 
@@ -77,7 +74,7 @@ class TeamDashboardController extends Controller
         });
 
         // Recent completed tasks (last 7 days)
-        $recentCompletedHistory = CompletedTask::where('assignee_id', $user->id)
+        $recentCompletedHistory = (clone $completedTasksQuery)
             ->with('project')
             ->where('completed_at', '>=', now()->subDays(7))
             ->orderBy('completed_at', 'desc')

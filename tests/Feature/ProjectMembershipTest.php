@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -136,25 +135,23 @@ class ProjectMembershipTest extends TestCase
             'progress' => 100,
         ])->assertOk();
 
-        $completed = CompletedTask::where('title', 'Revertable Task')->firstOrFail();
+        $completed = $task->fresh();
 
-        $this->postJson("/history/revert/{$completed->id}")
+        $this->postJson(route('tasks.reopen', $completed))
             ->assertOk()
             ->assertJson(['success' => true]);
 
-        $this->assertDatabaseHas('completed_tasks', [
-            'id' => $completed->id,
-            'reverted' => true,
-            'deleted_at' => null,
-        ]);
+        $this->assertDatabaseCount('completed_tasks', 0);
         $this->assertDatabaseHas('tasks', [
+            'id' => $task->id,
             'title' => 'Revertable Task',
             'project_id' => $project->id,
             'assignee_id' => $member->id,
             'status' => 'In Progress',
             'progress' => 99,
         ]);
-        $this->assertTrue(TaskHistory::where('completed_task_id', $completed->id)
+        $this->assertTrue(TaskHistory::where('task_id', $task->id)
+            ->whereNull('completed_task_id')
             ->where('project_id', $project->id)
             ->where('task_title', 'Revertable Task')
             ->exists());

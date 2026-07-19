@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\CompletedTask;
+use App\Models\Task;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,7 +13,7 @@ class TaskCompletedNotification extends Notification
 {
     use Queueable;
 
-    protected $task;
+    protected Task|CompletedTask $task;
 
     protected $completedBy;
 
@@ -21,7 +22,7 @@ class TaskCompletedNotification extends Notification
     /**
      * Create a new notification instance.
      */
-    public function __construct($task, $completedBy = null, $isForAssignee = true)
+    public function __construct(Task|CompletedTask $task, $completedBy = null, $isForAssignee = true)
     {
         $this->task = $task;
         $this->completedBy = $completedBy;
@@ -44,7 +45,7 @@ class TaskCompletedNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
-        $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
+        $taskTitle = $this->task->title;
 
         if ($this->isForAssignee) {
             return (new MailMessage)
@@ -71,12 +72,13 @@ class TaskCompletedNotification extends Notification
     public function toArray(object $notifiable): array
     {
         $completedByName = $this->completedBy ? $this->completedBy->name : 'Unknown';
-        $taskTitle = $this->task instanceof CompletedTask ? $this->task->title : $this->task->title;
+        $taskTitle = $this->task->title;
         $completedAt = $this->getFormattedCompletedAt();
 
         if ($this->isForAssignee) {
             return [
                 'task_id' => $this->task->id,
+                'task_uid' => $this->task instanceof Task ? $this->task->task_uid : null,
                 'task_title' => $taskTitle,
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,
@@ -86,6 +88,7 @@ class TaskCompletedNotification extends Notification
         } else {
             return [
                 'task_id' => $this->task->id,
+                'task_uid' => $this->task instanceof Task ? $this->task->task_uid : null,
                 'task_title' => $taskTitle,
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,
@@ -100,7 +103,7 @@ class TaskCompletedNotification extends Notification
      */
     private function getFormattedCompletedAt()
     {
-        if ($this->task instanceof CompletedTask && $this->task->completed_at) {
+        if ($this->task->completed_at) {
             // If it's already a Carbon instance
             if (is_object($this->task->completed_at) && method_exists($this->task->completed_at, 'format')) {
                 return $this->task->completed_at->format('M d, Y H:i');

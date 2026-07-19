@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CompletedTask;
-use App\Models\Task;
 use App\Models\User;
+use App\Services\TaskReadService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
 {
+    public function __construct(private readonly TaskReadService $taskReads) {}
+
     public function index(Request $request)
     {
         abort_unless(auth()->user()->hasAnyRole(['manager', 'project_manager']), 403);
@@ -61,10 +62,10 @@ class AnalyticsController extends Controller
         $dateTo = $request->input('dateTo') ?: now()->format('Y-m-d');
         $assigneeId = $request->input('assignee');
 
-        $activeTasksQuery = $this->visibleTaskQuery()
+        $activeTasksQuery = $this->taskReads->activeVisibleTo($request->user())
             ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
             ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']));
-        $completedTasksQuery = $this->visibleCompletedTaskQuery()
+        $completedTasksQuery = $this->taskReads->completedVisibleTo($request->user())
             ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
             ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']));
 
@@ -94,11 +95,11 @@ class AnalyticsController extends Controller
                 return null;
             }
 
-            $active = $this->visibleTaskQuery()
+            $active = $this->taskReads->activeVisibleTo(auth()->user())
                 ->where('assignee_id', $user->id)
                 ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']))
                 ->get();
-            $completed = $this->visibleCompletedTaskQuery()
+            $completed = $this->taskReads->completedVisibleTo(auth()->user())
                 ->where('assignee_id', $user->id)
                 ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']))
                 ->get();
@@ -139,31 +140,9 @@ class AnalyticsController extends Controller
                 'Balance high-priority task distribution',
                 'Monitor team productivity trends',
             ],
-            'lastUpdated' => (clone $this->visibleTaskQuery())->latest('updated_at')->value('updated_at'),
+            'lastUpdated' => $this->taskReads->activeVisibleTo($request->user())->latest('updated_at')->value('updated_at'),
             'users' => $users,
         ];
-    }
-
-    private function visibleTaskQuery()
-    {
-        $user = auth()->user();
-
-        if ($user->hasRole('manager')) {
-            return Task::query();
-        }
-
-        return Task::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
-    }
-
-    private function visibleCompletedTaskQuery()
-    {
-        $user = auth()->user();
-
-        if ($user->hasRole('manager')) {
-            return CompletedTask::query();
-        }
-
-        return CompletedTask::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
     }
 
     private function visibleUsers()

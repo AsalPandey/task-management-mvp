@@ -6,7 +6,6 @@ use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
 use App\Http\Requests\TaskUpdateRequest;
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -32,6 +31,7 @@ class TasksController extends Controller
         );
 
         $tasksQuery = $this->visibleTasks()
+            ->where('status', '!=', 'Completed')
             ->with(['project', 'assignee', 'creator'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
@@ -96,7 +96,7 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'moved' => $task instanceof CompletedTask,
+            'moved' => $task->status === 'Completed',
             'task' => $task,
         ]);
     }
@@ -115,7 +115,7 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'moved' => $updated instanceof CompletedTask,
+            'moved' => $updated->status === 'Completed',
             'task' => $this->formatTask($updated),
         ]);
     }
@@ -153,21 +153,50 @@ class TasksController extends Controller
     {
         $this->authorize('bulkActions', Task::class);
 
-        $ids = $request->validate([
+        $ids = collect($request->validate([
             'task_ids' => ['required', 'array', 'min:1'],
             'task_ids.*' => ['integer', 'exists:tasks,id'],
-        ])['task_ids'];
+        ])['task_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values();
 
-        $tasks = $this->visibleTasks()->whereIn('id', $ids)->with(['project', 'assignee'])->get();
+        $tasks = Task::withTrashed()
+            ->whereKey($ids->all())
+            ->orderBy('id')
+            ->with('project')
+            ->get();
 
-        DB::transaction(function () use ($tasks, $service) {
-            foreach ($tasks as $task) {
-                $task->forceFill(['status' => 'Completed', 'progress' => 100]);
-                $service->complete($task, auth()->user(), 'bulk_completed');
-            }
-        });
+        foreach ($tasks as $task) {
+            $this->authorize('complete', $task);
+        }
+
+        $service->completeMany(
+            $ids->all(),
+            $request->user(),
+            TaskOperationContext::web(
+                $request->user(),
+                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            ),
+        );
 
         return response()->json(['success' => true]);
+    }
+
+    public function reopen(Request $request, Task $task, TaskLifecycleService $service)
+    {
+        $this->authorize('reopen', $task);
+
+        $reopened = $service->reopen(
+            $task,
+            $request->user(),
+            TaskOperationContext::web(
+                $request->user(),
+                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            ),
+        );
+
+        return response()->json([
+            'success' => true,
+            'task' => $this->formatTask($reopened),
+        ]);
     }
 
     public function edit(Task $task)

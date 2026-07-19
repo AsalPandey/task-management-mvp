@@ -65,6 +65,7 @@ class TaskUpdatedNotification extends Notification
 
         return [
             'task_id' => $this->task->id,
+            'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
             'updated_by' => $updatedByName,
             'changes' => $this->changes,

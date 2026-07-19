@@ -181,7 +181,7 @@ class CanonicalTaskSchemaTest extends TestCase
         }
     }
 
-    public function test_existing_completion_and_reopen_behavior_remains_on_legacy_tables(): void
+    public function test_completion_and_reopen_preserve_the_canonical_task_identity(): void
     {
         $managerRole = Role::query()->create(['name' => 'manager', 'label' => 'Manager']);
         $manager = User::factory()->create(['role_id' => $managerRole->id]);
@@ -196,28 +196,32 @@ class CanonicalTaskSchemaTest extends TestCase
             'progress' => 100,
         ]);
 
+        $taskId = $task->id;
+        $taskUid = $task->task_uid;
         $completed = app(TaskLifecycleService::class)->complete($task, $manager);
 
-        $this->assertSoftDeleted('tasks', ['id' => $task->id]);
-        $this->assertDatabaseHas('completed_tasks', [
-            'id' => $completed->id,
-            'original_task_id' => $task->id,
-            'reverted' => false,
-        ]);
-        $this->assertDatabaseCount('task_events', 0);
-
-        $reopened = app(TaskLifecycleService::class)->revert($completed, $manager);
-
-        $this->assertNotSame($task->id, $reopened->id);
+        $this->assertSame($taskId, $completed->id);
+        $this->assertSame($taskUid, $completed->task_uid);
         $this->assertDatabaseHas('tasks', [
-            'id' => $reopened->id,
-            'original_task_id' => $task->id,
+            'id' => $taskId,
+            'status' => 'Completed',
             'deleted_at' => null,
         ]);
-        $this->assertDatabaseHas('completed_tasks', ['id' => $completed->id, 'reverted' => true]);
-        $this->assertMatchesRegularExpression('/^[0-9A-HJKMNP-TV-Z]{26}$/', $reopened->task_uid);
-        $this->assertNotSame($task->task_uid, $reopened->task_uid);
-        $this->assertDatabaseCount('task_events', 0);
+        $this->assertDatabaseCount('completed_tasks', 0);
+
+        $reopened = app(TaskLifecycleService::class)->reopen($completed, $manager);
+
+        $this->assertSame($taskId, $reopened->id);
+        $this->assertSame($taskUid, $reopened->task_uid);
+        $this->assertDatabaseHas('tasks', [
+            'id' => $taskId,
+            'status' => 'In Progress',
+            'deleted_at' => null,
+        ]);
+        $this->assertSame(
+            ['task.completed', 'task.reopened'],
+            $reopened->events()->pluck('event_type')->all(),
+        );
     }
 
     private function createTask(array $attributes = []): Task

@@ -7,13 +7,9 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
-use App\Notifications\TaskAssignedNotification;
-use App\Notifications\TaskCompletedNotification;
-use App\Notifications\TaskOverdueNotification;
-use App\Notifications\TaskRevertedNotification;
-use App\Notifications\TaskUpdatedNotification;
 use App\ValueObjects\TaskOperationContext;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -35,15 +31,34 @@ class TaskLifecycleService
         'comments',
     ];
 
+    private const LEGACY_SNAPSHOT_FIELDS = [
+        'project_id',
+        'title',
+        'description',
+        'assignee_id',
+        'created_by',
+        'assigned_by',
+        'priority',
+        'start_date',
+        'due_date',
+        'comments',
+    ];
+
     private const MAX_TASK_UID_ATTEMPTS = 5;
 
-    public function __construct(private readonly TaskEventRecorder $eventRecorder) {}
+    private const TRANSACTION_ATTEMPTS = 3;
 
-    public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task|CompletedTask
+    public function __construct(
+        private readonly TaskEventRecorder $eventRecorder,
+        private readonly TaskNotificationDispatcher $notificationDispatcher,
+    ) {}
+
+    public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
+        $completeOnCreate = ($data['status'] ?? null) === 'Completed';
 
-        return DB::transaction(function () use ($data, $actor, $context) {
+        return DB::transaction(function () use ($data, $actor, $context, $completeOnCreate) {
             $data['created_by'] = $actor->id;
             $data['assigned_by'] = $actor->id;
             $project = $this->assertProjectAccess($data['project_id'], $actor);
@@ -51,8 +66,15 @@ class TaskLifecycleService
             $this->assertAssigneeIsProjectMember($data['project_id'], $data['assignee_id'] ?? null);
             $this->assertCompletionState($data);
 
-            $task = $this->createTaskWithUidRetry($data);
-            $this->recordHistory($task, 'created', $data, $actor);
+            $creationData = $data;
+
+            if ($completeOnCreate) {
+                $creationData['status'] = 'In Progress';
+                $creationData['progress'] = min((int) $creationData['progress'], 99);
+            }
+
+            $task = $this->createTaskWithUidRetry($creationData);
+            $this->recordHistory($task, 'created', $creationData, $actor);
             $this->eventRecorder->record(
                 $task,
                 TaskEventRecorder::CREATED,
@@ -60,86 +82,76 @@ class TaskLifecycleService
                 $this->createdEventChanges($task),
             );
 
-            if ($task->assignee) {
-                $task->assignee->notify(new TaskAssignedNotification($task, $actor));
-            }
+            $this->notificationDispatcher->taskCreated($task, $actor);
 
-            if ($task->status === 'Completed') {
-                return $this->complete($task, $actor, 'completed_on_create');
+            if ($completeOnCreate) {
+                return $this->complete($task, $actor, 'completed_on_create', $context, $data);
             }
 
             return $task->load(['project', 'assignee']);
-        });
+        }, self::TRANSACTION_ATTEMPTS);
     }
 
-    public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task|CompletedTask
+    public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
 
-        return DB::transaction(function () use ($task, $data, $actor, $context) {
-            $task->load(['project', 'assignee']);
-            $old = $task->toArray();
-            $beforeEventValues = $this->taskEventValues($task);
+        if ($actor->hasRole('team_member')) {
+            $data = array_intersect_key($data, array_flip(['status', 'progress', 'comments']));
+        }
 
-            if ($actor->hasRole('team_member')) {
-                $data = array_intersect_key($data, array_flip(['status', 'progress', 'comments']));
+        if (($data['status'] ?? null) === 'Completed') {
+            return $this->complete($task, $actor, 'completed', $context, $data);
+        }
+
+        return DB::transaction(function () use ($task, $data, $actor, $context) {
+            $lockedTask = Task::query()
+                ->whereKey($task->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            Gate::forUser($actor)->authorize('update', $lockedTask);
+
+            if ($lockedTask->status === 'Completed') {
+                throw ValidationException::withMessages([
+                    'task' => 'Completed tasks must be reopened before they can be updated.',
+                ]);
             }
 
-            $merged = array_merge($task->only([
-                'project_id',
-                'title',
-                'description',
-                'assignee_id',
-                'priority',
-                'status',
-                'progress',
-                'start_date',
-                'due_date',
-                'comments',
-            ]), $data);
+            $lockedTask->load(['project', 'assignee']);
+            $old = $lockedTask->toArray();
+            $beforeEventValues = $this->taskEventValues($lockedTask);
+            $merged = array_merge($lockedTask->only(self::TASK_EVENT_FIELDS), $data);
 
             $project = $this->assertProjectAccess((int) $merged['project_id'], $actor);
-            if ((int) $merged['project_id'] !== (int) $task->project_id) {
+            if ((int) $merged['project_id'] !== (int) $lockedTask->project_id) {
                 $this->assertProjectAcceptsNewTasks($project);
             }
             $this->assertAssigneeIsProjectMember((int) $merged['project_id'], $merged['assignee_id'] ?? null);
             $this->assertCompletionState($merged);
 
-            if (($merged['assignee_id'] ?? null) && (int) $merged['assignee_id'] !== (int) $task->assignee_id) {
+            if (($merged['assignee_id'] ?? null) && (int) $merged['assignee_id'] !== (int) $lockedTask->assignee_id) {
                 $merged['assigned_by'] = $actor->id;
             }
 
-            if (($merged['status'] ?? null) === 'Completed') {
-                $task->fill($merged);
-
-                return $this->complete($task, $actor);
-            }
-
-            $task->update($merged);
-            $task->refresh()->load(['project', 'assignee']);
-            $this->recordHistory($task, 'updated', ['old' => $old, 'new' => $merged], $actor);
-            $changedFields = $this->updatedEventChanges($beforeEventValues, $this->taskEventValues($task));
+            $lockedTask->update($merged);
+            $lockedTask->refresh()->load(['project', 'assignee']);
+            $this->recordHistory($lockedTask, 'updated', ['old' => $old, 'new' => $merged], $actor);
+            $changedFields = $this->changedEventValues($beforeEventValues, $this->taskEventValues($lockedTask));
 
             if ($changedFields !== []) {
                 $this->eventRecorder->record(
-                    $task,
+                    $lockedTask,
                     TaskEventRecorder::UPDATED,
                     $context,
                     $changedFields,
                 );
             }
 
-            if ($task->assignee && (int) $task->assignee_id !== (int) $actor->id) {
-                $task->assignee->notify(new TaskUpdatedNotification($task, $merged, $actor));
-            }
+            $this->notificationDispatcher->taskUpdated($lockedTask, $merged, $actor);
 
-            if ($task->due_date && $task->due_date->isPast() && $task->status !== 'Completed' && ! $task->overdue_notification_sent_at) {
-                $task->assignee?->notify(new TaskOverdueNotification($task));
-                $task->forceFill(['overdue_notification_sent_at' => now()])->save();
-            }
-
-            return $task;
-        });
+            return $lockedTask;
+        }, self::TRANSACTION_ATTEMPTS);
     }
 
     public function delete(Task $task, User $actor, string $action = 'deleted'): void
@@ -150,104 +162,299 @@ class TaskLifecycleService
         });
     }
 
-    public function complete(Task $task, User $actor, string $action = 'completed'): CompletedTask
-    {
-        Gate::forUser($actor)->authorize('update', $task);
+    public function complete(
+        Task $task,
+        User $actor,
+        string $action = 'completed',
+        ?TaskOperationContext $context = null,
+        array $updates = [],
+    ): Task {
+        $context ??= TaskOperationContext::system($actor->id);
 
-        $this->assertCompletionState([
-            'status' => 'Completed',
-            'progress' => $task->progress,
-        ]);
+        return DB::transaction(function () use ($task, $actor, $action, $context, $updates) {
+            $lockedTask = Task::withTrashed()
+                ->whereKey($task->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $taskData = collect($task->toArray())
-            ->only((new CompletedTask)->getFillable())
-            ->toArray();
+            Gate::forUser($actor)->authorize('complete', $lockedTask);
+            $this->assertTaskCanBeCompleted($lockedTask);
+            $before = $this->lifecycleEventValues($lockedTask);
 
-        $taskData['original_task_id'] = $task->original_task_id ?: $task->id;
-        $taskData['status'] = 'Completed';
-        $taskData['progress'] = 100;
-        $taskData['completed_at'] = now();
-        $taskData['completed_by'] = $actor->id;
-        unset($taskData['id'], $taskData['deleted_at'], $taskData['created_at'], $taskData['updated_at']);
+            if ($updates !== []) {
+                $updates = array_intersect_key($updates, array_flip(self::TASK_EVENT_FIELDS));
+                $merged = array_merge($lockedTask->only(self::TASK_EVENT_FIELDS), $updates);
+                $this->assertCompletionState($merged);
+                $project = $this->assertProjectAccess((int) $merged['project_id'], $actor);
 
-        $completed = CompletedTask::query()->create($taskData);
-        $this->recordHistory($task, $action, $taskData, $actor);
+                if ((int) $merged['project_id'] !== (int) $lockedTask->project_id) {
+                    $this->assertProjectAcceptsNewTasks($project);
+                }
 
-        if ($task->assignee) {
-            $task->assignee->notify(new TaskCompletedNotification($completed, $actor, true));
-        }
+                $this->assertAssigneeIsProjectMember((int) $merged['project_id'], $merged['assignee_id'] ?? null);
 
-        $task->delete();
+                if (($merged['assignee_id'] ?? null) && (int) $merged['assignee_id'] !== (int) $lockedTask->assignee_id) {
+                    $merged['assigned_by'] = $actor->id;
+                }
 
-        return $completed->load(['project', 'assignee']);
+                $lockedTask->fill($merged);
+            }
+
+            return $this->completeLockedTask($lockedTask, $actor, $action, $context, $before);
+        }, self::TRANSACTION_ATTEMPTS);
     }
 
-    public function revert(CompletedTask $completedTask, User $actor): Task
+    /**
+     * @param  array<int, int|string>  $taskIds
+     * @return Collection<int, Task>
+     */
+    public function completeMany(
+        array $taskIds,
+        User $actor,
+        ?TaskOperationContext $context = null,
+        string $action = 'bulk_completed',
+    ): Collection {
+        $context ??= TaskOperationContext::system($actor->id);
+        $ids = collect($taskIds)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->sort()
+            ->values();
+
+        return DB::transaction(function () use ($ids, $actor, $context, $action) {
+            $lockedTasks = Task::withTrashed()
+                ->whereKey($ids->all())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($lockedTasks->count() !== $ids->count()) {
+                throw ValidationException::withMessages([
+                    'task_ids' => 'One or more selected tasks are unavailable.',
+                ]);
+            }
+
+            foreach ($lockedTasks as $lockedTask) {
+                Gate::forUser($actor)->authorize('complete', $lockedTask);
+                $this->assertTaskCanBeCompleted($lockedTask);
+                $this->assertTaskHasEventIdentity($lockedTask);
+            }
+
+            return $lockedTasks->map(
+                fn (Task $lockedTask) => $this->completeLockedTask($lockedTask, $actor, $action, $context),
+            );
+        }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    public function reopen(Task $task, User $actor, ?TaskOperationContext $context = null): Task
     {
-        Gate::forUser($actor)->authorize('revert', $completedTask);
+        $context ??= TaskOperationContext::system($actor->id);
 
-        return DB::transaction(function () use ($completedTask, $actor) {
-            $this->assertProjectAccess((int) $completedTask->project_id, $actor);
+        return DB::transaction(function () use ($task, $actor, $context) {
+            $lockedTask = Task::withTrashed()
+                ->whereKey($task->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            if ($completedTask->reverted) {
+            Gate::forUser($actor)->authorize('reopen', $lockedTask);
+
+            if ($lockedTask->trashed()) {
+                throw ValidationException::withMessages([
+                    'task' => 'Deleted tasks cannot be reopened through the canonical route.',
+                ]);
+            }
+
+            return $this->reopenLockedTask($lockedTask, $actor, $context);
+        }, self::TRANSACTION_ATTEMPTS);
+    }
+
+    public function revert(
+        CompletedTask $completedTask,
+        User $actor,
+        ?TaskOperationContext $context = null,
+    ): Task {
+        $context ??= TaskOperationContext::system($actor->id);
+
+        return DB::transaction(function () use ($completedTask, $actor, $context) {
+            $lockedCompletedTask = CompletedTask::withTrashed()
+                ->whereKey($completedTask->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            Gate::forUser($actor)->authorize('revert', $lockedCompletedTask);
+
+            if ($lockedCompletedTask->trashed()) {
+                throw ValidationException::withMessages([
+                    'task' => 'Deleted completion history cannot be reverted.',
+                ]);
+            }
+
+            if ($lockedCompletedTask->reverted) {
                 throw ValidationException::withMessages([
                     'task' => 'Task has already been reverted.',
                 ]);
             }
 
-            $existsQuery = Task::query();
-
-            if ($completedTask->original_task_id) {
-                $existsQuery->where('original_task_id', $completedTask->original_task_id);
-            } else {
-                $existsQuery->where(function ($query) use ($completedTask) {
-                    $query->where('title', $completedTask->title)
-                        ->where('assignee_id', $completedTask->assignee_id)
-                        ->where('project_id', $completedTask->project_id);
-                });
+            if (! $lockedCompletedTask->original_task_id) {
+                throw ValidationException::withMessages([
+                    'task' => 'This legacy completion has no explicit canonical task mapping.',
+                ]);
             }
 
-            $exists = $existsQuery->exists();
+            $hasCompetingMapping = CompletedTask::query()
+                ->where('original_task_id', $lockedCompletedTask->original_task_id)
+                ->whereKeyNot($lockedCompletedTask->getKey())
+                ->where('reverted', false)
+                ->exists();
 
-            if ($exists) {
+            if ($hasCompetingMapping) {
+                throw ValidationException::withMessages([
+                    'task' => 'This legacy completion has an ambiguous canonical task mapping.',
+                ]);
+            }
+
+            $lockedTask = Task::withTrashed()
+                ->whereKey($lockedCompletedTask->original_task_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedTask) {
+                throw ValidationException::withMessages([
+                    'task' => 'The explicitly mapped canonical task could not be found.',
+                ]);
+            }
+
+            Gate::forUser($actor)->authorize('reopen', $lockedTask);
+
+            if (! $lockedTask->trashed() && $lockedTask->status !== 'Completed') {
                 throw ValidationException::withMessages([
                     'task' => 'Task is already active.',
                 ]);
             }
 
-            $taskData = collect($completedTask->toArray())
-                ->only((new Task)->getFillable())
-                ->toArray();
-            $taskData['original_task_id'] = $completedTask->original_task_id ?: $completedTask->id;
-            $taskData['status'] = 'In Progress';
-            $taskData['progress'] = min((int) ($completedTask->progress ?? 0), 99);
-            unset(
-                $taskData['id'],
-                $taskData['completed_at'],
-                $taskData['completed_by'],
-                $taskData['reverted'],
-                $taskData['reverted_by'],
-                $taskData['reverted_at'],
-                $taskData['deleted_at'],
-                $taskData['created_at'],
-                $taskData['updated_at'],
+            $before = $this->lifecycleEventValues($lockedTask);
+            $lockedTask->fill($lockedCompletedTask->only(self::LEGACY_SNAPSHOT_FIELDS));
+            $reopenedTask = $this->reopenLockedTask(
+                $lockedTask,
+                $actor,
+                $context,
+                $lockedCompletedTask,
+                $before,
             );
 
-            $task = $this->createTaskWithUidRetry($taskData);
-            $this->recordHistory($task, 'reverted', $taskData, $actor, $completedTask);
-
-            $completedTask->forceFill([
+            $lockedCompletedTask->forceFill([
                 'reverted' => true,
                 'reverted_by' => $actor->id,
-                'reverted_at' => now(),
+                'reverted_at' => $context->occurredAt,
             ])->save();
 
-            if ($task->assignee) {
-                $task->assignee->notify(new TaskRevertedNotification($task, $actor));
-            }
+            return $reopenedTask;
+        }, self::TRANSACTION_ATTEMPTS);
+    }
 
-            return $task->load(['project', 'assignee']);
-        });
+    private function completeLockedTask(
+        Task $task,
+        User $actor,
+        string $action,
+        TaskOperationContext $context,
+        ?array $before = null,
+    ): Task {
+        $before ??= $this->lifecycleEventValues($task);
+
+        $task->forceFill([
+            'status' => 'Completed',
+            'progress' => 100,
+            'completed_at' => $context->occurredAt,
+            'completed_by' => $actor->id,
+        ])->save();
+        $task->refresh()->load(['project', 'assignee']);
+
+        $changes = $this->changedEventValues($before, $this->lifecycleEventValues($task));
+        $this->recordHistory($task, $action, $this->canonicalHistorySnapshot($task), $actor);
+        $this->eventRecorder->record(
+            $task,
+            TaskEventRecorder::COMPLETED,
+            $context,
+            $changes,
+        );
+
+        $this->notificationDispatcher->taskCompleted($task, $actor);
+
+        return $task;
+    }
+
+    private function reopenLockedTask(
+        Task $task,
+        User $actor,
+        TaskOperationContext $context,
+        ?CompletedTask $legacyCompletion = null,
+        ?array $before = null,
+    ): Task {
+        if ($task->status !== 'Completed' && ! ($legacyCompletion && $task->trashed())) {
+            throw ValidationException::withMessages([
+                'task' => 'Task is already active.',
+            ]);
+        }
+
+        $before ??= $this->lifecycleEventValues($task);
+
+        $task->forceFill([
+            'status' => 'In Progress',
+            'progress' => min((int) ($legacyCompletion?->progress ?? $task->progress ?? 0), 99),
+            'completed_at' => null,
+            'completed_by' => null,
+        ])->save();
+
+        if ($task->trashed()) {
+            $task->restore();
+        }
+
+        $task->refresh()->load(['project', 'assignee']);
+        $changes = $this->changedEventValues($before, $this->lifecycleEventValues($task));
+        $this->recordHistory(
+            $task,
+            'reverted',
+            $this->canonicalHistorySnapshot($task),
+            $actor,
+            $legacyCompletion,
+        );
+        $this->eventRecorder->record(
+            $task,
+            TaskEventRecorder::REOPENED,
+            $context,
+            $changes,
+        );
+
+        $this->notificationDispatcher->taskReopened($task, $actor);
+
+        return $task;
+    }
+
+    private function assertTaskCanBeCompleted(Task $task): void
+    {
+        if ($task->trashed()) {
+            throw ValidationException::withMessages([
+                'task' => 'Deleted tasks cannot be completed.',
+            ]);
+        }
+
+        if ($task->status === 'Completed') {
+            throw ValidationException::withMessages([
+                'task' => 'Task is already completed.',
+            ]);
+        }
+
+        $this->assertTaskHasEventIdentity($task);
+    }
+
+    private function assertTaskHasEventIdentity(Task $task): void
+    {
+        if (! is_string($task->task_uid)
+            || preg_match('/^[0-9A-HJKMNP-TV-Z]{26}$/', $task->task_uid) !== 1) {
+            throw ValidationException::withMessages([
+                'task' => 'Task must have a stable UID before its lifecycle can change.',
+            ]);
+        }
     }
 
     private function assertProjectAccess(int|string|null $projectId, User $actor): Project
@@ -329,14 +536,14 @@ class TaskLifecycleService
             ->all();
     }
 
-    private function updatedEventChanges(array $before, array $after): array
+    private function changedEventValues(array $before, array $after): array
     {
         $changes = [];
 
-        foreach (self::TASK_EVENT_FIELDS as $field) {
-            if ($before[$field] !== $after[$field]) {
+        foreach ($before as $field => $value) {
+            if ($value !== $after[$field]) {
                 $changes[$field] = [
-                    'before' => $before[$field],
+                    'before' => $value,
                     'after' => $after[$field],
                 ];
             }
@@ -364,13 +571,50 @@ class TaskLifecycleService
             ->all();
     }
 
-    private function recordHistory(Task $task, string $action, array $changes, User $actor, ?CompletedTask $completedTask = null): void
+    private function lifecycleEventValues(Task $task): array
     {
+        return array_merge($this->taskEventValues($task), [
+            'completed_at' => $task->completed_at?->format(DateTimeInterface::ATOM),
+            'completed_by' => $task->completed_by === null ? null : (int) $task->completed_by,
+        ]);
+    }
+
+    private function canonicalHistorySnapshot(Task $task): array
+    {
+        return array_merge($task->only([
+            'project_id',
+            'title',
+            'description',
+            'assignee_id',
+            'created_by',
+            'assigned_by',
+            'priority',
+            'status',
+            'progress',
+            'start_date',
+            'due_date',
+            'comments',
+            'completed_at',
+            'completed_by',
+        ]), [
+            'task_uid' => $task->task_uid,
+            'original_task_id' => $task->original_task_id ?: $task->id,
+        ]);
+    }
+
+    private function recordHistory(
+        Task $task,
+        string $action,
+        array $changes,
+        User $actor,
+        ?CompletedTask $completedTask = null,
+    ): void {
         TaskHistory::query()->create([
             'task_id' => $task->id,
             'completed_task_id' => $completedTask?->id,
             'project_id' => $task->project_id,
-            'original_task_id' => $task->original_task_id ?: ($changes['original_task_id'] ?? $completedTask?->original_task_id),
+            'original_task_id' => $task->original_task_id
+                ?: ($changes['original_task_id'] ?? $completedTask?->original_task_id),
             'task_title' => $task->title,
             'user_id' => $actor->id,
             'action' => $action,

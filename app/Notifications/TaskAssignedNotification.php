@@ -65,6 +65,7 @@ class TaskAssignedNotification extends Notification
 
         return [
             'task_id' => $this->task->id,
+            'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
             'priority' => $this->task->priority,
             'due_date' => $dueDate,

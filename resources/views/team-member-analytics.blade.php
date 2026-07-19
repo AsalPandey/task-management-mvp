@@ -99,7 +99,7 @@ body { background: #f7f8fa; }
             </thead>
             <tbody>
                 @foreach($recentActivity as $task)
-                    @if($task instanceof \App\Models\CompletedTask)
+                    @if($task->status === 'Completed')
                     <tr>
                         <td><span style="font-size:1.1rem;">{{ $task->title }}</span></td>
                         <td><span style="color:#38b6ff; font-weight:500;">{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</span></td>
@@ -213,4 +213,4 @@ document.getElementById('resetFilters')?.addEventListener('click', function() {
 });
 </script>
 @endpush
-@endsection 
+@endsection

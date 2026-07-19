@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CompletedTask;
 use App\Models\Role;
 use App\Models\Task;
 use App\Models\User;
@@ -87,9 +86,8 @@ class TeamManagementController extends Controller
         $authUser = auth()->user();
         $this->assertCanManageGlobalAccount($authUser, $user);
 
-        $activeTasks = Task::query()->where('assignee_id', $user->id)->exists();
-        $completedTasks = CompletedTask::query()->where('assignee_id', $user->id)->exists();
-        if ($activeTasks || $completedTasks) {
+        $assignedTasks = Task::query()->where('assignee_id', $user->id)->exists();
+        if ($assignedTasks) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cannot delete a user with assigned tasks. Deactivate the user or reassign their tasks first.',
@@ -136,8 +134,12 @@ class TeamManagementController extends Controller
             abort_unless($allowed || $authUser->is($user), 403);
         }
 
-        $allTasksQuery = Task::query()->where('assignee_id', $user->id);
-        $allCompletedTasksQuery = CompletedTask::query()->where('assignee_id', $user->id);
+        $allTasksQuery = Task::query()
+            ->where('assignee_id', $user->id)
+            ->where('status', '!=', 'Completed');
+        $allCompletedTasksQuery = Task::query()
+            ->where('assignee_id', $user->id)
+            ->where('status', 'Completed');
 
         if ($authUser->hasRole('project_manager') && ! $authUser->is($user)) {
             $allTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));

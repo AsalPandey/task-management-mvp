@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureTaskCorrelationId;
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -338,7 +337,7 @@ class TaskEventRecordingTest extends TestCase
         );
     }
 
-    public function test_completion_and_reopen_remain_on_the_legacy_lifecycle_without_canonical_events(): void
+    public function test_completion_and_reopen_record_canonical_events_on_the_same_task(): void
     {
         [$manager, $project] = $this->managerAndProject();
         $service = app(TaskLifecycleService::class);
@@ -349,21 +348,20 @@ class TaskEventRecordingTest extends TestCase
             'progress' => 100,
         ], $manager, TaskOperationContext::test($manager->id));
 
-        $this->assertInstanceOf(CompletedTask::class, $completed);
-        $this->assertSoftDeleted('tasks', ['id' => $task->id]);
-        $this->assertSame([TaskEventRecorder::CREATED], $task->events()->pluck('event_type')->all());
-        $this->assertDatabaseHas('completed_tasks', [
-            'id' => $completed->id,
-            'original_task_id' => $task->id,
-            'status' => 'Completed',
-        ]);
+        $this->assertSame($task->id, $completed->id);
+        $this->assertSame($task->task_uid, $completed->task_uid);
+        $this->assertNotNull($completed->completed_at);
+        $this->assertDatabaseCount('completed_tasks', 0);
 
-        $reopened = $service->revert($completed, $manager);
+        $reopened = $service->reopen($completed, $manager, TaskOperationContext::test($manager->id));
 
-        $this->assertNotSame($task->id, $reopened->id);
-        $this->assertNotSame($task->task_uid, $reopened->task_uid);
-        $this->assertSame(0, $reopened->events()->count());
-        $this->assertDatabaseHas('completed_tasks', ['id' => $completed->id, 'reverted' => true]);
+        $this->assertSame($task->id, $reopened->id);
+        $this->assertSame($task->task_uid, $reopened->task_uid);
+        $this->assertSame([
+            TaskEventRecorder::CREATED,
+            TaskEventRecorder::COMPLETED,
+            TaskEventRecorder::REOPENED,
+        ], $reopened->events()->pluck('event_type')->all());
     }
 
     private function managerAndProject(): array

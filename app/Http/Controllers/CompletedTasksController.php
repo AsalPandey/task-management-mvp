@@ -2,47 +2,79 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureTaskCorrelationId;
+use App\Http\Requests\CompletedTaskIndexRequest;
 use App\Models\CompletedTask;
 use App\Services\TaskLifecycleService;
+use App\Services\TaskReadService;
+use App\ValueObjects\TaskOperationContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\Request;
 
 class CompletedTasksController extends Controller
 {
     use AuthorizesRequests;
 
-    public function index()
+    private const COMPLETED_TASKS_PER_PAGE = 15;
+
+    public function __construct(private readonly TaskReadService $taskReads) {}
+
+    public function index(CompletedTaskIndexRequest $request)
     {
-        $completed = $this->visibleCompletedTasks()
-            ->with(['project', 'assignee', 'completer'])
+        $filters = array_filter(
+            $request->validated(),
+            fn ($value) => $value !== null && $value !== '',
+        );
+        $query = $this->taskReads->completedVisibleTo($request->user())
+            ->with(['project', 'assignee', 'completedBy'])
             ->where('completed_at', '>=', now()->subDays(7))
-            ->latest('completed_at')
-            ->paginate(15);
+            ->when($filters['priority'] ?? null, fn (Builder $query, string $priority) => $query->where('priority', $priority))
+            ->when($filters['project'] ?? null, fn (Builder $query, int $project) => $query->where('project_id', $project))
+            ->when($filters['assignee'] ?? null, fn (Builder $query, int $assignee) => $query->where('assignee_id', $assignee));
+
+        if (isset($filters['search'])) {
+            $this->applySearch($query, $filters['search']);
+        }
+
+        $completed = $query
+            ->orderByDesc('completed_at')
+            ->orderByDesc('id')
+            ->paginate(self::COMPLETED_TASKS_PER_PAGE)
+            ->withQueryString();
 
         return view('completed-tasks', compact('completed'));
     }
 
-    public function revert(CompletedTask $completedTask, TaskLifecycleService $tasks)
+    public function revert(Request $request, CompletedTask $completedTask, TaskLifecycleService $tasks)
     {
         $this->authorize('revert', $completedTask);
 
-        $task = $tasks->revert($completedTask, auth()->user());
+        $task = $tasks->revert(
+            $completedTask,
+            $request->user(),
+            TaskOperationContext::web(
+                $request->user(),
+                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            ),
+        );
 
         return response()->json(['success' => true, 'task' => $task]);
     }
 
-    private function visibleCompletedTasks()
+    private function applySearch(Builder $query, string $search): void
     {
-        $user = auth()->user();
+        $escapedSearch = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($search));
+        $pattern = "%{$escapedSearch}%";
 
-        if ($user->hasRole('manager')) {
-            return CompletedTask::withTrashed();
-        }
-
-        if ($user->hasRole('project_manager')) {
-            return CompletedTask::withTrashed()
-                ->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
-        }
-
-        return CompletedTask::withTrashed()->where('assignee_id', $user->id);
+        $query->where(function (Builder $searchQuery) use ($pattern): void {
+            $searchQuery
+                ->whereRaw("LOWER(tasks.title) LIKE ? ESCAPE '!'", [$pattern])
+                ->orWhereRaw("LOWER(tasks.description) LIKE ? ESCAPE '!'", [$pattern])
+                ->orWhereHas('project', fn (Builder $projectQuery) => $projectQuery
+                    ->whereRaw("LOWER(projects.name) LIKE ? ESCAPE '!'", [$pattern]))
+                ->orWhereHas('assignee', fn (Builder $assigneeQuery) => $assigneeQuery
+                    ->whereRaw("LOWER(users.name) LIKE ? ESCAPE '!'", [$pattern]));
+        });
     }
 }

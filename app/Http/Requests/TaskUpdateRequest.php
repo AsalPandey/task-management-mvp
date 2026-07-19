@@ -12,8 +12,10 @@ class TaskUpdateRequest extends FormRequest
     {
         $task = $this->route('task');
 
+        $ability = $this->input('status') === 'Completed' ? 'complete' : 'update';
+
         return $task
-            ? ($this->user()?->can('update', $task) ?? false)
+            ? ($this->user()?->can($ability, $task) ?? false)
             : (bool) $this->user();
     }
 

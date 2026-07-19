@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\Task;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -10,14 +11,14 @@ class TaskRevertedNotification extends Notification
 {
     use Queueable;
 
-    protected $task;
+    protected Task $task;
 
     protected $revertedBy;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct($task, $revertedBy = null)
+    public function __construct(Task $task, $revertedBy = null)
     {
         $this->task = $task;
         $this->revertedBy = $revertedBy;
@@ -62,6 +63,7 @@ class TaskRevertedNotification extends Notification
 
         return [
             'task_id' => $this->task->id,
+            'task_uid' => $this->task->task_uid,
             'task_title' => $taskTitle,
             'reverted_by' => $revertedByName,
             'reverted_at' => now()->format('M d, Y H:i'),

@@ -2,27 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
-use App\Models\Task;
 use App\Models\User;
+use App\Services\TaskReadService;
 
 class ManagerDashboardController extends Controller
 {
+    public function __construct(private readonly TaskReadService $taskReads) {}
+
     public function __invoke()
     {
         $user = auth()->user();
         abort_unless($user && $user->hasAnyRole(['manager', 'project_manager']), 403);
 
         $today = now()->toDateString();
-        $taskQuery = $this->visibleTaskQuery();
-        $completedQuery = $this->visibleCompletedTaskQuery();
+        $taskQuery = $this->taskReads->activeVisibleTo($user);
+        $completedQuery = $this->taskReads->completedVisibleTo($user);
 
         $todayActiveTasks = (clone $taskQuery)->with(['assignee', 'project'])
-            ->where(function ($query) use ($today) {
-                $query->whereDate('created_at', $today)
-                    ->orWhere('status', '!=', 'Completed');
-            })
             ->get();
 
         $todayCompletedTasks = (clone $completedQuery)->with(['assignee', 'project'])
@@ -30,7 +27,6 @@ class ManagerDashboardController extends Controller
             ->get();
 
         $currentActiveTasks = (clone $taskQuery)->with(['assignee', 'project'])
-            ->where('status', '!=', 'Completed')
             ->get();
 
         $todayTotalTasks = $todayActiveTasks->count();
@@ -94,28 +90,6 @@ class ManagerDashboardController extends Controller
             'projects',
             'assignees',
         ));
-    }
-
-    private function visibleTaskQuery()
-    {
-        $user = auth()->user();
-
-        if ($user->hasRole('manager')) {
-            return Task::query();
-        }
-
-        return Task::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
-    }
-
-    private function visibleCompletedTaskQuery()
-    {
-        $user = auth()->user();
-
-        if ($user->hasRole('manager')) {
-            return CompletedTask::query();
-        }
-
-        return CompletedTask::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
     }
 
     private function visibleProjects()

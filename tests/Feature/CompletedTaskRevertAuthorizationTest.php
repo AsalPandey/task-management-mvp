@@ -23,8 +23,6 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private int $originalTaskId = 1000;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -201,6 +199,8 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
         $completedTask = $this->completedTask($project, $assignee);
         $taskCount = Task::withTrashed()->count();
         $historyCount = TaskHistory::query()->count();
+        $originalTask = Task::withTrashed()->findOrFail($completedTask->original_task_id);
+        $originalUid = $originalTask->task_uid;
 
         $response = $this->actingAs($manager)
             ->postJson(route('completed-tasks.revert', $completedTask))
@@ -208,9 +208,10 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
             ->assertJson(['success' => true]);
 
         $activeTask = Task::query()->findOrFail($response->json('task.id'));
-        $this->assertSame($taskCount + 1, Task::withTrashed()->count());
+        $this->assertSame($taskCount, Task::withTrashed()->count());
         $this->assertSame($historyCount + 1, TaskHistory::query()->count());
-        $this->assertSame($completedTask->original_task_id, $activeTask->original_task_id);
+        $this->assertSame($completedTask->original_task_id, $activeTask->id);
+        $this->assertSame($originalUid, $activeTask->task_uid);
         $this->assertSame($completedTask->title, $activeTask->title);
         $this->assertSame('In Progress', $activeTask->status);
         $this->assertSame(99, $activeTask->progress);
@@ -274,7 +275,7 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
         }
     }
 
-    public function test_legitimate_task_completion_still_creates_completed_record_and_history(): void
+    public function test_legitimate_task_completion_updates_the_canonical_row_and_history(): void
     {
         Notification::fake();
         [$project, $assignee] = $this->projectWithTwoMembers();
@@ -284,20 +285,23 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
             'title' => 'Legitimate completion',
             'assignee_id' => $assignee->id,
             'priority' => 'Medium',
-            'status' => 'Completed',
-            'progress' => 100,
+            'status' => 'In Progress',
+            'progress' => 60,
         ]);
+        $taskUid = $task->task_uid;
 
         $completedTask = app(TaskLifecycleService::class)->complete($task, $manager);
 
-        $this->assertDatabaseHas('completed_tasks', [
+        $this->assertSame($task->id, $completedTask->id);
+        $this->assertSame($taskUid, $completedTask->task_uid);
+        $this->assertDatabaseHas('tasks', [
             'id' => $completedTask->id,
-            'original_task_id' => $task->id,
             'status' => 'Completed',
             'progress' => 100,
             'completed_by' => $manager->id,
+            'deleted_at' => null,
         ]);
-        $this->assertSoftDeleted('tasks', ['id' => $task->id]);
+        $this->assertDatabaseCount('completed_tasks', 0);
         $this->assertDatabaseHas('task_histories', [
             'task_id' => $task->id,
             'user_id' => $manager->id,
@@ -338,17 +342,31 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
 
     private function completedTask(Project $project, User $assignee, array $attributes = []): CompletedTask
     {
-        return CompletedTask::query()->create(array_merge([
-            'original_task_id' => ++$this->originalTaskId,
+        $snapshot = array_merge([
             'project_id' => $project->id,
-            'title' => 'Completed task '.$this->originalTaskId,
+            'title' => 'Completed task '.uniqid(),
             'description' => 'Completed task snapshot',
             'assignee_id' => $assignee->id,
             'priority' => 'High',
             'status' => 'Completed',
             'progress' => 100,
             'completed_at' => now(),
-        ], $attributes));
+        ], $attributes);
+        $originalTask = Task::query()->create([
+            'project_id' => $snapshot['project_id'],
+            'title' => $snapshot['title'],
+            'description' => $snapshot['description'],
+            'assignee_id' => $snapshot['assignee_id'],
+            'created_by' => $snapshot['created_by'] ?? null,
+            'assigned_by' => $snapshot['assigned_by'] ?? null,
+            'priority' => $snapshot['priority'],
+            'status' => 'In Progress',
+            'progress' => min((int) $snapshot['progress'], 99),
+        ]);
+        $originalTask->delete();
+        $snapshot['original_task_id'] = $originalTask->id;
+
+        return CompletedTask::query()->create($snapshot);
     }
 
     private function assertCompletedTaskWasNotReverted(CompletedTask $completedTask): void
@@ -359,6 +377,6 @@ class CompletedTaskRevertAuthorizationTest extends TestCase
         $this->assertNull($completedTask->reverted_by);
         $this->assertNull($completedTask->reverted_at);
         $this->assertNull($completedTask->deleted_at);
-        $this->assertDatabaseMissing('tasks', ['original_task_id' => $completedTask->original_task_id]);
+        $this->assertSoftDeleted('tasks', ['id' => $completedTask->original_task_id]);
     }
 }

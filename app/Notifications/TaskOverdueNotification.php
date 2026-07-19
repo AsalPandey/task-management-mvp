@@ -66,6 +66,7 @@ class TaskOverdueNotification extends Notification
 
         return [
             'task_id' => $this->task->id,
+            'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
             'due_date' => $dueDate,
             'priority' => $priority,

@@ -65,6 +65,7 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::delete('/tasks/{task}', [TasksController::class, 'destroy'])->name('tasks.destroy');
         Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
         Route::post('/tasks/bulk-complete', [TasksController::class, 'bulkComplete'])->name('tasks.bulk-complete');
+        Route::post('/tasks/{task}/reopen', [TasksController::class, 'reopen'])->name('tasks.reopen');
     });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 

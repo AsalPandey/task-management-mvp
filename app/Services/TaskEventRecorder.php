@@ -17,6 +17,10 @@ class TaskEventRecorder
 
     public const UPDATED = 'task.updated';
 
+    public const COMPLETED = 'task.completed';
+
+    public const REOPENED = 'task.reopened';
+
     private const MAX_INSERT_ATTEMPTS = 5;
 
     public function __construct(private readonly UlidGenerator $ulids) {}
@@ -32,7 +36,7 @@ class TaskEventRecorder
             throw new InvalidArgumentException('A persisted task is required to record an event.');
         }
 
-        if (! in_array($eventType, [self::CREATED, self::UPDATED], true)) {
+        if (! in_array($eventType, [self::CREATED, self::UPDATED, self::COMPLETED, self::REOPENED], true)) {
             throw new InvalidArgumentException("Unsupported task event type [{$eventType}].");
         }
 

@@ -47,6 +47,16 @@ class TaskPolicy
         return $this->view($user, $task);
     }
 
+    public function complete(User $user, Task $task): bool
+    {
+        return $this->controlsLifecycle($user, $task);
+    }
+
+    public function reopen(User $user, Task $task): bool
+    {
+        return $this->controlsLifecycle($user, $task);
+    }
+
     /**
      * Determine whether the user can delete the model.
      */
@@ -75,5 +85,26 @@ class TaskPolicy
     public function forceDelete(User $user, Task $task): bool
     {
         return false;
+    }
+
+    private function controlsLifecycle(User $user, Task $task): bool
+    {
+        if (! $user->isActive()) {
+            return false;
+        }
+
+        if ($user->hasRole('manager')) {
+            return true;
+        }
+
+        if ($user->hasRole('project_manager')) {
+            return $task->project
+                && (int) $task->project->project_manager_id === (int) $user->id;
+        }
+
+        return $user->hasRole('team_member')
+            && (int) $task->assignee_id === (int) $user->id
+            && $task->project
+            && $user->can('view', $task->project);
     }
 }
