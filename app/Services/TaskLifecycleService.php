@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
@@ -26,19 +25,6 @@ class TaskLifecycleService
         'priority',
         'status',
         'progress',
-        'start_date',
-        'due_date',
-        'comments',
-    ];
-
-    private const LEGACY_SNAPSHOT_FIELDS = [
-        'project_id',
-        'title',
-        'description',
-        'assignee_id',
-        'created_by',
-        'assigned_by',
-        'priority',
         'start_date',
         'due_date',
         'comments',
@@ -268,90 +254,6 @@ class TaskLifecycleService
         }, self::TRANSACTION_ATTEMPTS);
     }
 
-    public function revert(
-        CompletedTask $completedTask,
-        User $actor,
-        ?TaskOperationContext $context = null,
-    ): Task {
-        $context ??= TaskOperationContext::system($actor->id);
-
-        return DB::transaction(function () use ($completedTask, $actor, $context) {
-            $lockedCompletedTask = CompletedTask::withTrashed()
-                ->whereKey($completedTask->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            Gate::forUser($actor)->authorize('revert', $lockedCompletedTask);
-
-            if ($lockedCompletedTask->trashed()) {
-                throw ValidationException::withMessages([
-                    'task' => 'Deleted completion history cannot be reverted.',
-                ]);
-            }
-
-            if ($lockedCompletedTask->reverted) {
-                throw ValidationException::withMessages([
-                    'task' => 'Task has already been reverted.',
-                ]);
-            }
-
-            if (! $lockedCompletedTask->original_task_id) {
-                throw ValidationException::withMessages([
-                    'task' => 'This legacy completion has no explicit canonical task mapping.',
-                ]);
-            }
-
-            $hasCompetingMapping = CompletedTask::query()
-                ->where('original_task_id', $lockedCompletedTask->original_task_id)
-                ->whereKeyNot($lockedCompletedTask->getKey())
-                ->where('reverted', false)
-                ->exists();
-
-            if ($hasCompetingMapping) {
-                throw ValidationException::withMessages([
-                    'task' => 'This legacy completion has an ambiguous canonical task mapping.',
-                ]);
-            }
-
-            $lockedTask = Task::withTrashed()
-                ->whereKey($lockedCompletedTask->original_task_id)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $lockedTask) {
-                throw ValidationException::withMessages([
-                    'task' => 'The explicitly mapped canonical task could not be found.',
-                ]);
-            }
-
-            Gate::forUser($actor)->authorize('reopen', $lockedTask);
-
-            if (! $lockedTask->trashed() && $lockedTask->status !== 'Completed') {
-                throw ValidationException::withMessages([
-                    'task' => 'Task is already active.',
-                ]);
-            }
-
-            $before = $this->lifecycleEventValues($lockedTask);
-            $lockedTask->fill($lockedCompletedTask->only(self::LEGACY_SNAPSHOT_FIELDS));
-            $reopenedTask = $this->reopenLockedTask(
-                $lockedTask,
-                $actor,
-                $context,
-                $lockedCompletedTask,
-                $before,
-            );
-
-            $lockedCompletedTask->forceFill([
-                'reverted' => true,
-                'reverted_by' => $actor->id,
-                'reverted_at' => $context->occurredAt,
-            ])->save();
-
-            return $reopenedTask;
-        }, self::TRANSACTION_ATTEMPTS);
-    }
-
     private function completeLockedTask(
         Task $task,
         User $actor,
@@ -387,37 +289,25 @@ class TaskLifecycleService
         Task $task,
         User $actor,
         TaskOperationContext $context,
-        ?CompletedTask $legacyCompletion = null,
-        ?array $before = null,
     ): Task {
-        if ($task->status !== 'Completed' && ! ($legacyCompletion && $task->trashed())) {
+        if ($task->status !== 'Completed') {
             throw ValidationException::withMessages([
                 'task' => 'Task is already active.',
             ]);
         }
 
-        $before ??= $this->lifecycleEventValues($task);
+        $before = $this->lifecycleEventValues($task);
 
         $task->forceFill([
             'status' => 'In Progress',
-            'progress' => min((int) ($legacyCompletion?->progress ?? $task->progress ?? 0), 99),
+            'progress' => min((int) ($task->progress ?? 0), 99),
             'completed_at' => null,
             'completed_by' => null,
         ])->save();
 
-        if ($task->trashed()) {
-            $task->restore();
-        }
-
         $task->refresh()->load(['project', 'assignee']);
         $changes = $this->changedEventValues($before, $this->lifecycleEventValues($task));
-        $this->recordHistory(
-            $task,
-            'reverted',
-            $this->canonicalHistorySnapshot($task),
-            $actor,
-            $legacyCompletion,
-        );
+        $this->recordHistory($task, 'reverted', $this->canonicalHistorySnapshot($task), $actor);
         $this->eventRecorder->record(
             $task,
             TaskEventRecorder::REOPENED,
@@ -607,14 +497,12 @@ class TaskLifecycleService
         string $action,
         array $changes,
         User $actor,
-        ?CompletedTask $completedTask = null,
     ): void {
         TaskHistory::query()->create([
             'task_id' => $task->id,
-            'completed_task_id' => $completedTask?->id,
             'project_id' => $task->project_id,
             'original_task_id' => $task->original_task_id
-                ?: ($changes['original_task_id'] ?? $completedTask?->original_task_id),
+                ?: ($changes['original_task_id'] ?? null),
             'task_title' => $task->title,
             'user_id' => $actor->id,
             'action' => $action,

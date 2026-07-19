@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureTaskCorrelationId;
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -18,6 +17,7 @@ use App\ValueObjects\TaskOperationContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -312,95 +312,6 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertDatabaseCount('task_events', 0);
     }
 
-    public function test_legacy_route_reopens_only_the_explicitly_mapped_original_row(): void
-    {
-        [$manager, $project, $assignee] = $this->managedProject();
-        $original = $this->task($project, $assignee, [
-            'title' => 'Original title',
-            'progress' => 40,
-        ]);
-        $originalId = $original->id;
-        $originalUid = $original->task_uid;
-        $original->delete();
-        $legacy = CompletedTask::query()->create([
-            'original_task_id' => $originalId,
-            'project_id' => $project->id,
-            'title' => 'Explicit snapshot title',
-            'description' => 'Snapshot content',
-            'assignee_id' => $assignee->id,
-            'priority' => 'High',
-            'status' => 'Completed',
-            'progress' => 100,
-            'completed_at' => now(),
-            'completed_by' => $manager->id,
-        ]);
-
-        $response = $this->actingAs($manager)
-            ->postJson(route('completed-tasks.revert', $legacy))
-            ->assertOk()
-            ->assertJson(['success' => true]);
-
-        $reopened = Task::query()->findOrFail($response->json('task.id'));
-        $this->assertSame($originalId, $reopened->id);
-        $this->assertSame($originalUid, $reopened->task_uid);
-        $this->assertSame('Explicit snapshot title', $reopened->title);
-        $this->assertSame('In Progress', $reopened->status);
-        $this->assertSame(99, $reopened->progress);
-        $this->assertSame(1, Task::withTrashed()->count());
-        $this->assertTrue($legacy->fresh()->reverted);
-        $this->assertDatabaseHas('task_histories', [
-            'task_id' => $originalId,
-            'completed_task_id' => $legacy->id,
-            'action' => 'reverted',
-        ]);
-        $this->assertDatabaseHas('task_events', [
-            'task_id' => $originalId,
-            'event_type' => TaskEventRecorder::REOPENED,
-        ]);
-        $event = $reopened->events()->where('event_type', TaskEventRecorder::REOPENED)->sole();
-        $this->assertSame(
-            ['before' => 'Original title', 'after' => 'Explicit snapshot title'],
-            $event->changed_fields['title'],
-        );
-    }
-
-    public function test_legacy_route_rejects_missing_and_ambiguous_mappings_without_guessing(): void
-    {
-        [$manager, $project, $assignee] = $this->managedProject();
-        $matchingTask = $this->task($project, $assignee, ['title' => 'Matching title']);
-        $unmapped = CompletedTask::query()->create([
-            'original_task_id' => null,
-            'project_id' => $project->id,
-            'title' => $matchingTask->title,
-            'assignee_id' => $matchingTask->assignee_id,
-            'priority' => 'Medium',
-            'status' => 'Completed',
-            'progress' => 100,
-            'completed_at' => now(),
-        ]);
-
-        $this->actingAs($manager)
-            ->postJson(route('completed-tasks.revert', $unmapped))
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('task');
-        $this->assertSame('In Progress', $matchingTask->fresh()->status);
-
-        $original = $this->task($project, $assignee, ['title' => 'Ambiguous original']);
-        $original->delete();
-        $first = $this->legacyCompletion($original, $manager);
-        $this->legacyCompletion($original, $manager);
-
-        $this->actingAs($manager)
-            ->postJson(route('completed-tasks.revert', $first))
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('task');
-
-        $this->assertSoftDeleted('tasks', ['id' => $original->id]);
-        $this->assertFalse($first->fresh()->reverted);
-        $this->assertDatabaseCount('task_events', 0);
-        Notification::assertNothingSent();
-    }
-
     public function test_completed_canonical_tasks_are_excluded_from_the_active_task_page(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
@@ -503,27 +414,11 @@ class CanonicalTaskLifecycleTest extends TestCase
         ], $attributes));
     }
 
-    private function legacyCompletion(Task $original, User $manager): CompletedTask
-    {
-        return CompletedTask::query()->create([
-            'original_task_id' => $original->id,
-            'project_id' => $original->project_id,
-            'title' => $original->title,
-            'description' => $original->description,
-            'assignee_id' => $original->assignee_id,
-            'priority' => $original->priority,
-            'status' => 'Completed',
-            'progress' => 100,
-            'completed_at' => now(),
-            'completed_by' => $manager->id,
-        ]);
-    }
-
     private function lifecycleCounts(): array
     {
         return [
             'tasks' => Task::withTrashed()->count(),
-            'completed_tasks' => CompletedTask::withTrashed()->count(),
+            'completed_tasks' => DB::table('completed_tasks')->count(),
             'histories' => TaskHistory::query()->count(),
             'events' => TaskEvent::query()->count(),
         ];

@@ -10,7 +10,6 @@ class TaskHistory extends Model
 
     protected $fillable = [
         'task_id',
-        'completed_task_id',
         'project_id',
         'original_task_id',
         'task_title',
@@ -30,11 +29,6 @@ class TaskHistory extends Model
     public function task()
     {
         return $this->belongsTo(Task::class);
-    }
-
-    public function completedTask()
-    {
-        return $this->belongsTo(CompletedTask::class);
     }
 
     public function project()

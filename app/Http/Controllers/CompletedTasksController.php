@@ -2,20 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\CompletedTaskIndexRequest;
-use App\Models\CompletedTask;
-use App\Services\TaskLifecycleService;
 use App\Services\TaskReadService;
-use App\ValueObjects\TaskOperationContext;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class CompletedTasksController extends Controller
 {
-    use AuthorizesRequests;
-
     private const COMPLETED_TASKS_PER_PAGE = 15;
 
     public function __construct(private readonly TaskReadService $taskReads) {}
@@ -46,20 +39,17 @@ class CompletedTasksController extends Controller
         return view('completed-tasks', compact('completed'));
     }
 
-    public function revert(Request $request, CompletedTask $completedTask, TaskLifecycleService $tasks)
+    /**
+     * Preserve the old URL as a non-querying compatibility response.
+     *
+     * The legacy identifier is deliberately not resolved or mapped to a canonical task.
+     */
+    public function retiredRevert(string $completedTask): JsonResponse
     {
-        $this->authorize('revert', $completedTask);
-
-        $task = $tasks->revert(
-            $completedTask,
-            $request->user(),
-            TaskOperationContext::web(
-                $request->user(),
-                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
-            ),
-        );
-
-        return response()->json(['success' => true, 'task' => $task]);
+        return response()->json([
+            'success' => false,
+            'message' => 'The legacy completed-task reopen endpoint has been retired. Reopen the canonical task instead.',
+        ], 410);
     }
 
     private function applySearch(Builder $query, string $search): void

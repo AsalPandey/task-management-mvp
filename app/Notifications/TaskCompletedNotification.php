@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\CompletedTask;
 use App\Models\Task;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -13,7 +12,7 @@ class TaskCompletedNotification extends Notification
 {
     use Queueable;
 
-    protected Task|CompletedTask $task;
+    protected Task $task;
 
     protected $completedBy;
 
@@ -22,7 +21,7 @@ class TaskCompletedNotification extends Notification
     /**
      * Create a new notification instance.
      */
-    public function __construct(Task|CompletedTask $task, $completedBy = null, $isForAssignee = true)
+    public function __construct(Task $task, $completedBy = null, $isForAssignee = true)
     {
         $this->task = $task;
         $this->completedBy = $completedBy;
@@ -78,7 +77,7 @@ class TaskCompletedNotification extends Notification
         if ($this->isForAssignee) {
             return [
                 'task_id' => $this->task->id,
-                'task_uid' => $this->task instanceof Task ? $this->task->task_uid : null,
+                'task_uid' => $this->task->task_uid,
                 'task_title' => $taskTitle,
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,
@@ -88,7 +87,7 @@ class TaskCompletedNotification extends Notification
         } else {
             return [
                 'task_id' => $this->task->id,
-                'task_uid' => $this->task instanceof Task ? $this->task->task_uid : null,
+                'task_uid' => $this->task->task_uid,
                 'task_title' => $taskTitle,
                 'completed_by' => $completedByName,
                 'completed_at' => $completedAt,

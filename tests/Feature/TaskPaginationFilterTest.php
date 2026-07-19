@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -10,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -387,7 +387,7 @@ class TaskPaginationFilterTest extends TestCase
         $live = $this->createTask(['title' => 'Live task']);
         $deleted = $this->createTask(['title' => 'Soft deleted task']);
         $deleted->delete();
-        CompletedTask::query()->create([
+        DB::table('completed_tasks')->insert([
             'title' => 'Completed history task',
             'project_id' => $this->managedProject->id,
             'assignee_id' => $this->member->id,
@@ -395,6 +395,8 @@ class TaskPaginationFilterTest extends TestCase
             'progress' => 100,
             'completed_at' => now(),
             'completed_by' => $this->manager->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $response = $this->actingAs($this->manager)->get(route('tasks'));

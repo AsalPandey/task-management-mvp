@@ -2,10 +2,8 @@
 
 namespace App\Providers;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Task;
-use App\Policies\CompletedTaskPolicy;
 use App\Policies\ProjectPolicy;
 use App\Policies\TaskPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
@@ -18,7 +16,6 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        CompletedTask::class => CompletedTaskPolicy::class,
         Task::class => TaskPolicy::class,
         Project::class => ProjectPolicy::class,
     ];

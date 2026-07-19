@@ -66,7 +66,7 @@ class TaskCorrelationIdTest extends TestCase
             'tasks.destroy',
             'tasks.bulk-delete',
             'tasks.bulk-complete',
-            'completed-tasks.revert',
+            'tasks.reopen',
         ] as $routeName) {
             $middleware = Route::getRoutes()->getByName($routeName)->gatherMiddleware();
 

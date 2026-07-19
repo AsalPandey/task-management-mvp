@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -23,7 +22,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         $task = $this->task($project, $assignee);
         $taskId = $task->id;
         $taskUid = $task->task_uid;
-        $completedTaskCount = CompletedTask::withTrashed()->count();
+        $completedTaskCount = DB::table('completed_tasks')->count();
         $notificationCount = DB::table('notifications')->count();
 
         try {
@@ -41,7 +40,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $this->assertNotNull($completed->completed_at);
             $this->assertSame($manager->id, $completed->completed_by);
             $this->assertSame(1, Task::withTrashed()->whereKey($taskId)->count());
-            $this->assertSame($completedTaskCount, CompletedTask::withTrashed()->count());
+            $this->assertSame($completedTaskCount, DB::table('completed_tasks')->count());
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
                 ->where('event_type', TaskEventRecorder::COMPLETED)->count());
             $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)
@@ -66,7 +65,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         $taskId = $task->id;
         $taskUid = $task->task_uid;
         $taskCount = Task::withTrashed()->count();
-        $completedTaskCount = CompletedTask::withTrashed()->count();
+        $completedTaskCount = DB::table('completed_tasks')->count();
         $notificationCount = DB::table('notifications')->count();
 
         try {
@@ -84,7 +83,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $this->assertNull($reopened->completed_at);
             $this->assertNull($reopened->completed_by);
             $this->assertSame($taskCount, Task::withTrashed()->count());
-            $this->assertSame($completedTaskCount, CompletedTask::withTrashed()->count());
+            $this->assertSame($completedTaskCount, DB::table('completed_tasks')->count());
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
                 ->where('event_type', TaskEventRecorder::REOPENED)->count());
             $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)

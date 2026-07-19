@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\CompletedTask;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -306,9 +305,9 @@ class CanonicalTaskReadPathTest extends TestCase
         return $task->fresh();
     }
 
-    private function legacyCompletion(Project $project, User $assignee, User $manager, array $attributes = []): CompletedTask
+    private function legacyCompletion(Project $project, User $assignee, User $manager, array $attributes = []): int
     {
-        return CompletedTask::query()->create(array_merge([
+        return (int) DB::table('completed_tasks')->insertGetId(array_merge([
             'project_id' => $project->id,
             'title' => 'Legacy completed row',
             'description' => 'Transitional fixture',
@@ -318,6 +317,8 @@ class CanonicalTaskReadPathTest extends TestCase
             'progress' => 100,
             'completed_at' => now(),
             'completed_by' => $manager->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ], $attributes));
     }
 }

@@ -70,8 +70,8 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 
     Route::get('/history', [CompletedTasksController::class, 'index'])->name('completed-tasks');
-    Route::post('/history/revert/{completedTask}', [CompletedTasksController::class, 'revert'])
-        ->middleware(EnsureTaskCorrelationId::class)
+    Route::post('/history/revert/{completedTask}', [CompletedTasksController::class, 'retiredRevert'])
+        ->whereNumber('completedTask')
         ->name('completed-tasks.revert');
 
     Route::get('/team-management', [TeamManagementController::class, 'index'])->name('team-management');
