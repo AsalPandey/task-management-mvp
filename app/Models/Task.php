@@ -32,6 +32,18 @@ class Task extends Model
     protected $casts = [
         'start_date' => 'date',
         'due_date' => 'date',
+        'execution_due_date' => 'date',
+        'review_due_date' => 'date',
+        'revision_due_date' => 'date',
+        'started_at' => 'datetime',
+        'submitted_at' => 'datetime',
+        'review_started_at' => 'datetime',
+        'approved_at' => 'datetime',
+        'held_at' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'revision_count' => 'integer',
+        'calculated_urgency_score' => 'integer',
+        'priority_calculated_at' => 'datetime',
         'completed_at' => 'datetime',
         'deadline_reminder_sent_at' => 'datetime',
         'overdue_notification_sent_at' => 'datetime',
@@ -66,6 +78,11 @@ class Task extends Model
         return $this->belongsTo(User::class, 'assignee_id');
     }
 
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
     public function histories()
     {
         return $this->hasMany(TaskHistory::class);
@@ -89,5 +106,35 @@ class Task extends Model
     public function completedBy()
     {
         return $this->belongsTo(User::class, 'completed_by');
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function heldBy()
+    {
+        return $this->belongsTo(User::class, 'held_by');
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function revisionCycles()
+    {
+        return $this->hasMany(TaskRevisionCycle::class);
+    }
+
+    public function activeRevisionCycle()
+    {
+        return $this->belongsTo(TaskRevisionCycle::class, 'active_revision_cycle_id');
+    }
+
+    public function submissions()
+    {
+        return $this->hasMany(TaskSubmission::class);
     }
 }
