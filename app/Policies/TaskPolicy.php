@@ -4,9 +4,12 @@ namespace App\Policies;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ReviewerEligibilityService;
 
 class TaskPolicy
 {
+    public function __construct(private readonly ReviewerEligibilityService $reviewers) {}
+
     /**
      * Determine whether the user can view any models.
      */
@@ -55,6 +58,82 @@ class TaskPolicy
     public function reopen(User $user, Task $task): bool
     {
         return $this->controlsLifecycle($user, $task);
+    }
+
+    public function start(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function hold(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function resume(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function submit(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function startReview(User $user, Task $task): bool
+    {
+        return $this->isAssignedEligibleReviewer($user, $task);
+    }
+
+    public function requestRevision(User $user, Task $task): bool
+    {
+        return $this->isAssignedEligibleReviewer($user, $task);
+    }
+
+    public function startRevision(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function resubmit(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function approve(User $user, Task $task): bool
+    {
+        return (int) $user->id !== (int) $task->assignee_id
+            && $this->isAssignedEligibleReviewer($user, $task);
+    }
+
+    public function cancel(User $user, Task $task): bool
+    {
+        return $this->controlsManagement($user, $task);
+    }
+
+    public function overrideReviewer(User $user, Task $task): bool
+    {
+        return $user->isActive() && $user->hasRole('manager');
+    }
+
+    public function reassignReviewer(User $user, Task $task): bool
+    {
+        return $this->controlsManagement($user, $task);
+    }
+
+    public function updateProgress(User $user, Task $task): bool
+    {
+        return $this->controlsAssigneeWork($user, $task);
+    }
+
+    public function viewSensitivePriority(User $user, Task $task): bool
+    {
+        return $this->controlsManagement($user, $task);
+    }
+
+    public function viewManagementNotes(User $user, Task $task): bool
+    {
+        return $this->controlsManagement($user, $task);
     }
 
     /**
@@ -106,5 +185,31 @@ class TaskPolicy
             && (int) $task->assignee_id === (int) $user->id
             && $task->project
             && $user->can('view', $task->project);
+    }
+
+    private function controlsAssigneeWork(User $user, Task $task): bool
+    {
+        return $user->isActive()
+            && (int) $task->assignee_id === (int) $user->id
+            && $task->project
+            && $user->can('view', $task->project);
+    }
+
+    private function isAssignedEligibleReviewer(User $user, Task $task): bool
+    {
+        return (int) $task->reviewer_id === (int) $user->id
+            && $this->reviewers->isEligibleForTask($user, $task);
+    }
+
+    private function controlsManagement(User $user, Task $task): bool
+    {
+        if (! $user->isActive()) {
+            return false;
+        }
+
+        return $user->hasRole('manager')
+            || ($user->hasRole('project_manager')
+                && $task->project
+                && (int) $task->project->project_manager_id === (int) $user->id);
     }
 }

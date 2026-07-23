@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Models\Project;
 use App\Models\Role;
@@ -250,7 +251,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         $assigneeTask = $this->task($project, $assignee, ['title' => 'Assignee transition']);
         $service->reopen($service->complete($assigneeTask, $assignee), $assignee);
 
-        $this->assertSame(3, Task::query()->where('status', 'In Progress')->count());
+        $this->assertSame(3, Task::query()->where('status', TaskState::InProgress->value)->count());
         $this->assertSame(3, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
         $this->assertSame(3, TaskEvent::query()->where('event_type', TaskEventRecorder::REOPENED)->count());
     }
@@ -268,7 +269,7 @@ class CanonicalTaskLifecycleTest extends TestCase
             ->assertOk()
             ->assertJson(['success' => true]);
 
-        $this->assertSame(2, Task::query()->where('status', 'Completed')->count());
+        $this->assertSame(2, Task::query()->where('status', TaskState::Completed->value)->count());
         $this->assertSame(2, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
         $this->assertSame(2, TaskHistory::query()->where('action', 'bulk_completed')->count());
         $this->assertDatabaseCount('completed_tasks', 0);

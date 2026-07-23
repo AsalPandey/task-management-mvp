@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\ProjectHistory;
 use App\Models\User;
@@ -158,7 +159,7 @@ class ProjectsController extends Controller
 
         $activeTasks = $project->tasks()
             ->where('assignee_id', $data['user_id'])
-            ->where('status', '!=', 'Completed')
+            ->where('status', '!=', TaskState::Completed->value)
             ->exists();
 
         if ($activeTasks) {

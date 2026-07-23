@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -204,7 +205,7 @@ class CanonicalTaskSchemaTest extends TestCase
         $this->assertSame($taskUid, $completed->task_uid);
         $this->assertDatabaseHas('tasks', [
             'id' => $taskId,
-            'status' => 'Completed',
+            'status' => TaskState::Completed->value,
             'deleted_at' => null,
         ]);
         $this->assertDatabaseCount('completed_tasks', 0);
@@ -215,7 +216,7 @@ class CanonicalTaskSchemaTest extends TestCase
         $this->assertSame($taskUid, $reopened->task_uid);
         $this->assertDatabaseHas('tasks', [
             'id' => $taskId,
-            'status' => 'In Progress',
+            'status' => TaskState::InProgress->value,
             'deleted_at' => null,
         ]);
         $this->assertSame(

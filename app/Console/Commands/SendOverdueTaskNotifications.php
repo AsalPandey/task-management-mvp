@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\TaskState;
 use App\Models\Task;
 use App\Notifications\TaskOverdueNotification;
 use Illuminate\Console\Command;
@@ -28,7 +29,7 @@ class SendOverdueTaskNotifications extends Command
     public function handle(): int
     {
         $overdueTasks = Task::query()
-            ->where('status', '!=', 'Completed')
+            ->where('status', '!=', TaskState::Completed->value)
             ->where('due_date', '<', now())
             ->whereNull('overdue_notification_sent_at')
             ->with('assignee')

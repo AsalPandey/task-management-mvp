@@ -699,8 +699,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <select id="statusFilter" name="status" aria-label="Filter tasks by status">
                     <option value="">All Status</option>
-                    @foreach (\App\Models\Task::STATUSES as $status)
-                        <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $status }}</option>
+                    @foreach (\App\Support\TaskStateCompatibility::genericOptions() as $status => $label)
+                        <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $label }}</option>
                     @endforeach
                 </select>
                 <select id="priorityFilter" name="priority" aria-label="Filter tasks by priority">

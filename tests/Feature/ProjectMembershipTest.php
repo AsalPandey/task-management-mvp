@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -55,7 +56,7 @@ class ProjectMembershipTest extends TestCase
             'title' => 'Active Task',
             'assignee_id' => $member->id,
             'priority' => 'Medium',
-            'status' => 'In Progress',
+            'status' => TaskState::InProgress->value,
             'progress' => 50,
         ]);
         $this->actingAs($manager);
@@ -147,7 +148,7 @@ class ProjectMembershipTest extends TestCase
             'title' => 'Revertable Task',
             'project_id' => $project->id,
             'assignee_id' => $member->id,
-            'status' => 'In Progress',
+            'status' => TaskState::InProgress->value,
             'progress' => 99,
         ]);
         $this->assertTrue(TaskHistory::where('task_id', $task->id)

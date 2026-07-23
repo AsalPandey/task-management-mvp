@@ -251,6 +251,7 @@ class WorkflowSchemaExpansionTest extends TestCase
             database_path('migrations/2026_07_23_000002_create_task_revision_cycles_table.php'),
             database_path('migrations/2026_07_23_000003_create_task_submissions_table.php'),
             database_path('migrations/2026_07_23_000004_add_active_revision_cycle_foreign_key_to_tasks_table.php'),
+            database_path('migrations/2026_07_23_000005_convert_task_statuses_to_machine_values.php'),
         ];
         $migrations = array_map(static fn (string $path) => require $path, $migrationPaths);
 
@@ -291,7 +292,7 @@ class WorkflowSchemaExpansionTest extends TestCase
 
         $this->assertSame($datedId, $dated->id);
         $this->assertSame($uid, $dated->task_uid);
-        $this->assertSame('On Hold', $dated->status);
+        $this->assertSame('on_hold', $dated->status);
         $this->assertSame('2026-08-17', $dated->due_date);
         $this->assertSame('2026-08-17', $dated->execution_due_date);
         $this->assertSame($updatedAt, $dated->updated_at);

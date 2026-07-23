@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Models\User;
 use App\Services\TaskReadService;
 use Illuminate\Http\Request;
@@ -86,7 +87,7 @@ class AnalyticsController extends Controller
             $date->format('M d') => (clone $completedTasksQuery)->whereDate('completed_at', $date)->count(),
         ]);
         $overdueTrend = $days->mapWithKeys(fn ($date) => [
-            $date->format('M d') => (clone $activeTasksQuery)->where('due_date', '<', $date)->where('status', '!=', 'Completed')->count(),
+            $date->format('M d') => (clone $activeTasksQuery)->where('due_date', '<', $date)->where('status', '!=', TaskState::Completed->value)->count(),
         ]);
 
         $users = $this->visibleUsers()->with(['role', 'tasks'])->get();

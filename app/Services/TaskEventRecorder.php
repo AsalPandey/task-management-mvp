@@ -21,6 +21,28 @@ class TaskEventRecorder
 
     public const REOPENED = 'task.reopened';
 
+    public const STARTED = 'task.started';
+
+    public const HELD = 'task.held';
+
+    public const RESUMED = 'task.resumed';
+
+    public const SUBMITTED = 'task.submitted';
+
+    public const REVIEW_STARTED = 'task.review_started';
+
+    public const FEEDBACK_ADDED = 'task.feedback_added';
+
+    public const REVISION_REQUESTED = 'task.revision_requested';
+
+    public const REVISION_STARTED = 'task.revision_started';
+
+    public const RESUBMITTED = 'task.resubmitted';
+
+    public const APPROVED = 'task.approved';
+
+    public const CANCELLED = 'task.cancelled';
+
     private const MAX_INSERT_ATTEMPTS = 5;
 
     public function __construct(private readonly UlidGenerator $ulids) {}
@@ -36,7 +58,7 @@ class TaskEventRecorder
             throw new InvalidArgumentException('A persisted task is required to record an event.');
         }
 
-        if (! in_array($eventType, [self::CREATED, self::UPDATED, self::COMPLETED, self::REOPENED], true)) {
+        if (! in_array($eventType, self::supportedTypes(), true)) {
             throw new InvalidArgumentException("Unsupported task event type [{$eventType}].");
         }
 
@@ -63,6 +85,30 @@ class TaskEventRecorder
                 $metadata,
             );
         });
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function supportedTypes(): array
+    {
+        return [
+            self::CREATED,
+            self::UPDATED,
+            self::COMPLETED,
+            self::REOPENED,
+            self::STARTED,
+            self::HELD,
+            self::RESUMED,
+            self::SUBMITTED,
+            self::REVIEW_STARTED,
+            self::FEEDBACK_ADDED,
+            self::REVISION_REQUESTED,
+            self::REVISION_STARTED,
+            self::RESUBMITTED,
+            self::APPROVED,
+            self::CANCELLED,
+        ];
     }
 
     private function insertWithRetry(

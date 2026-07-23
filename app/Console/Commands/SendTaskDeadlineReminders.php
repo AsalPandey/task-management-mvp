@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\TaskState;
 use App\Models\Task;
 use App\Notifications\TaskDeadlineReminderNotification;
 use Illuminate\Console\Command;
@@ -29,7 +30,7 @@ class SendTaskDeadlineReminders extends Command
     {
         $tomorrow = now()->addDay()->toDateString();
         $tasks = Task::query()
-            ->where('status', '!=', 'Completed')
+            ->where('status', '!=', TaskState::Completed->value)
             ->whereDate('due_date', $tomorrow)
             ->whereNull('deadline_reminder_sent_at')
             ->with('assignee')

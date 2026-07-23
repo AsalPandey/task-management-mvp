@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
+use App\Support\TaskStateCompatibility;
 use App\ValueObjects\TaskOperationContext;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -42,7 +44,10 @@ class TaskLifecycleService
     public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
-        $completeOnCreate = ($data['status'] ?? null) === 'Completed';
+        if (isset($data['status']) && is_string($data['status'])) {
+            $data['status'] = TaskStateCompatibility::normalizeGenericInput($data['status']);
+        }
+        $completeOnCreate = ($data['status'] ?? null) === TaskState::Completed->value;
 
         return DB::transaction(function () use ($data, $actor, $context, $completeOnCreate) {
             $data['created_by'] = $actor->id;
@@ -55,7 +60,7 @@ class TaskLifecycleService
             $creationData = $data;
 
             if ($completeOnCreate) {
-                $creationData['status'] = 'In Progress';
+                $creationData['status'] = TaskState::InProgress->value;
                 $creationData['progress'] = min((int) $creationData['progress'], 99);
             }
 
@@ -81,12 +86,15 @@ class TaskLifecycleService
     public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
+        if (isset($data['status']) && is_string($data['status'])) {
+            $data['status'] = TaskStateCompatibility::normalizeGenericInput($data['status']);
+        }
 
         if ($actor->hasRole('team_member')) {
             $data = array_intersect_key($data, array_flip(['status', 'progress', 'comments']));
         }
 
-        if (($data['status'] ?? null) === 'Completed') {
+        if (($data['status'] ?? null) === TaskState::Completed->value) {
             return $this->complete($task, $actor, 'completed', $context, $data);
         }
 
@@ -98,7 +106,7 @@ class TaskLifecycleService
 
             Gate::forUser($actor)->authorize('update', $lockedTask);
 
-            if ($lockedTask->status === 'Completed') {
+            if ($lockedTask->machineState() === TaskState::Completed) {
                 throw ValidationException::withMessages([
                     'task' => 'Completed tasks must be reopened before they can be updated.',
                 ]);
@@ -264,7 +272,7 @@ class TaskLifecycleService
         $before ??= $this->lifecycleEventValues($task);
 
         $task->forceFill([
-            'status' => 'Completed',
+            'status' => TaskState::Completed->value,
             'progress' => 100,
             'completed_at' => $context->occurredAt,
             'completed_by' => $actor->id,
@@ -290,7 +298,7 @@ class TaskLifecycleService
         User $actor,
         TaskOperationContext $context,
     ): Task {
-        if ($task->status !== 'Completed') {
+        if ($task->machineState() !== TaskState::Completed) {
             throw ValidationException::withMessages([
                 'task' => 'Task is already active.',
             ]);
@@ -299,7 +307,7 @@ class TaskLifecycleService
         $before = $this->lifecycleEventValues($task);
 
         $task->forceFill([
-            'status' => 'In Progress',
+            'status' => TaskState::InProgress->value,
             'progress' => min((int) ($task->progress ?? 0), 99),
             'completed_at' => null,
             'completed_by' => null,
@@ -328,7 +336,7 @@ class TaskLifecycleService
             ]);
         }
 
-        if ($task->status === 'Completed') {
+        if ($task->machineState() === TaskState::Completed) {
             throw ValidationException::withMessages([
                 'task' => 'Task is already completed.',
             ]);
@@ -390,7 +398,7 @@ class TaskLifecycleService
 
     private function assertCompletionState(array $data): void
     {
-        if (($data['status'] ?? null) === 'Completed' && (int) ($data['progress'] ?? 0) < 100) {
+        if (($data['status'] ?? null) === TaskState::Completed->value && (int) ($data['progress'] ?? 0) < 100) {
             throw ValidationException::withMessages([
                 'progress' => 'Progress must be 100% to mark a task as completed.',
             ]);

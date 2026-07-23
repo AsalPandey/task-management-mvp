@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
@@ -31,7 +32,7 @@ class TasksController extends Controller
         );
 
         $tasksQuery = $this->visibleTasks()
-            ->where('status', '!=', 'Completed')
+            ->where('status', '!=', TaskState::Completed->value)
             ->with(['project', 'assignee', 'creator'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
@@ -96,7 +97,7 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'moved' => $task->status === 'Completed',
+            'moved' => $task->machineState() === TaskState::Completed,
             'task' => $task,
         ]);
     }
@@ -115,7 +116,7 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'moved' => $updated->status === 'Completed',
+            'moved' => $updated->machineState() === TaskState::Completed,
             'task' => $this->formatTask($updated),
         ]);
     }

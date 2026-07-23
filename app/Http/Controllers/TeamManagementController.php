@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Models\Role;
 use App\Models\Task;
 use App\Models\User;
@@ -136,10 +137,10 @@ class TeamManagementController extends Controller
 
         $allTasksQuery = Task::query()
             ->where('assignee_id', $user->id)
-            ->where('status', '!=', 'Completed');
+            ->where('status', '!=', TaskState::Completed->value);
         $allCompletedTasksQuery = Task::query()
             ->where('assignee_id', $user->id)
-            ->where('status', 'Completed');
+            ->where('status', TaskState::Completed->value);
 
         if ($authUser->hasRole('project_manager') && ! $authUser->is($user)) {
             $allTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));

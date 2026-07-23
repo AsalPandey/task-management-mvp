@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\TaskState;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,11 +33,11 @@ final class TaskReadService
 
     public function activeVisibleTo(User $user): Builder
     {
-        return $this->visibleTo($user)->where('status', '!=', 'Completed');
+        return $this->visibleTo($user)->where('status', '!=', TaskState::Completed->value);
     }
 
     public function completedVisibleTo(User $user): Builder
     {
-        return $this->visibleTo($user)->where('status', 'Completed');
+        return $this->visibleTo($user)->where('status', TaskState::Completed->value);
     }
 }

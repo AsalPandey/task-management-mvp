@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\TaskState;
+use App\Support\TaskStateCompatibility;
 use App\Support\UlidGenerator;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -49,9 +52,25 @@ class Task extends Model
         'overdue_notification_sent_at' => 'datetime',
     ];
 
-    public const STATUSES = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
-
     public const PRIORITIES = ['Low', 'Medium', 'High'];
+
+    protected function status(): Attribute
+    {
+        return Attribute::make(
+            get: fn (string $value) => TaskStateCompatibility::label($value),
+            set: fn (string|TaskState $value) => TaskStateCompatibility::normalizeForStorage($value),
+        );
+    }
+
+    public function machineState(): TaskState
+    {
+        return TaskState::from($this->getAttributes()['status']);
+    }
+
+    public function statusLabel(): string
+    {
+        return $this->machineState()->label();
+    }
 
     protected static function booted(): void
     {

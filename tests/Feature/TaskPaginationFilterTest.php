@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -138,7 +139,7 @@ class TaskPaginationFilterTest extends TestCase
 
         $this->assertSame('2', (string) $query['page']);
         $this->assertSame('Task', $query['search']);
-        $this->assertSame('In Progress', $query['status']);
+        $this->assertSame(TaskState::InProgress->value, $query['status']);
         $this->assertSame('High', $query['priority']);
         $this->assertSame((string) $this->managedProject->id, (string) $query['project']);
         $this->assertSame((string) $this->member->id, (string) $query['assignee']);
@@ -283,9 +284,9 @@ class TaskPaginationFilterTest extends TestCase
 
         $filtered
             ->assertOk()
-            ->assertViewHas('filters', ['status' => 'In Progress'])
+            ->assertViewHas('filters', ['status' => TaskState::InProgress->value])
             ->assertViewHas('hasActiveFilters', true)
-            ->assertSee('value="In Progress" selected', false)
+            ->assertSee('value="in_progress" selected', false)
             ->assertSee('Clear filters');
         $this->assertSame(1, $this->paginator($filtered)->total());
 
