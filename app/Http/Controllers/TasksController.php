@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
+use App\Http\Requests\HoldTaskRequest;
+use App\Http\Requests\ResumeTaskRequest;
+use App\Http\Requests\StartTaskRequest;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
 use App\Http\Requests\TaskUpdateRequest;
@@ -11,7 +14,12 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
+use App\Services\TaskTransitionExecutor;
+use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\ResumeTask;
+use App\TaskTransitions\StartTask;
 use App\ValueObjects\TaskOperationContext;
+use App\ValueObjects\TaskTransitionResult;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -200,6 +208,41 @@ class TasksController extends Controller
         ]);
     }
 
+    public function start(
+        StartTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+        StartTask $command,
+    ) {
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Work started.');
+    }
+
+    public function hold(
+        HoldTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(HoldTask::class, [
+            'reason' => $request->validated()['reason'],
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task placed on hold.');
+    }
+
+    public function resume(
+        ResumeTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+        ResumeTask $command,
+    ) {
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Work resumed.');
+    }
+
     public function edit(Task $task)
     {
         $this->authorize('view', $task);
@@ -263,5 +306,22 @@ class TasksController extends Controller
         $taskArr['due_date'] = $task->due_date ? $task->due_date->format('Y-m-d') : null;
 
         return $taskArr;
+    }
+
+    private function operationContext(Request $request): TaskOperationContext
+    {
+        return TaskOperationContext::web(
+            $request->user(),
+            $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+        );
+    }
+
+    private function transitionResponse(TaskTransitionResult $result, string $message)
+    {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'task' => $this->formatTask($result->task),
+        ]);
     }
 }

@@ -10,7 +10,10 @@ use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskRevertedNotification;
 use App\Notifications\TaskUpdatedNotification;
+use App\Notifications\TaskWorkflowTransitionNotification;
 use Closure;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 class TaskNotificationDispatcher
@@ -57,6 +60,79 @@ class TaskNotificationDispatcher
         });
     }
 
+    public function dispatchTaskStarted(Task $task, User $actor): void
+    {
+        $this->dispatchTransition(
+            $task,
+            $actor,
+            'started',
+            collect([$task->creator, $task->reviewer])
+                ->reject(fn (?User $user) => $user && (int) $user->id === (int) $task->assignee_id),
+            'Monitor execution progress.',
+        );
+    }
+
+    public function dispatchTaskHeld(Task $task, User $actor): void
+    {
+        $this->dispatchTransition(
+            $task,
+            $actor,
+            'held',
+            collect([
+                $task->assignee,
+                $task->creator,
+                $task->reviewer,
+                $task->project?->projectManager,
+            ]),
+            'Review the hold and resume work when ready.',
+        );
+    }
+
+    public function dispatchTaskResumed(Task $task, User $actor): void
+    {
+        $this->dispatchTransition(
+            $task,
+            $actor,
+            'resumed',
+            collect([$task->assignee, $task->creator, $task->reviewer]),
+            'Continue execution and update progress.',
+        );
+    }
+
+    /**
+     * @param  Collection<int, User|null>  $recipients
+     */
+    private function dispatchTransition(
+        Task $task,
+        User $actor,
+        string $transition,
+        Collection $recipients,
+        string $nextAction,
+    ): void {
+        try {
+            $task->loadMissing(['assignee', 'creator', 'reviewer', 'project.projectManager']);
+            $uniqueRecipients = $recipients
+                ->filter()
+                ->unique(fn (User $user) => (int) $user->id)
+                ->values();
+
+            if ($uniqueRecipients->isEmpty()) {
+                return;
+            }
+
+            Notification::send(
+                $uniqueRecipients,
+                new TaskWorkflowTransitionNotification($task, $actor, $transition, $nextAction),
+            );
+        } catch (Throwable $exception) {
+            throw new TaskNotificationDispatchException(
+                "task.{$transition}",
+                (int) $task->id,
+                $exception,
+            );
+        }
+    }
+
     /**
      * @param  Closure(Task): void  $dispatch
      */
@@ -69,7 +145,7 @@ class TaskNotificationDispatcher
         $connection->afterCommit(function () use ($connectionName, $dispatch, $operation, $taskId): void {
             try {
                 $committedTask = Task::on($connectionName)
-                    ->with('assignee')
+                    ->with(['assignee', 'creator', 'reviewer', 'project.projectManager'])
                     ->find($taskId);
 
                 if (! $committedTask) {

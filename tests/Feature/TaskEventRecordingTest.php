@@ -101,7 +101,6 @@ class TaskEventRecordingTest extends TestCase
 
         $updated = $service->update($task, [
             'title' => 'Updated title',
-            'status' => 'In Progress',
             'progress' => 25,
             'start_date' => '2026-07-20',
         ], $manager, TaskOperationContext::test(
@@ -112,9 +111,8 @@ class TaskEventRecordingTest extends TestCase
 
         $event = $updated->events()->where('event_type', TaskEventRecorder::UPDATED)->sole();
         $this->assertSame(2, $event->sequence);
-        $this->assertSame(['title', 'status', 'progress', 'start_date'], array_keys($event->changed_fields));
+        $this->assertSame(['title', 'progress', 'start_date'], array_keys($event->changed_fields));
         $this->assertSame(['before' => 'Test task', 'after' => 'Updated title'], $event->changed_fields['title']);
-        $this->assertSame(['before' => 'Not Started', 'after' => 'In Progress'], $event->changed_fields['status']);
         $this->assertSame(['before' => 0, 'after' => 25], $event->changed_fields['progress']);
         $this->assertSame(['before' => null, 'after' => '2026-07-20'], $event->changed_fields['start_date']);
         $this->assertSame($manager->id, $event->actor_id);

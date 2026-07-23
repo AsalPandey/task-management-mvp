@@ -3,6 +3,10 @@
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
+use App\Services\TaskTransitionExecutor;
+use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\ResumeTask;
+use App\TaskTransitions\StartTask;
 use App\ValueObjects\TaskOperationContext;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +39,7 @@ try {
         $task = Task::withTrashed()->findOrFail($taskId);
         $actor = User::query()->findOrFail($actorId);
         $service = app(TaskLifecycleService::class);
+        $executor = app(TaskTransitionExecutor::class);
         $context = TaskOperationContext::test(
             $actor->id,
             "{$operation}-concurrency-{$worker}",
@@ -43,6 +48,14 @@ try {
         return match ($operation) {
             'complete' => $service->complete($task, $actor, context: $context),
             'reopen' => $service->reopen($task, $actor, $context),
+            'start' => $executor->execute($task, $actor, app(StartTask::class), $context)->task,
+            'hold' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(HoldTask::class, ['reason' => 'Concurrent hold']),
+                $context,
+            )->task,
+            'resume' => $executor->execute($task, $actor, app(ResumeTask::class), $context)->task,
             default => throw new InvalidArgumentException("Unsupported lifecycle operation [{$operation}]."),
         };
     });
@@ -57,6 +70,7 @@ try {
 } catch (ValidationException $exception) {
     $result = [
         'result' => 'conflict',
+        'status_code' => 422,
         'database' => DB::getDatabaseName(),
         'message' => collect($exception->errors())->flatten()->first(),
     ];

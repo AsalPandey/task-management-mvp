@@ -61,6 +61,31 @@ final class TaskStateCompatibility
         return self::LEGACY_LABELS[$value] ?? $value;
     }
 
+    public static function requiresDedicatedExecutionTransition(TaskState $from, TaskState $to): bool
+    {
+        return in_array(
+            [$from, $to],
+            [
+                [TaskState::NotStarted, TaskState::InProgress],
+                [TaskState::InProgress, TaskState::OnHold],
+                [TaskState::OnHold, TaskState::InProgress],
+            ],
+            true,
+        );
+    }
+
+    public static function assertGenericTransitionAllowed(
+        TaskState $from,
+        TaskState $to,
+        string $field = 'status',
+    ): void {
+        if (self::requiresDedicatedExecutionTransition($from, $to)) {
+            throw ValidationException::withMessages([
+                $field => 'Use the dedicated task execution action for this state change.',
+            ]);
+        }
+    }
+
     public static function normalizeForStorage(string|TaskState $value): string
     {
         if ($value instanceof TaskState) {

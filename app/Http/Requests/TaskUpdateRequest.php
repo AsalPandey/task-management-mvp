@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Support\TaskStateCompatibility;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class TaskUpdateRequest extends FormRequest
 {
@@ -43,6 +44,38 @@ class TaskUpdateRequest extends FormRequest
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date|after_or_equal:start_date',
             'comments' => 'nullable|string',
+        ];
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $task = $this->route('task');
+                $status = $this->input('status');
+
+                if (! $task instanceof Task
+                    || ! is_string($status)
+                    || $validator->errors()->has('status')) {
+                    return;
+                }
+
+                $target = TaskState::tryFrom($status);
+
+                if ($target
+                    && TaskStateCompatibility::requiresDedicatedExecutionTransition(
+                        $task->machineState(),
+                        $target,
+                    )) {
+                    $validator->errors()->add(
+                        'status',
+                        'Use the dedicated task execution action for this state change.',
+                    );
+                }
+            },
         ];
     }
 }

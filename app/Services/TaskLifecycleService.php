@@ -112,6 +112,13 @@ class TaskLifecycleService
                 ]);
             }
 
+            if (isset($data['status']) && is_string($data['status'])) {
+                TaskStateCompatibility::assertGenericTransitionAllowed(
+                    $lockedTask->machineState(),
+                    TaskState::from($data['status']),
+                );
+            }
+
             $lockedTask->load(['project', 'assignee']);
             $old = $lockedTask->toArray();
             $beforeEventValues = $this->taskEventValues($lockedTask);

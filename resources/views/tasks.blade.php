@@ -363,8 +363,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Make task cards clickable
     document.querySelectorAll('.task-card').forEach(card => {
         card.addEventListener('click', function(e) {
-            // Prevent triggering when clicking the delete button
-            if (e.target.closest('.delete-btn')) return;
+            // Prevent triggering when clicking an action button.
+            if (e.target.closest('.delete-btn, .execution-transition-btn')) return;
             const taskId = card.dataset.taskId;
             fetch(`/tasks/${taskId}/edit`, {
                 headers: { 'Accept': 'application/json' }
@@ -397,6 +397,92 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(() => showMessage('Could not fetch task data.', false));
         });
     });
+
+    async function postExecutionTransition(button, payload = {}) {
+        button.disabled = true;
+
+        try {
+            const response = await fetch(button.dataset.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || !data.success) {
+                throw new Error(firstErrorMessage(data, 'The task state could not be changed.'));
+            }
+
+            await Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: data.message || 'Task state updated.',
+            });
+            window.location.reload();
+        } catch (error) {
+            showMessage(error.message || 'The task state could not be changed.', false);
+            button.disabled = false;
+        }
+    }
+
+    document.querySelectorAll('.execution-transition-btn').forEach(button => {
+        button.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (this.dataset.transition === 'hold') {
+                const prompt = await Swal.fire({
+                    title: 'Put task on hold',
+                    text: 'Explain why work is being paused.',
+                    input: 'textarea',
+                    inputLabel: 'Hold reason',
+                    inputPlaceholder: 'Enter a reason',
+                    inputAttributes: { maxlength: '1000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Put On Hold',
+                    inputValidator: value => value.trim() ? undefined : 'A hold reason is required.',
+                });
+
+                if (!prompt.isConfirmed) {
+                    return;
+                }
+
+                await postExecutionTransition(this, { reason: prompt.value.trim() });
+
+                return;
+            }
+
+            const labels = {
+                start: {
+                    title: 'Start work?',
+                    text: 'This task will move to In Progress.',
+                    confirm: 'Start Work',
+                },
+                resume: {
+                    title: 'Resume work?',
+                    text: 'This task will return to In Progress.',
+                    confirm: 'Resume',
+                },
+            };
+            const copy = labels[this.dataset.transition];
+            const confirmation = await Swal.fire({
+                title: copy.title,
+                text: copy.text,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: copy.confirm,
+            });
+
+            if (confirmation.isConfirmed) {
+                await postExecutionTransition(this);
+            }
+        });
+    });
+
     // Toggle view logic
     const toggleViewBtn = document.getElementById('toggleViewBtn');
     const tasksTableWrapper = document.getElementById('tasksTableWrapper');
@@ -742,6 +828,10 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Tasks Grid (Card View) -->
     <div id="tasksGrid" class="tasks-grid">
         @forelse ($tasks as $task)
+            @php
+                $taskState = $task->machineState();
+                $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
+            @endphp
             <div class="task-card" tabindex="0" style="cursor:pointer"
                 data-task-id="{{ $task->id }}"
                 data-assignee-id="{{ $task->assignee_id }}"
@@ -801,6 +891,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p>{{ $task->comments }}</p>
                 </div>
                 @endif
+                @if ($canExecuteTask)
+                    <div class="execution-actions" aria-label="Task execution actions">
+                        @if ($taskState === \App\Enums\TaskState::NotStarted)
+                            @can('start', $task)
+                                <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                    data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
+                            @endcan
+                        @elseif ($taskState === \App\Enums\TaskState::InProgress)
+                            @can('hold', $task)
+                                <button type="button" class="btn-small btn-secondary execution-transition-btn"
+                                    data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
+                            @endcan
+                        @elseif ($taskState === \App\Enums\TaskState::OnHold)
+                            @can('resume', $task)
+                                <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                    data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
+                            @endcan
+                        @endif
+                    </div>
+                @endif
                 @if($task->status !== 'Completed' && $task->due_date && \Carbon\Carbon::parse($task->due_date)->isPast())
                 <div class="overdue-warning">
                     <p>⚠️ Overdue</p>
@@ -844,6 +954,10 @@ document.addEventListener('DOMContentLoaded', function() {
             </thead>
             <tbody>
                 @foreach ($tasks as $task)
+                    @php
+                        $taskState = $task->machineState();
+                        $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
+                    @endphp
                     <tr data-task-id="{{ $task->id }}">
                         <td><input type="checkbox" class="task-checkbox" value="{{ $task->id }}"></td>
                         <td>{{ $task->title }}</td>
@@ -862,6 +976,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>
                             <button class="btn-small btn-primary table-edit-btn">✏️</button>
                             <button class="btn-small btn-danger table-delete-btn">🗑️</button>
+                            @if ($canExecuteTask)
+                                @if ($taskState === \App\Enums\TaskState::NotStarted)
+                                    @can('start', $task)
+                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                            data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
+                                    @endcan
+                                @elseif ($taskState === \App\Enums\TaskState::InProgress)
+                                    @can('hold', $task)
+                                        <button type="button" class="btn-small btn-secondary execution-transition-btn"
+                                            data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
+                                    @endcan
+                                @elseif ($taskState === \App\Enums\TaskState::OnHold)
+                                    @can('resume', $task)
+                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                            data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
+                                    @endcan
+                                @endif
+                            @endif
                         </td>
                     </tr>
                 @endforeach

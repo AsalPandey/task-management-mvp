@@ -66,6 +66,9 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
         Route::post('/tasks/bulk-complete', [TasksController::class, 'bulkComplete'])->name('tasks.bulk-complete');
         Route::post('/tasks/{task}/reopen', [TasksController::class, 'reopen'])->name('tasks.reopen');
+        Route::post('/tasks/{task}/start', [TasksController::class, 'start'])->whereNumber('task')->name('tasks.start');
+        Route::post('/tasks/{task}/hold', [TasksController::class, 'hold'])->whereNumber('task')->name('tasks.hold');
+        Route::post('/tasks/{task}/resume', [TasksController::class, 'resume'])->whereNumber('task')->name('tasks.resume');
     });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 

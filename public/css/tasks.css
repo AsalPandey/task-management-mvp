@@ -167,6 +167,18 @@
     gap: 8px;
 }
 
+.execution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.execution-transition-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
 .task-action-btn {
     background: none;
     border: none;
