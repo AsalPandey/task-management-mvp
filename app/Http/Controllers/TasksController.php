@@ -7,6 +7,8 @@ use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\HoldTaskRequest;
 use App\Http\Requests\ResumeTaskRequest;
 use App\Http\Requests\StartTaskRequest;
+use App\Http\Requests\StartTaskReviewRequest;
+use App\Http\Requests\SubmitTaskRequest;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
 use App\Http\Requests\TaskUpdateRequest;
@@ -18,6 +20,8 @@ use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\HoldTask;
 use App\TaskTransitions\ResumeTask;
 use App\TaskTransitions\StartTask;
+use App\TaskTransitions\StartTaskReview;
+use App\TaskTransitions\SubmitTask;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionResult;
 use Illuminate\Database\Eloquent\Builder;
@@ -41,7 +45,7 @@ class TasksController extends Controller
 
         $tasksQuery = $this->visibleTasks()
             ->where('status', '!=', TaskState::Completed->value)
-            ->with(['project', 'assignee', 'creator'])
+            ->with(['project', 'assignee', 'creator', 'reviewer'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
@@ -68,6 +72,7 @@ class TasksController extends Controller
             ->get(['id', 'name']);
 
         $projects = collect();
+        $reviewerCandidates = collect();
 
         if ($user->can('create', Task::class)) {
             $projects = $this->visibleProjects()
@@ -79,11 +84,20 @@ class TasksController extends Controller
                 ])
                 ->orderBy('name')
                 ->get();
+
+
+            $reviewerCandidates = User::query()
+                ->where('active', true)
+                ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
+                ->with('role')
+                ->orderBy('name')
+                ->get(['id', 'name', 'role_id']);
         }
 
         return view('tasks', [
             'tasks' => $tasks,
             'assignees' => $assignees,
+            'reviewerCandidates' => $reviewerCandidates,
             'projects' => $projects,
             'filterProjects' => $filterProjects,
             'filters' => $filters,
@@ -243,13 +257,37 @@ class TasksController extends Controller
         return $this->transitionResponse($result, 'Work resumed.');
     }
 
+    public function submit(
+        SubmitTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(SubmitTask::class, [
+            'submissionNote' => $request->validated()['submission_note'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task submitted for review.');
+    }
+
+    public function startReview(
+        StartTaskReviewRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+        StartTaskReview $command,
+    ) {
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task review started.');
+    }
+
     public function edit(Task $task)
     {
         $this->authorize('view', $task);
 
         return response()->json([
             'success' => true,
-            'task' => $this->formatTask($task->load(['project', 'assignee'])),
+            'task' => $this->formatTask($task->load(['project', 'assignee', 'reviewer'])),
         ]);
     }
 
@@ -304,6 +342,7 @@ class TasksController extends Controller
         $taskArr = $task->toArray();
         $taskArr['start_date'] = $task->start_date ? $task->start_date->format('Y-m-d') : null;
         $taskArr['due_date'] = $task->due_date ? $task->due_date->format('Y-m-d') : null;
+        $taskArr['review_due_date'] = $task->review_due_date?->format('Y-m-d');
 
         return $taskArr;
     }

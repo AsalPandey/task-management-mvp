@@ -74,14 +74,27 @@ final class TaskStateCompatibility
         );
     }
 
+    public static function requiresDedicatedTransition(TaskState $from, TaskState $to): bool
+    {
+        return self::requiresDedicatedExecutionTransition($from, $to)
+            || in_array(
+                [$from, $to],
+                [
+                    [TaskState::InProgress, TaskState::Submitted],
+                    [TaskState::Submitted, TaskState::InReview],
+                ],
+                true,
+            );
+    }
+
     public static function assertGenericTransitionAllowed(
         TaskState $from,
         TaskState $to,
         string $field = 'status',
     ): void {
-        if (self::requiresDedicatedExecutionTransition($from, $to)) {
+        if (self::requiresDedicatedTransition($from, $to)) {
             throw ValidationException::withMessages([
-                $field => 'Use the dedicated task execution action for this state change.',
+                $field => 'Use the dedicated task workflow action for this state change.',
             ]);
         }
     }

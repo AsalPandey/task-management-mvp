@@ -9,6 +9,7 @@ use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskRevertedNotification;
+use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Notifications\TaskWorkflowTransitionNotification;
 use Closure;
@@ -97,6 +98,51 @@ class TaskNotificationDispatcher
             collect([$task->assignee, $task->creator, $task->reviewer]),
             'Continue execution and update progress.',
         );
+    }
+
+    public function dispatchTaskSubmitted(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'submitted',
+            collect([$task->reviewer, $task->creator])
+                ->reject(fn (?User $user) => $user && (int) $user->id === (int) $actor->id),
+            'Review task',
+        );
+    }
+
+    public function dispatchTaskReviewStarted(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'review_started',
+            collect([$task->assignee]),
+            'Await review outcome',
+        );
+    }
+
+    private function dispatchReviewTransition(
+        Task $task,
+        User $actor,
+        string $transition,
+        Collection $recipients,
+        string $requiredAction,
+    ): void {
+        try {
+            $task->loadMissing(['assignee', 'creator', 'reviewer']);
+            $recipients = $recipients->filter()->unique(fn (User $user) => (int) $user->id)->values();
+
+            if ($recipients->isNotEmpty()) {
+                Notification::send(
+                    $recipients,
+                    new TaskReviewWorkflowNotification($task, $actor, $transition, $requiredAction),
+                );
+            }
+        } catch (Throwable $exception) {
+            throw new TaskNotificationDispatchException("task.{$transition}", (int) $task->id, $exception);
+        }
     }
 
     /**

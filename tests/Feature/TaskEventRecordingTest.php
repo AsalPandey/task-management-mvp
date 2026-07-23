@@ -72,11 +72,13 @@ class TaskEventRecordingTest extends TestCase
             'title',
             'description',
             'assignee_id',
+            'reviewer_id',
             'priority',
             'status',
             'progress',
             'start_date',
             'due_date',
+            'review_due_date',
             'comments',
         ], array_keys($event->changed_fields));
         $this->assertArrayNotHasKey('task_uid', $event->changed_fields);

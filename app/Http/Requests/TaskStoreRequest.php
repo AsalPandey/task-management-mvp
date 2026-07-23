@@ -30,6 +30,8 @@ class TaskStoreRequest extends FormRequest
             'project_id' => 'required|exists:projects,id',
             'description' => 'nullable|string',
             'assignee_id' => 'nullable|exists:users,id',
+            'reviewer_id' => 'nullable|exists:users,id',
+            'review_due_date' => 'nullable|date|after:today',
             'priority' => ['required', Rule::in(Task::PRIORITIES)],
             'status' => ['required', Rule::in(TaskStateCompatibility::genericStates())],
             'progress' => 'required|integer|min:0|max:100',

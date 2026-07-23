@@ -31,9 +31,14 @@ body { background: #f7f8fa; }
             })->values(),
         ];
     });
+    $projectMembershipForScript = $projects->mapWithKeys(fn ($project) => [
+        $project->id => ['project_manager_id' => $project->project_manager_id],
+    ]);
 @endphp
 <script>
 window.projectMembers = @json($projectMembersForScript);
+window.reviewerCandidates = {{ Illuminate\Support\Js::from($reviewerCandidates) }};
+window.projectMembership = {{ Illuminate\Support\Js::from($projectMembershipForScript) }};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Modal logic
@@ -44,7 +49,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const messageContainer = document.getElementById('messageContainer');
     const taskProjectSelect = document.getElementById('taskProject');
     const taskAssigneeSelect = document.getElementById('taskAssignee');
+    const taskReviewerSelect = document.getElementById('taskReviewer');
     const projectMembers = window.projectMembers || {};
+    const reviewerCandidates = window.reviewerCandidates || [];
+    const projectMembership = window.projectMembership || {};
     const canManageTasks = document.body.dataset.userRole !== 'team_member';
     let editTaskId = null;
 
@@ -70,6 +78,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function firstErrorMessage(data, fallback) {
+        const validationMessages = Object.values(data.errors || {}).flat();
+
+        return data.message || validationMessages[0] || fallback;
+    }
+
+    function populateReviewers(projectId, selectedId = '') {
+        if (!taskReviewerSelect) return;
+
+        taskReviewerSelect.replaceChildren(new Option('Select Reviewer', ''));
+        const project = projectMembership[projectId];
+        reviewerCandidates
+            .filter(candidate => candidate.role?.name === 'manager'
+                || String(candidate.id) === String(project?.project_manager_id))
+            .forEach(candidate => {
+                const option = new Option(candidate.name, candidate.id);
+                option.selected = String(candidate.id) === String(selectedId);
+                taskReviewerSelect.appendChild(option);
+            });
+    }
+
     function showMessage(msg, success = true) {
         Swal.fire({
             icon: success ? 'success' : 'error',
@@ -84,9 +113,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = isLoading;
         if (isLoading) {
-            submitBtn.textContent = '⏳ Please wait...';
+            submitBtn.textContent = '? Please wait...';
         } else {
-            submitBtn.textContent = editTaskId ? '✏️ Update Task' : '➕ Create Task';
+            submitBtn.textContent = editTaskId ? '?? Update Task' : '? Create Task';
         }
     }
 
@@ -102,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
             taskForm.reset();
             editTaskId = null;
             taskModal.classList.add('active');
-            document.getElementById('submitBtn').textContent = '➕ Create Task';
+            document.getElementById('submitBtn').textContent = '? Create Task';
             document.getElementById('modalTitle').textContent = 'Create New Task';
             // Set start date to today by default
             const startDateInput = document.getElementById('taskStartDate');
@@ -116,6 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Populate assignees when opening new task modal
             if (taskProjectSelect) {
                 populateAssignees(taskProjectSelect.value);
+                populateReviewers(taskProjectSelect.value);
             }
         });
     }
@@ -147,16 +177,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success && data.task) {
                     const task = data.task;
                     taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
+                    document.getElementById('submitBtn').textContent = '?? Update Task';
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
                     taskForm.querySelector('#taskProject').value = task.project_id || '';
                     populateAssignees(task.project_id || '', task.assignee_id || '');
+                    populateReviewers(task.project_id || '', task.reviewer_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
                     taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
                     taskForm.querySelector('#taskDueDate').value = task.due_date || '';
+                    taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
                     taskForm.querySelector('#taskProgress').value = task.progress || 0;
                     taskForm.querySelector('#progressValue').textContent = task.progress || 0;
                     taskForm.querySelector('#taskComments').value = task.comments || '';
@@ -217,15 +249,18 @@ document.addEventListener('DOMContentLoaded', function() {
             description: formData.get('taskDescription'),
             project_id: formData.get('taskProject'),
             assignee_id: formData.get('taskAssignee'),
+            reviewer_id: formData.get('taskReviewer') || null,
             priority: formData.get('taskPriority'),
             status: formData.get('taskStatus'),
             progress: formData.get('taskProgress'),
             start_date: formData.get('taskStartDate'),
             due_date: formData.get('taskDueDate'),
+            review_due_date: formData.get('taskReviewDueDate') || null,
             comments: formData.get('taskComments'),
         };
-        const url = editTaskId ? `/tasks/${editTaskId}` : '/tasks';
+        const url = editTaskId ? /tasks/${editTaskId} : '/tasks';
         const method = editTaskId ? 'PUT' : 'POST';
+
         fetch(url, {
             method,
             headers: {
@@ -354,8 +389,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (taskProjectSelect) {
         taskProjectSelect.addEventListener('change', function() {
             populateAssignees(this.value);
+            populateReviewers(this.value);
         });
         populateAssignees(taskProjectSelect.value);
+        populateReviewers(taskProjectSelect.value);
     }
 
     const tasksGrid = document.getElementById('tasksGrid');
@@ -376,16 +413,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     const taskModal = document.getElementById('taskModal');
                     const taskForm = document.getElementById('taskForm');
                     taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
+                    document.getElementById('submitBtn').textContent = '?? Update Task';
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
                     taskForm.querySelector('#taskProject').value = task.project_id || '';
                     populateAssignees(task.project_id || '', task.assignee_id || '');
+                    populateReviewers(task.project_id || '', task.reviewer_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
                     taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
                     taskForm.querySelector('#taskDueDate').value = task.due_date || '';
+                    taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
                     taskForm.querySelector('#taskProgress').value = task.progress || 0;
                     taskForm.querySelector('#progressValue').textContent = task.progress || 0;
                     taskForm.querySelector('#taskComments').value = task.comments || '';
@@ -456,6 +495,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            if (this.dataset.transition === 'submit') {
+                const prompt = await Swal.fire({
+                    title: 'Submit for review',
+                    input: 'textarea',
+                    inputLabel: 'Submission note (optional)',
+                    inputAttributes: { maxlength: '2000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Submit',
+                });
+
+                if (prompt.isConfirmed) {
+                    await postExecutionTransition(this, {
+                        submission_note: prompt.value?.trim() || null,
+                    });
+                }
+
+                return;
+            }
+
             const labels = {
                 start: {
                     title: 'Start work?',
@@ -466,6 +524,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     title: 'Resume work?',
                     text: 'This task will return to In Progress.',
                     confirm: 'Resume',
+                },
+                review: {
+                    title: 'Start review?',
+                    text: 'This task will move to In Review.',
+                    confirm: 'Start Review',
                 },
             };
             const copy = labels[this.dataset.transition];
@@ -493,11 +556,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isTable) {
                 tasksGrid.style.display = 'none';
                 tasksTableWrapper.style.display = '';
-                toggleViewBtn.textContent = '📋 Card View';
+                toggleViewBtn.textContent = '?? Card View';
             } else {
                 tasksGrid.style.display = '';
                 tasksTableWrapper.style.display = 'none';
-                toggleViewBtn.textContent = '🔳 Table View';
+                toggleViewBtn.textContent = '?? Table View';
             }
         });
     }
@@ -751,8 +814,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <div class="tasks-header">
         <h1>Task Management</h1>
-        <button id="toggleViewBtn" class="btn-secondary" style="margin-right: 1rem;">🔳 Table View</button>
-        <button id="newTaskBtn" class="btn-primary">➕ New Task</button>
+        <button id="toggleViewBtn" class="btn-secondary" style="margin-right: 1rem;">?? Table View</button>
+        <button id="newTaskBtn" class="btn-primary">? New Task</button>
     </div>
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <!-- Filters -->
@@ -771,7 +834,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="filters-grid">
                 <div class="search-group">
                     <div class="search-input">
-                        <span class="search-icon">🔍</span>
+                        <span class="search-icon">??</span>
                         <input
                             type="search"
                             id="searchTasks"
@@ -847,14 +910,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="task-header">
                     <div class="task-status-icon">
                         <span class="status-icon {{ str_replace(' ', '-', strtolower($task->status)) }}">
-                            @if($task->status === 'Completed')✅@elseif($task->status === 'In Progress')📈@elseif($task->status === 'On Hold')⏸️@else⭕@endif
+                            @if($task->status === 'Completed')?@elseif($task->status === 'In Progress')??@elseif($task->status === 'On Hold')??@else?@endif
                         </span>
                         <span class="task-number">#{{ $task->id }}</span>
                     </div>
                     <div class="task-actions">
                         <span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span>
                         <span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span>
-                        <button class="task-action-btn delete-btn">🗑️</button>
+                        <button class="task-action-btn delete-btn">???</button>
                     </div>
                 </div>
                 <h3 class="task-title">{{ $task->title }}</h3>
@@ -878,13 +941,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="task-dates">
                     <div class="date-item">
-                        <span class="date-icon">📅</span>
+                        <span class="date-icon">??</span>
                         <span class="due-date">{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</span>
                     </div>
                     <div class="date-item">
-                        <span class="date-icon">⏰</span>
+                        <span class="date-icon">?</span>
                         <span>Updated {{ $task->updated_at ? $task->updated_at->format('m/d/Y') : '-' }}</span>
                     </div>
+                </div>
+                <div class="task-details">
+                    <span>Reviewer: {{ $task->reviewer?->name ?? 'Not assigned' }}</span>
+                    <span>Review due: {{ $task->review_due_date?->format('m/d/Y') ?? '-' }}</span>
                 </div>
                 @if($task->comments)
                 <div class="task-comments">
@@ -903,6 +970,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                     data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                             @endcan
+                            @can('submit', $task)
+                                <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                    data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                            @endcan
                         @elseif ($taskState === \App\Enums\TaskState::OnHold)
                             @can('resume', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
@@ -911,15 +982,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         @endif
                     </div>
                 @endif
+                @if ($taskState === \App\Enums\TaskState::Submitted)
+                    @can('startReview', $task)
+                        <div class="execution-actions">
+                            <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
+                        </div>
+                    @endcan
+                @endif
                 @if($task->status !== 'Completed' && $task->due_date && \Carbon\Carbon::parse($task->due_date)->isPast())
                 <div class="overdue-warning">
-                    <p>⚠️ Overdue</p>
+                    <p>?? Overdue</p>
                 </div>
                 @endif
             </div>
         @empty
             <div class="empty-state">
-                <div class="empty-icon">📋</div>
+                <div class="empty-icon">??</div>
                 @if ($hasActiveFilters)
                     <h3>No tasks match your filters</h3>
                     <p>Try changing your filters or <a href="{{ route('tasks') }}">clear all filters</a>.</p>
@@ -932,8 +1011,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     <!-- Bulk Actions -->
     <div id="bulkActions" style="display:none; margin-bottom:1rem;">
-        <button id="bulkDeleteBtn" class="btn-small btn-danger">🗑️ Delete Selected</button>
-        <button id="bulkCompleteBtn" class="btn-small btn-primary">✅ Mark Completed</button>
+        <button id="bulkDeleteBtn" class="btn-small btn-danger">??? Delete Selected</button>
+        <button id="bulkCompleteBtn" class="btn-small btn-primary">? Mark Completed</button>
     </div>
     <!-- Tasks Table View (hidden by default) -->
     <div id="tasksTableWrapper" style="display:none;">
@@ -974,8 +1053,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
                         <td>{{ $task->progress }}%</td>
                         <td>
-                            <button class="btn-small btn-primary table-edit-btn">✏️</button>
-                            <button class="btn-small btn-danger table-delete-btn">🗑️</button>
+                            <button class="btn-small btn-primary table-edit-btn">??</button>
+                            <button class="btn-small btn-danger table-delete-btn">???</button>
                             @if ($canExecuteTask)
                                 @if ($taskState === \App\Enums\TaskState::NotStarted)
                                     @can('start', $task)
@@ -987,12 +1066,22 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                             data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                                     @endcan
+                                    @can('submit', $task)
+                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                            data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                                    @endcan
                                 @elseif ($taskState === \App\Enums\TaskState::OnHold)
                                     @can('resume', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
                                             data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
                                     @endcan
                                 @endif
+                            @endif
+                            @if ($taskState === \App\Enums\TaskState::Submitted)
+                                @can('startReview', $task)
+                                    <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                        data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
+                                @endcan
                             @endif
                         </td>
                     </tr>
@@ -1061,6 +1150,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="taskReviewer">Reviewer</label>
+                        <select id="taskReviewer" name="taskReviewer">
+                            <option value="">Select Reviewer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskReviewDueDate">Review Deadline</label>
+                        <input type="date" id="taskReviewDueDate" name="taskReviewDueDate">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="taskStartDate">Start Date *</label>
                         <input type="date" id="taskStartDate" name="taskStartDate" required value="{{ old('taskStartDate') ?? now()->format('Y-m-d') }}">
                     </div>
@@ -1086,7 +1187,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="taskModal.classList.remove('active')">Cancel</button>
-                    <button type="submit" class="btn-primary" id="submitBtn">➕ Create Task</button>
+                    <button type="submit" class="btn-primary" id="submitBtn">? Create Task</button>
                 </div>
             </form>
         </div>

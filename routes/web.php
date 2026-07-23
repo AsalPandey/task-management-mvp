@@ -69,6 +69,8 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::post('/tasks/{task}/start', [TasksController::class, 'start'])->whereNumber('task')->name('tasks.start');
         Route::post('/tasks/{task}/hold', [TasksController::class, 'hold'])->whereNumber('task')->name('tasks.hold');
         Route::post('/tasks/{task}/resume', [TasksController::class, 'resume'])->whereNumber('task')->name('tasks.resume');
+        Route::post('/tasks/{task}/submit', [TasksController::class, 'submit'])->whereNumber('task')->name('tasks.submit');
+        Route::post('/tasks/{task}/review/start', [TasksController::class, 'startReview'])->whereNumber('task')->name('tasks.review.start');
     });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 

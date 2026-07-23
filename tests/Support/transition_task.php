@@ -7,6 +7,8 @@ use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\HoldTask;
 use App\TaskTransitions\ResumeTask;
 use App\TaskTransitions\StartTask;
+use App\TaskTransitions\StartTaskReview;
+use App\TaskTransitions\SubmitTask;
 use App\ValueObjects\TaskOperationContext;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +58,13 @@ try {
                 $context,
             )->task,
             'resume' => $executor->execute($task, $actor, app(ResumeTask::class), $context)->task,
+            'submit' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(SubmitTask::class, ['submissionNote' => 'Concurrent submission']),
+                $context,
+            )->task,
+            'review' => $executor->execute($task, $actor, app(StartTaskReview::class), $context)->task,
             default => throw new InvalidArgumentException("Unsupported lifecycle operation [{$operation}]."),
         };
     });

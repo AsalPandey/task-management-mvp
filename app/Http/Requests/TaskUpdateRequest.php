@@ -38,6 +38,10 @@ class TaskUpdateRequest extends FormRequest
             'project_id' => 'sometimes|required|exists:projects,id',
             'description' => 'nullable|string',
             'assignee_id' => 'sometimes|nullable|exists:users,id',
+            'reviewer_id' => 'sometimes|nullable|exists:users,id',
+            'review_due_date' => 'sometimes|nullable|date|after:today',
+            'submitted_at' => ['prohibited'],
+            'review_started_at' => ['prohibited'],
             'priority' => ['sometimes', 'required', Rule::in(Task::PRIORITIES)],
             'status' => ['sometimes', 'required', Rule::in(TaskStateCompatibility::genericStates())],
             'progress' => 'sometimes|required|integer|min:0|max:100',
@@ -57,6 +61,14 @@ class TaskUpdateRequest extends FormRequest
                 $task = $this->route('task');
                 $status = $this->input('status');
 
+                if ($this->user()?->hasRole('team_member')
+                    && ($this->exists('reviewer_id') || $this->exists('review_due_date'))) {
+                    $validator->errors()->add(
+                        'reviewer_id',
+                        'Only management may assign or change a reviewer.',
+                    );
+                }
+
                 if (! $task instanceof Task
                     || ! is_string($status)
                     || $validator->errors()->has('status')) {
@@ -66,13 +78,13 @@ class TaskUpdateRequest extends FormRequest
                 $target = TaskState::tryFrom($status);
 
                 if ($target
-                    && TaskStateCompatibility::requiresDedicatedExecutionTransition(
+                    && TaskStateCompatibility::requiresDedicatedTransition(
                         $task->machineState(),
                         $target,
                     )) {
                     $validator->errors()->add(
                         'status',
-                        'Use the dedicated task execution action for this state change.',
+                        'Use the dedicated task workflow action for this state change.',
                     );
                 }
             },

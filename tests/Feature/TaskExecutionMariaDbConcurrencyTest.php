@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
+use App\Models\TaskSubmission;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use Illuminate\Support\Facades\DB;
@@ -48,10 +49,19 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $this->assertNull($resumed->hold_reason);
             $this->assertSame($deadline, $resumed->execution_due_date->toDateString());
 
+            [$submit, $duplicateSubmit] = $this->race('submit', $task, $assignee);
+            $this->assertRaceResult($submit, $duplicateSubmit, 'Only an in-progress task may be submitted.');
+
+            [$review, $duplicateReview] = $this->race('review', $task, $projectManager);
+            $this->assertRaceResult($review, $duplicateReview, 'Only a submitted task may enter review.');
+            $this->assertSame(TaskState::InReview, $task->fresh()->machineState());
+
             foreach ([
                 TaskEventRecorder::STARTED => 'started',
                 TaskEventRecorder::HELD => 'held',
                 TaskEventRecorder::RESUMED => 'resumed',
+                TaskEventRecorder::SUBMITTED => 'submitted',
+                TaskEventRecorder::REVIEW_STARTED => 'review_started',
             ] as $eventType => $historyAction) {
                 $this->assertSame(1, TaskEvent::query()
                     ->where('task_id', $taskId)
@@ -63,7 +73,8 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
                     ->count());
             }
 
-            $this->assertSame($notificationCount + 8, DB::table('notifications')->count());
+            $this->assertSame(1, TaskSubmission::query()->where('task_id', $taskId)->count());
+            $this->assertSame($notificationCount + 11, DB::table('notifications')->count());
         } finally {
             $this->cleanup(
                 $taskId,
@@ -74,14 +85,40 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
         }
     }
 
+    public function test_submission_and_hold_serialize_and_only_lock_winner_has_side_effects(): void
+    {
+        $this->requireDisposableMariaDb();
+
+        foreach ([['hold', 'submit', TaskState::OnHold], ['submit', 'hold', TaskState::Submitted]] as [$firstOperation, $secondOperation, $expectedState]) {
+            [$manager, $projectManager, $assignee, $project, $task, $createdRoles] = $this->fixtures();
+            $task->forceFill(['status' => TaskState::InProgress, 'started_at' => now()])->save();
+
+            try {
+                [$winner, $loser] = $this->raceOperations($firstOperation, $secondOperation, $task, $assignee);
+                $this->assertSame('transitioned', $winner['result']);
+                $this->assertSame('conflict', $loser['result']);
+                $this->assertSame(422, $loser['status_code']);
+                $this->assertSame($expectedState, $task->fresh()->machineState());
+                $this->assertSame(1, TaskEvent::query()->where('task_id', $task->id)->count());
+                $this->assertSame(1, TaskHistory::query()->where('task_id', $task->id)->count());
+                $this->assertSame(
+                    $expectedState === TaskState::Submitted ? 1 : 0,
+                    TaskSubmission::query()->where('task_id', $task->id)->count(),
+                );
+            } finally {
+                $this->cleanup($task->id, $project, [$manager, $projectManager, $assignee], $createdRoles);
+            }
+        }
+    }
+
     private function requireDisposableMariaDb(): void
     {
         if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             $this->markTestSkipped('Row-lock execution concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase23_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
-            $this->markTestSkipped('Execution concurrency is restricted to a disposable Phase 2.3 QA database.');
+        if (preg_match('/^task_management_phase2[34]_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+            $this->markTestSkipped('Execution concurrency is restricted to a disposable Phase 2.3/2.4 QA database.');
         }
     }
 
@@ -167,6 +204,40 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
         }
     }
 
+    private function raceOperations(
+        string $firstOperation,
+        string $secondOperation,
+        Task $task,
+        User $actor,
+    ): array {
+        $readyFile = tempnam(sys_get_temp_dir(), 'task-workflow-lock-');
+        unlink($readyFile);
+
+        try {
+            $first = $this->worker($firstOperation, $task, $actor, '1', 1200, $readyFile);
+            $first->start();
+            $this->waitForLock($first, $readyFile);
+            $second = $this->worker($secondOperation, $task, $actor, '2');
+            $second->start();
+            usleep(200_000);
+            $this->assertTrue($second->isRunning());
+            $first->wait();
+            $second->wait();
+
+            return [$this->decodeWorkerResult($first), $this->decodeWorkerResult($second)];
+        } finally {
+            if (isset($first) && $first->isRunning()) {
+                $first->stop();
+            }
+            if (isset($second) && $second->isRunning()) {
+                $second->stop();
+            }
+            if (file_exists($readyFile)) {
+                unlink($readyFile);
+            }
+        }
+    }
+
     private function worker(
         string $operation,
         Task $task,
@@ -227,6 +298,7 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
     private function cleanup(int $taskId, Project $project, array $users, array $createdRoles): void
     {
         DB::table('notifications')->whereIn('notifiable_id', collect($users)->pluck('id'))->delete();
+        TaskSubmission::query()->where('task_id', $taskId)->delete();
         TaskEvent::query()->where('task_id', $taskId)->delete();
         TaskHistory::query()->where('task_id', $taskId)->delete();
         Task::withTrashed()->whereKey($taskId)->forceDelete();
