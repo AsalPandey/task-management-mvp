@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\HoldTaskRequest;
+use App\Http\Requests\RequestTaskRevisionRequest;
+use App\Http\Requests\ResubmitTaskRequest;
 use App\Http\Requests\ResumeTaskRequest;
 use App\Http\Requests\StartTaskRequest;
 use App\Http\Requests\StartTaskReviewRequest;
+use App\Http\Requests\StartTaskRevisionRequest;
 use App\Http\Requests\SubmitTaskRequest;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
@@ -18,9 +21,12 @@ use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\RequestTaskRevision;
+use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
 use App\TaskTransitions\StartTask;
 use App\TaskTransitions\StartTaskReview;
+use App\TaskTransitions\StartTaskRevision;
 use App\TaskTransitions\SubmitTask;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionResult;
@@ -45,7 +51,7 @@ class TasksController extends Controller
 
         $tasksQuery = $this->visibleTasks()
             ->where('status', '!=', TaskState::Completed->value)
-            ->with(['project', 'assignee', 'creator', 'reviewer'])
+            ->with(['project', 'assignee', 'creator', 'reviewer', 'activeRevisionCycle'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
@@ -281,13 +287,51 @@ class TasksController extends Controller
         return $this->transitionResponse($result, 'Task review started.');
     }
 
+    public function requestRevision(
+        RequestTaskRevisionRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(RequestTaskRevision::class, [
+            'formalFeedback' => $request->validated()['formal_feedback'],
+            'revisionDueDate' => $request->validated()['revision_due_date'],
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Revision requested.');
+    }
+
+    public function startRevision(
+        StartTaskRevisionRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+        StartTaskRevision $command,
+    ) {
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Revision started.');
+    }
+
+    public function resubmit(
+        ResubmitTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(ResubmitTask::class, [
+            'submissionNote' => $request->validated()['submission_note'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task resubmitted for review.');
+    }
+
     public function edit(Task $task)
     {
         $this->authorize('view', $task);
 
         return response()->json([
             'success' => true,
-            'task' => $this->formatTask($task->load(['project', 'assignee', 'reviewer'])),
+            'task' => $this->formatTask($task->load(['project', 'assignee', 'reviewer', 'activeRevisionCycle'])),
         ]);
     }
 

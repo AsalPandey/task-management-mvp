@@ -123,6 +123,39 @@ class TaskNotificationDispatcher
         );
     }
 
+    public function dispatchTaskRevisionRequested(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'revision_requested',
+            collect([$task->assignee, $task->creator, $task->project?->projectManager]),
+            'Begin revision',
+        );
+    }
+
+    public function dispatchTaskRevisionStarted(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'revision_started',
+            collect([$task->reviewer, $task->creator]),
+            'Await revised submission',
+        );
+    }
+
+    public function dispatchTaskResubmitted(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'resubmitted',
+            collect([$task->reviewer, $task->creator]),
+            'Review revised submission',
+        );
+    }
+
     private function dispatchReviewTransition(
         Task $task,
         User $actor,
@@ -131,7 +164,7 @@ class TaskNotificationDispatcher
         string $requiredAction,
     ): void {
         try {
-            $task->loadMissing(['assignee', 'creator', 'reviewer']);
+            $task->loadMissing(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'project.projectManager']);
             $recipients = $recipients->filter()->unique(fn (User $user) => (int) $user->id)->values();
 
             if ($recipients->isNotEmpty()) {
@@ -191,7 +224,7 @@ class TaskNotificationDispatcher
         $connection->afterCommit(function () use ($connectionName, $dispatch, $operation, $taskId): void {
             try {
                 $committedTask = Task::on($connectionName)
-                    ->with(['assignee', 'creator', 'reviewer', 'project.projectManager'])
+                    ->with(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'project.projectManager'])
                     ->find($taskId);
 
                 if (! $committedTask) {

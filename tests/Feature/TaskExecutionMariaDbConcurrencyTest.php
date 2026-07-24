@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
+use App\Models\TaskRevisionCycle;
 use App\Models\TaskSubmission;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
@@ -17,7 +18,7 @@ use Tests\TestCase;
 
 class TaskExecutionMariaDbConcurrencyTest extends TestCase
 {
-    public function test_concurrent_start_hold_and_resume_each_create_one_transition(): void
+    public function test_concurrent_execution_review_and_revision_transitions_each_create_one_transition(): void
     {
         $this->requireDisposableMariaDb();
         [$manager, $projectManager, $assignee, $project, $task, $createdRoles] = $this->fixtures();
@@ -56,12 +57,37 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $this->assertRaceResult($review, $duplicateReview, 'Only a submitted task may enter review.');
             $this->assertSame(TaskState::InReview, $task->fresh()->machineState());
 
+            [$revisionRequest, $duplicateRevisionRequest] = $this->race('revision-request', $task, $projectManager);
+            $this->assertRaceResult(
+                $revisionRequest,
+                $duplicateRevisionRequest,
+                'Only a task in review may have a revision requested.',
+            );
+
+            [$revisionStart, $duplicateRevisionStart] = $this->race('revision-start', $task, $assignee);
+            $this->assertRaceResult(
+                $revisionStart,
+                $duplicateRevisionStart,
+                'Only a revision-requested task may begin revision.',
+            );
+
+            [$resubmit, $duplicateResubmit] = $this->race('resubmit', $task, $assignee);
+            $this->assertRaceResult(
+                $resubmit,
+                $duplicateResubmit,
+                'Only an in-progress revision may be resubmitted.',
+            );
+            $this->assertSame(TaskState::Submitted, $task->fresh()->machineState());
+
             foreach ([
                 TaskEventRecorder::STARTED => 'started',
                 TaskEventRecorder::HELD => 'held',
                 TaskEventRecorder::RESUMED => 'resumed',
                 TaskEventRecorder::SUBMITTED => 'submitted',
                 TaskEventRecorder::REVIEW_STARTED => 'review_started',
+                TaskEventRecorder::REVISION_REQUESTED => 'revision_requested',
+                TaskEventRecorder::REVISION_STARTED => 'revision_started',
+                TaskEventRecorder::RESUBMITTED => 'resubmitted',
             ] as $eventType => $historyAction) {
                 $this->assertSame(1, TaskEvent::query()
                     ->where('task_id', $taskId)
@@ -73,8 +99,13 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
                     ->count());
             }
 
-            $this->assertSame(1, TaskSubmission::query()->where('task_id', $taskId)->count());
-            $this->assertSame($notificationCount + 11, DB::table('notifications')->count());
+            $this->assertSame(1, TaskEvent::query()
+                ->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::FEEDBACK_ADDED)
+                ->count());
+            $this->assertSame(1, TaskRevisionCycle::query()->where('task_id', $taskId)->count());
+            $this->assertSame(2, TaskSubmission::query()->where('task_id', $taskId)->count());
+            $this->assertSame($notificationCount + 18, DB::table('notifications')->count());
         } finally {
             $this->cleanup(
                 $taskId,
@@ -117,8 +148,8 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $this->markTestSkipped('Row-lock execution concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase2[34]_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
-            $this->markTestSkipped('Execution concurrency is restricted to a disposable Phase 2.3/2.4 QA database.');
+        if (preg_match('/^task_management_phase2(?:3|4|5)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+            $this->markTestSkipped('Execution concurrency is restricted to a disposable Phase 2.3-2.5 QA database.');
         }
     }
 
@@ -301,6 +332,8 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
         TaskSubmission::query()->where('task_id', $taskId)->delete();
         TaskEvent::query()->where('task_id', $taskId)->delete();
         TaskHistory::query()->where('task_id', $taskId)->delete();
+        Task::withTrashed()->whereKey($taskId)->update(['active_revision_cycle_id' => null]);
+        TaskRevisionCycle::query()->where('task_id', $taskId)->delete();
         Task::withTrashed()->whereKey($taskId)->forceDelete();
         $project->members()->detach();
         $project->delete();

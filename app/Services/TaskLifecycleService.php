@@ -124,10 +124,17 @@ class TaskLifecycleService
                 ]);
             }
 
-            if (in_array($lockedTask->machineState(), [TaskState::Submitted, TaskState::InReview], true)
+            if (in_array($lockedTask->machineState(), [TaskState::Submitted, TaskState::InReview, TaskState::RevisionRequested], true)
                 && $data !== []) {
                 throw ValidationException::withMessages([
                     'task' => 'Submitted and in-review tasks are frozen until a dedicated correction action is available.',
+                ]);
+            }
+
+            if ($lockedTask->active_revision_cycle_id
+                && (array_key_exists('assignee_id', $data) || array_key_exists('reviewer_id', $data))) {
+                throw ValidationException::withMessages([
+                    'task' => 'Assignee and reviewer changes require a dedicated workflow action while a revision cycle is active.',
                 ]);
             }
 

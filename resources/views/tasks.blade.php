@@ -514,6 +514,55 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            if (this.dataset.transition === 'revision-request') {
+                const feedback = await Swal.fire({
+                    title: 'Request revision',
+                    input: 'textarea',
+                    inputLabel: 'Formal feedback',
+                    inputAttributes: { maxlength: '5000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    inputValidator: value => value.trim() ? undefined : 'Formal feedback is required.',
+                });
+                if (!feedback.isConfirmed) return;
+
+                const deadline = await Swal.fire({
+                    title: 'Revision deadline',
+                    input: 'date',
+                    inputLabel: 'Choose a future date',
+                    showCancelButton: true,
+                    confirmButtonText: 'Request Revision',
+                    inputValidator: value => value ? undefined : 'A revision deadline is required.',
+                });
+                if (!deadline.isConfirmed) return;
+
+                await postExecutionTransition(this, {
+                    formal_feedback: feedback.value.trim(),
+                    revision_due_date: deadline.value,
+                });
+
+                return;
+            }
+
+            if (this.dataset.transition === 'resubmit') {
+                const prompt = await Swal.fire({
+                    title: 'Resubmit revision',
+                    input: 'textarea',
+                    inputLabel: 'Submission note (optional)',
+                    inputAttributes: { maxlength: '2000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Resubmit',
+                });
+
+                if (prompt.isConfirmed) {
+                    await postExecutionTransition(this, {
+                        submission_note: prompt.value?.trim() || null,
+                    });
+                }
+
+                return;
+            }
+
             const labels = {
                 start: {
                     title: 'Start work?',
@@ -529,6 +578,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     title: 'Start review?',
                     text: 'This task will move to In Review.',
                     confirm: 'Start Review',
+                },
+                'revision-start': {
+                    title: 'Begin revision?',
+                    text: 'The task will return to In Progress for revision work.',
+                    confirm: 'Begin Revision',
                 },
             };
             const copy = labels[this.dataset.transition];
@@ -894,6 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
             @php
                 $taskState = $task->machineState();
                 $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
+                $activeRevisionCycle = $task->activeRevisionCycle;
             @endphp
             <div class="task-card" tabindex="0" style="cursor:pointer"
                 data-task-id="{{ $task->id }}"
@@ -953,6 +1008,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span>Reviewer: {{ $task->reviewer?->name ?? 'Not assigned' }}</span>
                     <span>Review due: {{ $task->review_due_date?->format('m/d/Y') ?? '-' }}</span>
                 </div>
+                @if ($activeRevisionCycle)
+                    <div class="task-details">
+                        <span>Revision: {{ $activeRevisionCycle->cycle_number }} of {{ $task->revision_count }}</span>
+                        <span>Revision due: {{ $task->revision_due_date?->format('m/d/Y') ?? '-' }}</span>
+                    </div>
+                    <div class="task-comments">
+                        <strong>Revision feedback</strong>
+                        <p>{{ $activeRevisionCycle->formal_feedback }}</p>
+                    </div>
+                @endif
                 @if($task->comments)
                 <div class="task-comments">
                     <p>{{ $task->comments }}</p>
@@ -970,17 +1035,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                     data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                             @endcan
-                            @can('submit', $task)
-                                <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                    data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
-                            @endcan
+                            @if ($activeRevisionCycle)
+                                @can('resubmit', $task)
+                                    <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                        data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
+                                @endcan
+                            @else
+                                @can('submit', $task)
+                                    <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                        data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                                @endcan
+                            @endif
                         @elseif ($taskState === \App\Enums\TaskState::OnHold)
                             @can('resume', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
                                     data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
                             @endcan
+                        @elseif ($taskState === \App\Enums\TaskState::RevisionRequested)
+                            @can('startRevision', $task)
+                                <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                    data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
+                            @endcan
                         @endif
                     </div>
+                @endif
+                @if ($taskState === \App\Enums\TaskState::InReview)
+                    @can('requestRevision', $task)
+                        <div class="execution-actions">
+                            <button type="button" class="btn-small btn-secondary execution-transition-btn"
+                                data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
+                        </div>
+                    @endcan
                 @endif
                 @if ($taskState === \App\Enums\TaskState::Submitted)
                     @can('startReview', $task)
@@ -1036,6 +1121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     @php
                         $taskState = $task->machineState();
                         $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
+                        $activeRevisionCycle = $task->activeRevisionCycle;
                     @endphp
                     <tr data-task-id="{{ $task->id }}">
                         <td><input type="checkbox" class="task-checkbox" value="{{ $task->id }}"></td>
@@ -1066,16 +1152,34 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                             data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                                     @endcan
-                                    @can('submit', $task)
-                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                            data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
-                                    @endcan
+                                    @if ($activeRevisionCycle)
+                                        @can('resubmit', $task)
+                                            <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                                data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
+                                        @endcan
+                                    @else
+                                        @can('submit', $task)
+                                            <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                                data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                                        @endcan
+                                    @endif
                                 @elseif ($taskState === \App\Enums\TaskState::OnHold)
                                     @can('resume', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
                                             data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
                                     @endcan
+                                @elseif ($taskState === \App\Enums\TaskState::RevisionRequested)
+                                    @can('startRevision', $task)
+                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                            data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
+                                    @endcan
                                 @endif
+                            @endif
+                            @if ($taskState === \App\Enums\TaskState::InReview)
+                                @can('requestRevision', $task)
+                                    <button type="button" class="btn-small btn-secondary execution-transition-btn"
+                                        data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
+                                @endcan
                             @endif
                             @if ($taskState === \App\Enums\TaskState::Submitted)
                                 @can('startReview', $task)

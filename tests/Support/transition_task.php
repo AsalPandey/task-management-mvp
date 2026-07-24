@@ -5,9 +5,12 @@ use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\RequestTaskRevision;
+use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
 use App\TaskTransitions\StartTask;
 use App\TaskTransitions\StartTaskReview;
+use App\TaskTransitions\StartTaskRevision;
 use App\TaskTransitions\SubmitTask;
 use App\ValueObjects\TaskOperationContext;
 use Illuminate\Contracts\Console\Kernel;
@@ -65,6 +68,22 @@ try {
                 $context,
             )->task,
             'review' => $executor->execute($task, $actor, app(StartTaskReview::class), $context)->task,
+            'revision-request' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(RequestTaskRevision::class, [
+                    'formalFeedback' => 'Concurrent revision request',
+                    'revisionDueDate' => now()->addDays(3)->toDateString(),
+                ]),
+                $context,
+            )->task,
+            'revision-start' => $executor->execute($task, $actor, app(StartTaskRevision::class), $context)->task,
+            'resubmit' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(ResubmitTask::class, ['submissionNote' => 'Concurrent resubmission']),
+                $context,
+            )->task,
             default => throw new InvalidArgumentException("Unsupported lifecycle operation [{$operation}]."),
         };
     });

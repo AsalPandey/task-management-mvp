@@ -82,6 +82,8 @@ final class TaskStateCompatibility
                 [
                     [TaskState::InProgress, TaskState::Submitted],
                     [TaskState::Submitted, TaskState::InReview],
+                    [TaskState::InReview, TaskState::RevisionRequested],
+                    [TaskState::RevisionRequested, TaskState::InProgress],
                 ],
                 true,
             );
