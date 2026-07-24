@@ -55,6 +55,21 @@ class TaskReviewWorkflowNotification extends Notification
             'feedback_excerpt' => $cycle?->formal_feedback
                 ? Str::limit($cycle->formal_feedback, 160)
                 : null,
+            'reopen_reason_reference' => $cycle?->reopen_reason
+                ? "task_revision_cycles:{$cycle->id}"
+                : null,
+            'reopen_reason_excerpt' => $cycle?->reopen_reason
+                ? Str::limit($cycle->reopen_reason, 160)
+                : null,
+            'cancelled_by' => $this->task->cancelled_by,
+            'cancelled_by_name' => $this->task->cancelledBy?->name,
+            'cancelled_at' => $this->task->cancelled_at?->toAtomString(),
+            'cancellation_reason_reference' => $this->task->cancellation_reason
+                ? "tasks:{$this->task->id}:cancellation_reason"
+                : null,
+            'cancellation_reason_excerpt' => $this->task->cancellation_reason
+                ? Str::limit($this->task->cancellation_reason, 160)
+                : null,
             'current_state' => $this->task->machineState()->value,
             'required_action' => $this->requiredAction,
             'task_url' => route('tasks'),

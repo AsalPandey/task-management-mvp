@@ -14,6 +14,10 @@ class Task extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $hidden = [
+        'cancellation_reason',
+    ];
+
     protected $fillable = [
         'project_id',
         'original_task_id',

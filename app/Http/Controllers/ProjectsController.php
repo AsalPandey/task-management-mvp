@@ -159,7 +159,7 @@ class ProjectsController extends Controller
 
         $activeTasks = $project->tasks()
             ->where('assignee_id', $data['user_id'])
-            ->where('status', '!=', TaskState::Completed->value)
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
             ->exists();
 
         if ($activeTasks) {

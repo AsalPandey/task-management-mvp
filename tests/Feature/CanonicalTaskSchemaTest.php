@@ -8,7 +8,6 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Models\User;
-use App\Services\TaskLifecycleService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -213,17 +212,17 @@ class CanonicalTaskSchemaTest extends TestCase
         ]);
         $this->assertDatabaseCount('completed_tasks', 0);
 
-        $reopened = app(TaskLifecycleService::class)->reopen($completed, $manager);
+        $reopened = $this->reopenApprovedTask($completed, $manager);
 
         $this->assertSame($taskId, $reopened->id);
         $this->assertSame($taskUid, $reopened->task_uid);
         $this->assertDatabaseHas('tasks', [
             'id' => $taskId,
-            'status' => TaskState::InProgress->value,
+            'status' => TaskState::RevisionRequested->value,
             'deleted_at' => null,
         ]);
         $this->assertSame(
-            ['task.approved', 'task.completed', 'task.reopened'],
+            ['task.approved', 'task.completed', 'task.reopened', 'task.revision_requested'],
             $reopened->events()->pluck('event_type')->all(),
         );
     }

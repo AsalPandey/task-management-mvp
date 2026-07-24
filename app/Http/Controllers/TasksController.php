@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\ApproveTaskRequest;
+use App\Http\Requests\CancelTaskRequest;
 use App\Http\Requests\HoldTaskRequest;
 use App\Http\Requests\OverrideApproveTaskRequest;
+use App\Http\Requests\ReopenApprovedTaskRequest;
 use App\Http\Requests\RequestTaskRevisionRequest;
 use App\Http\Requests\ResubmitTaskRequest;
 use App\Http\Requests\ResumeTaskRequest;
@@ -23,8 +25,10 @@ use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ApproveTask;
+use App\TaskTransitions\CancelTask;
 use App\TaskTransitions\HoldTask;
 use App\TaskTransitions\OverrideApproveTask;
+use App\TaskTransitions\ReopenApprovedTask;
 use App\TaskTransitions\RequestTaskRevision;
 use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
@@ -190,23 +194,32 @@ class TasksController extends Controller
         ], 410);
     }
 
-    public function reopen(Request $request, Task $task, TaskLifecycleService $service)
-    {
-        $this->authorize('reopen', $task);
-
-        $reopened = $service->reopen(
-            $task,
-            $request->user(),
-            TaskOperationContext::web(
-                $request->user(),
-                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
-            ),
-        );
-
-        return response()->json([
-            'success' => true,
-            'task' => $this->formatTask($reopened),
+    public function reopen(
+        ReopenApprovedTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(ReopenApprovedTask::class, [
+            'reopenReason' => $request->validated()['reopen_reason'],
+            'revisionDueDate' => $request->validated()['revision_due_date'],
         ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task reopened for revision.');
+    }
+
+    public function cancel(
+        CancelTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(CancelTask::class, [
+            'cancellationReason' => $request->validated()['cancellation_reason'],
+            'expectedState' => $task->machineState()->value,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task cancelled.');
     }
 
     public function start(
@@ -395,6 +408,8 @@ class TasksController extends Controller
         $taskArr['start_date'] = $task->start_date ? $task->start_date->format('Y-m-d') : null;
         $taskArr['due_date'] = $task->due_date ? $task->due_date->format('Y-m-d') : null;
         $taskArr['review_due_date'] = $task->review_due_date?->format('Y-m-d');
+        $taskArr['revision_due_date'] = $task->revision_due_date?->format('Y-m-d');
+        $taskArr['cancelled_at'] = $task->cancelled_at?->toAtomString();
 
         return $taskArr;
     }

@@ -181,66 +181,37 @@ class TaskLifecycleService
     public function delete(Task $task, User $actor, string $action = 'deleted'): void
     {
         DB::transaction(function () use ($task, $actor, $action) {
-            $this->recordHistory($task, $action, $task->toArray(), $actor);
-            $task->delete();
-        });
-    }
-
-    public function reopen(Task $task, User $actor, ?TaskOperationContext $context = null): Task
-    {
-        $context ??= TaskOperationContext::system($actor->id);
-
-        return DB::transaction(function () use ($task, $actor, $context) {
             $lockedTask = Task::withTrashed()
                 ->whereKey($task->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            Gate::forUser($actor)->authorize('reopen', $lockedTask);
+            $lockedTask->load('project');
+            Gate::forUser($actor)->authorize('delete', $lockedTask);
 
             if ($lockedTask->trashed()) {
                 throw ValidationException::withMessages([
-                    'task' => 'Deleted tasks cannot be reopened through the canonical route.',
+                    'task' => 'Task is already deleted.',
                 ]);
             }
 
-            return $this->reopenLockedTask($lockedTask, $actor, $context);
+            $hasMeaningfulActivity = $lockedTask->machineState() !== TaskState::NotStarted
+                || $lockedTask->submissions()->exists()
+                || $lockedTask->revisionCycles()->exists()
+                || $lockedTask->approval()->exists()
+                || $lockedTask->events()
+                    ->whereNotIn('event_type', [TaskEventRecorder::CREATED, TaskEventRecorder::UPDATED])
+                    ->exists();
+
+            if ($hasMeaningfulActivity) {
+                throw ValidationException::withMessages([
+                    'task' => 'Tasks with meaningful lifecycle activity must be cancelled instead of deleted.',
+                ]);
+            }
+
+            $this->recordHistory($lockedTask, $action, $lockedTask->toArray(), $actor);
+            $lockedTask->delete();
         }, self::TRANSACTION_ATTEMPTS);
-    }
-
-    private function reopenLockedTask(
-        Task $task,
-        User $actor,
-        TaskOperationContext $context,
-    ): Task {
-        if ($task->machineState() !== TaskState::Completed) {
-            throw ValidationException::withMessages([
-                'task' => 'Task is already active.',
-            ]);
-        }
-
-        $before = $this->lifecycleEventValues($task);
-
-        $task->forceFill([
-            'status' => TaskState::InProgress->value,
-            'progress' => min((int) ($task->progress ?? 0), 99),
-            'completed_at' => null,
-            'completed_by' => null,
-        ])->save();
-
-        $task->refresh()->load(['project', 'assignee']);
-        $changes = $this->changedEventValues($before, $this->lifecycleEventValues($task));
-        $this->recordHistory($task, 'reverted', $this->canonicalHistorySnapshot($task), $actor);
-        $this->eventRecorder->record(
-            $task,
-            TaskEventRecorder::REOPENED,
-            $context,
-            $changes,
-        );
-
-        $this->notificationDispatcher->taskReopened($task, $actor);
-
-        return $task;
     }
 
     private function assertProjectAccess(int|string|null $projectId, User $actor): Project

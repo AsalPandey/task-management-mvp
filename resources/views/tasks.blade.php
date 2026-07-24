@@ -402,6 +402,7 @@ document.addEventListener('DOMContentLoaded', function() {
         card.addEventListener('click', function(e) {
             // Prevent triggering when clicking an action button.
             if (e.target.closest('.delete-btn, .execution-transition-btn')) return;
+            if (card.dataset.finalState === 'true') return;
             const taskId = card.dataset.taskId;
             fetch(`/tasks/${taskId}/edit`, {
                 headers: { 'Accept': 'application/json' }
@@ -610,6 +611,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     override_reason: reason.value.trim(),
                     approval_comment: comment.value?.trim() || null,
                 });
+
+                return;
+            }
+
+            if (this.dataset.transition === 'cancel') {
+                const prompt = await Swal.fire({
+                    title: 'Cancel this task?',
+                    input: 'textarea',
+                    inputLabel: 'Cancellation reason',
+                    inputAttributes: { maxlength: '5000' },
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Cancel Task',
+                    confirmButtonColor: '#dc2626',
+                    inputValidator: value => value.trim() ? undefined : 'A cancellation reason is required.',
+                });
+
+                if (prompt.isConfirmed) {
+                    await postExecutionTransition(this, {
+                        cancellation_reason: prompt.value.trim(),
+                    });
+                }
 
                 return;
             }
@@ -856,6 +879,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 data-progress="{{ $task->progress }}"
                 data-description="{{ htmlspecialchars($task->description ?? '', ENT_QUOTES) }}"
                 data-comments="{{ htmlspecialchars($task->comments ?? '', ENT_QUOTES) }}"
+                data-final-state="{{ $taskState->isFinal() ? 'true' : 'false' }}"
             >
                 <div class="task-header">
                     <div class="task-status-icon">
@@ -867,7 +891,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="task-actions">
                         <span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span>
                         <span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span>
-                        <button class="task-action-btn delete-btn">???</button>
+                        @if ($taskState === \App\Enums\TaskState::NotStarted)
+                            @can('delete', $task)
+                                <button class="task-action-btn delete-btn" aria-label="Delete draft task">🗑️</button>
+                            @endcan
+                        @endif
                     </div>
                 </div>
                 <h3 class="task-title">{{ $task->title }}</h3>
@@ -982,6 +1010,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     @endcan
                 @endif
+                @if (! $taskState->isFinal())
+                    @can('cancel', $task)
+                        <div class="execution-actions">
+                            <button type="button" class="btn-small btn-danger execution-transition-btn"
+                                data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
+                        </div>
+                    @endcan
+                @endif
+                @if ($taskState === \App\Enums\TaskState::Cancelled)
+                    <div class="task-meta">Cancelled {{ $task->cancelled_at?->format('m/d/Y H:i') }}</div>
+                @endif
                 @if($task->status !== 'Completed' && $task->due_date && \Carbon\Carbon::parse($task->due_date)->isPast())
                 <div class="overdue-warning">
                     <p>?? Overdue</p>
@@ -1030,7 +1069,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         $activeRevisionCycle = $task->activeRevisionCycle;
                     @endphp
                     <tr data-task-id="{{ $task->id }}">
-                        <td><input type="checkbox" class="task-checkbox" value="{{ $task->id }}"></td>
+                        <td>
+                            @can('delete', $task)
+                                <input type="checkbox" class="task-checkbox" value="{{ $task->id }}">
+                            @endcan
+                        </td>
                         <td>{{ $task->title }}</td>
                         <td>{{ $task->project ? $task->project->name : '-' }}</td>
                         <td><span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span></td>
@@ -1045,8 +1088,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
                         <td>{{ $task->progress }}%</td>
                         <td>
-                            <button class="btn-small btn-primary table-edit-btn">??</button>
-                            <button class="btn-small btn-danger table-delete-btn">???</button>
+                            @if (! $taskState->isFinal())
+                                <button class="btn-small btn-primary table-edit-btn">✏️</button>
+                            @endif
+                            @if ($taskState === \App\Enums\TaskState::NotStarted)
+                                @can('delete', $task)
+                                    <button class="btn-small btn-danger table-delete-btn">🗑️</button>
+                                @endcan
+                            @endif
                             @if ($canExecuteTask)
                                 @if ($taskState === \App\Enums\TaskState::NotStarted)
                                     @can('start', $task)
@@ -1104,6 +1153,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button type="button" class="btn-small btn-primary execution-transition-btn"
                                         data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
                                 @endcan
+                            @endif
+                            @if (! $taskState->isFinal())
+                                @can('cancel', $task)
+                                    <button type="button" class="btn-small btn-danger execution-transition-btn"
+                                        data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
+                                @endcan
+                            @endif
+                            @if ($taskState === \App\Enums\TaskState::Cancelled)
+                                <span>Cancelled {{ $task->cancelled_at?->format('m/d/Y H:i') }}</span>
                             @endif
                         </td>
                     </tr>

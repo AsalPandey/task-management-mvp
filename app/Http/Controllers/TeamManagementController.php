@@ -137,7 +137,7 @@ class TeamManagementController extends Controller
 
         $allTasksQuery = Task::query()
             ->where('assignee_id', $user->id)
-            ->where('status', '!=', TaskState::Completed->value);
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value]);
         $allCompletedTasksQuery = Task::query()
             ->where('assignee_id', $user->id)
             ->where('status', TaskState::Completed->value);

@@ -7,7 +7,6 @@ use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskOverdueNotification;
-use App\Notifications\TaskRevertedNotification;
 use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Notifications\TaskWorkflowTransitionNotification;
@@ -43,13 +42,6 @@ class TaskNotificationDispatcher
                     ->whereNull('overdue_notification_sent_at')
                     ->update(['overdue_notification_sent_at' => now()]);
             }
-        });
-    }
-
-    public function taskReopened(Task $task, User $actor): void
-    {
-        $this->afterCommit($task, 'task.reopened', function (Task $committedTask) use ($actor): void {
-            $committedTask->assignee?->notify(new TaskRevertedNotification($committedTask, $actor));
         });
     }
 
@@ -161,6 +153,38 @@ class TaskNotificationDispatcher
                 $task->project?->projectManager,
             ]),
             'None',
+        );
+    }
+
+    public function dispatchApprovedTaskReopened(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'reopened_revision_required',
+            collect([
+                $task->assignee,
+                $task->reviewer,
+                $task->creator,
+                $task->project?->projectManager,
+            ]),
+            'Begin revision',
+        );
+    }
+
+    public function dispatchTaskCancelled(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'cancelled',
+            collect([
+                $task->assignee,
+                $task->reviewer,
+                $task->creator,
+                $task->project?->projectManager,
+            ]),
+            'No further workflow action',
         );
     }
 

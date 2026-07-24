@@ -38,15 +38,18 @@ class TaskUpdateRequest extends FormRequest
             'assignee_id' => 'sometimes|nullable|exists:users,id',
             'reviewer_id' => 'sometimes|nullable|exists:users,id',
             'review_due_date' => 'sometimes|nullable|date|after:today',
-            'submitted_at' => ['prohibited'],
-            'review_started_at' => ['prohibited'],
-            'approved_at' => ['prohibited'],
-            'approved_by' => ['prohibited'],
-            'completed_at' => ['prohibited'],
-            'completed_by' => ['prohibited'],
-            'revision_count' => ['prohibited'],
-            'active_revision_cycle_id' => ['prohibited'],
-            'revision_due_date' => ['prohibited'],
+            'submitted_at' => ['missing'],
+            'review_started_at' => ['missing'],
+            'approved_at' => ['missing'],
+            'approved_by' => ['missing'],
+            'completed_at' => ['missing'],
+            'completed_by' => ['missing'],
+            'cancelled_at' => ['missing'],
+            'cancelled_by' => ['missing'],
+            'cancellation_reason' => ['missing'],
+            'revision_count' => ['missing'],
+            'active_revision_cycle_id' => ['missing'],
+            'revision_due_date' => ['missing'],
             'priority' => ['sometimes', 'required', Rule::in(Task::PRIORITIES)],
             'status' => ['sometimes', 'required', Rule::in(TaskStateCompatibility::genericStates())],
             'progress' => 'sometimes|required|integer|min:0|max:99',
@@ -71,6 +74,13 @@ class TaskUpdateRequest extends FormRequest
                     $validator->errors()->add(
                         'reviewer_id',
                         'Only management may assign or change a reviewer.',
+                    );
+                }
+
+                if ($task instanceof Task && $task->machineState()->isFinal() && $this->all() !== []) {
+                    $validator->errors()->add(
+                        'task',
+                        'Completed and cancelled tasks require a dedicated workflow action.',
                     );
                 }
 

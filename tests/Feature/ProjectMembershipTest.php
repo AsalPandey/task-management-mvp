@@ -133,7 +133,10 @@ class ProjectMembershipTest extends TestCase
 
         $completed = $this->approveTask($task, $manager);
 
-        $this->postJson(route('tasks.reopen', $completed))
+        $this->postJson(route('tasks.reopen', $completed), [
+            'reopen_reason' => 'Additional corrections are required.',
+            'revision_due_date' => now()->addDays(3)->toDateString(),
+        ])
             ->assertOk()
             ->assertJson(['success' => true]);
 
@@ -143,7 +146,7 @@ class ProjectMembershipTest extends TestCase
             'title' => 'Revertable Task',
             'project_id' => $project->id,
             'assignee_id' => $member->id,
-            'status' => TaskState::InProgress->value,
+            'status' => TaskState::RevisionRequested->value,
             'progress' => 99,
         ]);
         $this->assertTrue(TaskHistory::where('task_id', $task->id)

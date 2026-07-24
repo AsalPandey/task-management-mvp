@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\TaskApproval;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
+use App\Models\TaskRevisionCycle;
 use App\Models\TaskSubmission;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
@@ -71,13 +72,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
     {
         $this->requireDisposableMariaDb();
         [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
-        $task = $this->task($project, $assignee);
-        $task->forceFill([
-            'status' => 'Completed',
-            'progress' => 100,
-            'completed_at' => now(),
-            'completed_by' => $manager->id,
-        ])->save();
+        $task = $this->approveTask($this->reviewTask($project, $assignee, $manager), $manager);
         $taskId = $task->id;
         $taskUid = $task->task_uid;
         $taskCount = Task::withTrashed()->count();
@@ -88,13 +83,13 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             [$first, $second] = $this->race('reopen', $task, $manager);
 
             $this->assertSame(['transitioned', 'conflict'], [$first['result'], $second['result']]);
-            $this->assertSame('Task is already active.', $second['message']);
+            $this->assertSame('Only completed approved work may be reopened for revision.', $second['message']);
             $this->assertSame($taskId, $first['task_id']);
             $this->assertSame($taskUid, $first['task_uid']);
 
             $reopened = Task::query()->findOrFail($taskId);
             $this->assertSame($taskUid, $reopened->task_uid);
-            $this->assertSame('In Progress', $reopened->status);
+            $this->assertSame('Revision Requested', $reopened->status);
             $this->assertSame(99, $reopened->progress);
             $this->assertNull($reopened->completed_at);
             $this->assertNull($reopened->completed_by);
@@ -102,9 +97,12 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $this->assertSame($completedTaskCount, DB::table('completed_tasks')->count());
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
                 ->where('event_type', TaskEventRecorder::REOPENED)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::REVISION_REQUESTED)->count());
+            $this->assertSame(1, TaskRevisionCycle::query()->where('task_id', $taskId)->count());
             $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)
-                ->where('action', 'reverted')->count());
-            $this->assertSame($notificationCount + 1, DB::table('notifications')->count());
+                ->where('action', 'reopened_revision_requested')->count());
+            $this->assertSame($notificationCount + 2, DB::table('notifications')->count());
         } finally {
             $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
         }
@@ -201,14 +199,82 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         }
     }
 
+    public function test_two_connections_create_one_cancellation_outcome(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->task($project, $assignee);
+        $taskId = $task->id;
+        $taskUid = $task->task_uid;
+
+        try {
+            [$first, $second] = $this->race('cancel', $task, $manager);
+
+            $this->assertSame(['transitioned', 'conflict'], [$first['result'], $second['result']]);
+            $this->assertSame($taskId, $first['task_id']);
+            $this->assertSame($taskUid, $first['task_uid']);
+            $this->assertSame(TaskState::Cancelled, $task->fresh()->machineState());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::CANCELLED)->count());
+            $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)
+                ->where('action', 'cancelled')->count());
+        } finally {
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
+    public function test_concurrent_reopen_wins_and_completed_state_cancellation_is_rejected(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->approveTask($this->reviewTask($project, $assignee, $manager), $manager);
+        $taskId = $task->id;
+
+        try {
+            [$reopen, $cancel] = $this->race('reopen', $task, $manager, 'cancel');
+
+            $this->assertSame('transitioned', $reopen['result']);
+            $this->assertSame('conflict', $cancel['result']);
+            $this->assertSame(TaskState::RevisionRequested, $task->fresh()->machineState());
+            $this->assertSame(0, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::CANCELLED)->count());
+        } finally {
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
+    public function test_cancellation_beats_concurrent_submission_without_partial_side_effects(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->task($project, $assignee);
+        $task->forceFill(['reviewer_id' => $manager->id])->save();
+        $taskId = $task->id;
+
+        try {
+            [$cancel, $submit] = $this->race('cancel', $task, $manager, 'submit', $assignee);
+
+            $this->assertSame('transitioned', $cancel['result']);
+            $this->assertSame('conflict', $submit['result']);
+            $this->assertSame(TaskState::Cancelled, $task->fresh()->machineState());
+            $this->assertSame(0, TaskSubmission::query()->where('task_id', $taskId)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::CANCELLED)->count());
+            $this->assertSame(0, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::SUBMITTED)->count());
+        } finally {
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
     private function requireDisposableMariaDb(): void
     {
         if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             $this->markTestSkipped('Row-lock lifecycle concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase2(?:d|6)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
-            $this->markTestSkipped('Lifecycle concurrency is restricted to a disposable Phase 2D/2.6 QA database.');
+        if (preg_match('/^task_management_phase2(?:d|6|7)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+            $this->markTestSkipped('Lifecycle concurrency is restricted to a disposable Phase 2D/2.6/2.7 QA database.');
         }
     }
 
@@ -334,6 +400,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $worker,
             (string) $holdMilliseconds,
             $readyFile ?? '',
+            $task->machineState()->value,
         ], base_path(), timeout: 20);
     }
 
@@ -369,6 +436,8 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         DB::table('notifications')->whereIn('notifiable_id', collect($users)->pluck('id'))->delete();
         TaskApproval::query()->where('task_id', $taskId)->delete();
         TaskSubmission::query()->where('task_id', $taskId)->delete();
+        Task::withTrashed()->whereKey($taskId)->update(['active_revision_cycle_id' => null]);
+        TaskRevisionCycle::query()->where('task_id', $taskId)->delete();
         TaskEvent::query()->where('task_id', $taskId)->delete();
         TaskHistory::query()->where('task_id', $taskId)->delete();
         Task::withTrashed()->whereKey($taskId)->forceDelete();

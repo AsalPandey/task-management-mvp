@@ -89,7 +89,9 @@ class ReviewerEligibilityAndTaskPolicyTest extends TestCase
         $this->assertTrue($fixtures['manager']->can('overrideReviewer', $task));
         $this->assertFalse($fixtures['project_manager']->can('overrideReviewer', $task));
         $this->assertFalse($fixtures['assignee']->can('complete', $task));
-        $this->assertTrue($fixtures['assignee']->can('reopen', $task));
+        $this->assertFalse($fixtures['assignee']->can('reopen', $task));
+        $this->assertTrue($fixtures['manager']->can('reopen', $task));
+        $this->assertTrue($fixtures['project_manager']->can('reopen', $task));
     }
 
     public function test_self_approval_is_always_denied(): void

@@ -67,7 +67,7 @@ class CanonicalTaskReadPathTest extends TestCase
             ->assertOk()
             ->assertSee($task->title);
 
-        $service->reopen($completed, $manager);
+        $this->reopenApprovedTask($completed, $manager);
 
         $this->actingAs($manager)
             ->get(route('completed-tasks'))

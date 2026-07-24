@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\OverrideApproveTask;
+use App\TaskTransitions\ReopenApprovedTask;
 use App\ValueObjects\TaskOperationContext;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
@@ -52,6 +53,21 @@ abstract class TestCase extends BaseTestCase
         $command = (int) $actor->id === (int) $reviewer->id
             ? app(ApproveTask::class)
             : app()->make(OverrideApproveTask::class, ['overrideReason' => 'Test fixture approval.']);
+
+        return app(TaskTransitionExecutor::class)
+            ->execute($task, $actor, $command, $context)
+            ->task;
+    }
+
+    protected function reopenApprovedTask(
+        Task $task,
+        User $actor,
+        ?TaskOperationContext $context = null,
+    ): Task {
+        $command = app()->make(ReopenApprovedTask::class, [
+            'reopenReason' => 'Approved result requires additional work.',
+            'revisionDueDate' => now(config('app.timezone'))->addDays(3)->toDateString(),
+        ]);
 
         return app(TaskTransitionExecutor::class)
             ->execute($task, $actor, $command, $context)

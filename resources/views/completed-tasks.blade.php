@@ -33,8 +33,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const originalText = this.textContent;
             const button = this;
             Swal.fire({
-                title: 'Revert this task?',
-                text: 'This will move the task back to active tasks.',
+                title: 'Legacy reopen control unavailable',
+                text: 'Use the Reopen for Revision action.',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#3085d6',
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     if (r.ok && data.success) {
                         row.remove();
-                        Swal.fire('Reverted!', 'Task reverted successfully.', 'success');
+                        Swal.fire('Reopened!', 'Task reopened for revision.', 'success');
                     } else if (data && data.message) {
                         Swal.fire('Error', data.message, 'error');
                         button.disabled = false;
@@ -81,6 +81,67 @@ document.addEventListener('DOMContentLoaded', function() {
                     button.textContent = originalText;
                 });
             });
+        });
+    });
+});
+</script>
+@endpush
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.reopen-revision-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const originalText = button.textContent;
+            const reason = await Swal.fire({
+                title: 'Reopen for revision?',
+                input: 'textarea',
+                inputLabel: 'Why does the approved result require more work?',
+                inputAttributes: { maxlength: '5000' },
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Continue',
+                inputValidator: value => value.trim() ? undefined : 'A reopen reason is required.',
+            });
+            if (!reason.isConfirmed) return;
+
+            const deadline = await Swal.fire({
+                title: 'Set revision deadline',
+                input: 'date',
+                inputLabel: 'The deadline must be in the future.',
+                showCancelButton: true,
+                confirmButtonText: 'Reopen for Revision',
+                inputValidator: value => value ? undefined : 'A revision deadline is required.',
+            });
+            if (!deadline.isConfirmed) return;
+
+            button.disabled = true;
+            button.textContent = 'Reopening...';
+
+            try {
+                const response = await fetch(button.dataset.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reopen_reason: reason.value.trim(),
+                        revision_due_date: deadline.value,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Failed to reopen the task.');
+                }
+
+                button.closest('tr')?.remove();
+                Swal.fire('Reopened!', 'The task now requires revision.', 'success');
+            } catch (error) {
+                Swal.fire('Error', error.message || 'Failed to reopen the task.', 'error');
+                button.disabled = false;
+                button.textContent = originalText;
+            }
         });
     });
 });
@@ -118,9 +179,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</td>
                     <td>
                         @can('reopen', $task)
-                            <button class="btn-small btn-primary revert-btn" data-url="{{ route('tasks.reopen', $task) }}">Revert</button>
+                            <button class="btn-small btn-primary reopen-revision-btn" data-url="{{ route('tasks.reopen', $task) }}">Reopen for Revision</button>
                         @else
-                            <span aria-label="Revert unavailable">&mdash;</span>
+                            <span aria-label="Reopen unavailable">&mdash;</span>
                         @endcan
                     </td>
                 </tr>

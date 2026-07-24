@@ -358,7 +358,7 @@ class TaskEventRecordingTest extends TestCase
         $this->assertNotNull($completed->completed_at);
         $this->assertDatabaseCount('completed_tasks', 0);
 
-        $reopened = $service->reopen($completed, $manager, TaskOperationContext::test($manager->id));
+        $reopened = $this->reopenApprovedTask($completed, $manager, TaskOperationContext::test($manager->id));
 
         $this->assertSame($task->id, $reopened->id);
         $this->assertSame($task->task_uid, $reopened->task_uid);
@@ -367,6 +367,7 @@ class TaskEventRecordingTest extends TestCase
             TaskEventRecorder::APPROVED,
             TaskEventRecorder::COMPLETED,
             TaskEventRecorder::REOPENED,
+            TaskEventRecorder::REVISION_REQUESTED,
         ], $reopened->events()->pluck('event_type')->all());
     }
 

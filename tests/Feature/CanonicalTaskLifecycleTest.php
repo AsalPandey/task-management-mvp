@@ -10,7 +10,7 @@ use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
 use App\Models\User;
-use App\Notifications\TaskRevertedNotification;
+use App\Notifications\TaskReviewWorkflowNotification;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskLifecycleService;
 use App\ValueObjects\TaskOperationContext;
@@ -72,14 +72,14 @@ class CanonicalTaskLifecycleTest extends TestCase
         $taskUid = $task->task_uid;
         $completedAt = CarbonImmutable::parse('2026-07-19T12:00:00+05:45');
         $reopenedAt = CarbonImmutable::parse('2026-07-19T13:00:00+05:45');
-        $service = app(TaskLifecycleService::class);
 
         $completed = $this->approveTask(
             $task,
             $manager,
             TaskOperationContext::test($manager->id, 'complete-operation', $completedAt),
         );
-        $reopened = $service->reopen(
+        Notification::fake();
+        $reopened = $this->reopenApprovedTask(
             $completed,
             $manager,
             TaskOperationContext::test($manager->id, 'reopen-operation', $reopenedAt),
@@ -88,7 +88,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertSame($taskId, $reopened->id);
         $this->assertSame($taskUid, $reopened->task_uid);
         $this->assertSame(1, Task::withTrashed()->count());
-        $this->assertSame('In Progress', $reopened->status);
+        $this->assertSame('Revision Requested', $reopened->status);
         $this->assertSame(99, $reopened->progress);
         $this->assertNull($reopened->completed_at);
         $this->assertNull($reopened->completed_by);
@@ -97,7 +97,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertDatabaseHas('task_histories', [
             'task_id' => $taskId,
             'completed_task_id' => null,
-            'action' => 'reverted',
+            'action' => 'reopened_revision_requested',
             'user_id' => $manager->id,
         ]);
 
@@ -105,16 +105,14 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertSame(3, $event->sequence);
         $this->assertSame('reopen-operation', $event->correlation_id);
         $this->assertTrue($reopenedAt->equalTo($event->occurred_at));
-        $this->assertSame(['status', 'progress', 'completed_at', 'completed_by'], array_keys($event->changed_fields));
-        $this->assertSame(['before' => 'Completed', 'after' => 'In Progress'], $event->changed_fields['status']);
-        $this->assertSame(['before' => 100, 'after' => 99], $event->changed_fields['progress']);
+        $this->assertSame(['approved_at', 'approved_by', 'completed_at', 'completed_by'], array_keys($event->changed_fields));
         $this->assertNull($event->changed_fields['completed_at']['after']);
         $this->assertNull($event->changed_fields['completed_by']['after']);
-        Notification::assertSentToTimes($assignee, TaskRevertedNotification::class, 1);
+        Notification::assertSentToTimes($assignee, TaskReviewWorkflowNotification::class, 1);
         Notification::assertSentTo(
             $assignee,
-            TaskRevertedNotification::class,
-            fn (TaskRevertedNotification $notification) => $notification->toArray($assignee)['task_uid'] === $taskUid
+            TaskReviewWorkflowNotification::class,
+            fn (TaskReviewWorkflowNotification $notification) => $notification->toArray($assignee)['task_uid'] === $taskUid
                 && $notification->toArray($assignee)['task_id'] === $taskId,
         );
     }
@@ -122,9 +120,9 @@ class CanonicalTaskLifecycleTest extends TestCase
     public function test_duplicate_approval_and_reopen_are_deterministic_and_side_effect_free(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
-        $service = app(TaskLifecycleService::class);
         $task = $this->task($project, $assignee);
         $completed = $this->approveTask($task, $manager);
+        Notification::fake();
         $afterCompletion = $this->lifecycleCounts();
 
         $this->actingAs($manager)
@@ -132,16 +130,16 @@ class CanonicalTaskLifecycleTest extends TestCase
             ->assertUnprocessable();
         $this->assertSame($afterCompletion, $this->lifecycleCounts());
 
-        $reopened = $service->reopen($completed, $manager);
+        $reopened = $this->reopenApprovedTask($completed, $manager);
         $afterReopen = $this->lifecycleCounts();
 
         try {
-            $service->reopen($reopened, $manager);
+            $this->reopenApprovedTask($reopened, $manager);
             $this->fail('Expected duplicate reopen to be rejected.');
         } catch (ValidationException $exception) {
-            $this->assertSame('Task is already active.', $exception->errors()['task'][0]);
+            $this->assertSame('Only completed approved work may be reopened for revision.', $exception->errors()['task'][0]);
             $this->assertSame($afterReopen, $this->lifecycleCounts());
-            Notification::assertSentToTimes($assignee, TaskRevertedNotification::class, 1);
+            Notification::assertSentToTimes($assignee, TaskReviewWorkflowNotification::class, 1);
         }
     }
 
@@ -156,7 +154,7 @@ class CanonicalTaskLifecycleTest extends TestCase
 
         foreach ([$coworker, $outside, $inactive] as $actor) {
             try {
-                app(TaskLifecycleService::class)->reopen($completed, $actor);
+                $this->reopenApprovedTask($completed, $actor);
                 $this->fail('Expected unauthorized reopen to fail.');
             } catch (AuthorizationException) {
                 $this->assertSame($completedCounts, $this->lifecycleCounts());
@@ -192,10 +190,9 @@ class CanonicalTaskLifecycleTest extends TestCase
     public function test_only_assigned_reviewer_approval_completes_before_existing_reopen_access(): void
     {
         [$manager, $project, $assignee, , $projectManager] = $this->managedProject(withCoworker: true);
-        $service = app(TaskLifecycleService::class);
 
         $projectManagerTask = $this->task($project, $assignee, ['title' => 'Project manager transition']);
-        $service->reopen($this->approveTask($projectManagerTask, $projectManager), $projectManager);
+        $this->reopenApprovedTask($this->approveTask($projectManagerTask, $projectManager), $projectManager);
 
         $this->actingAs($assignee)
             ->postJson(route('tasks.complete', $this->task($project, $assignee)))

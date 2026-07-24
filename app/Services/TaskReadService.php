@@ -33,7 +33,10 @@ final class TaskReadService
 
     public function activeVisibleTo(User $user): Builder
     {
-        return $this->visibleTo($user)->where('status', '!=', TaskState::Completed->value);
+        return $this->visibleTo($user)->whereNotIn('status', [
+            TaskState::Completed->value,
+            TaskState::Cancelled->value,
+        ]);
     }
 
     public function completedVisibleTo(User $user): Builder

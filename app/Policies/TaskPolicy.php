@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\TaskState;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\ReviewerEligibilityService;
@@ -57,7 +58,7 @@ class TaskPolicy
 
     public function reopen(User $user, Task $task): bool
     {
-        return $this->controlsLifecycle($user, $task);
+        return $this->controlsManagement($user, $task);
     }
 
     public function start(User $user, Task $task): bool
@@ -146,8 +147,8 @@ class TaskPolicy
      */
     public function delete(User $user, Task $task): bool
     {
-        return $user->hasRole('manager')
-            || ($user->hasRole('project_manager') && $task->project && (int) $task->project->project_manager_id === (int) $user->id);
+        return $task->machineState() === TaskState::NotStarted
+            && $this->controlsManagement($user, $task);
     }
 
     public function bulkActions(User $user): bool

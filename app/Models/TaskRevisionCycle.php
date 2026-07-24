@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class TaskRevisionCycle extends Model
 {
+    protected $hidden = [
+        'reopen_reason',
+    ];
+
     protected $fillable = [
         'task_id',
         'cycle_number',

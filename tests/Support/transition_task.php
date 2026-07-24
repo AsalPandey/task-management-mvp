@@ -2,11 +2,12 @@
 
 use App\Models\Task;
 use App\Models\User;
-use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ApproveTask;
+use App\TaskTransitions\CancelTask;
 use App\TaskTransitions\HoldTask;
 use App\TaskTransitions\OverrideApproveTask;
+use App\TaskTransitions\ReopenApprovedTask;
 use App\TaskTransitions\RequestTaskRevision;
 use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
@@ -30,9 +31,10 @@ $actorId = (int) ($argv[3] ?? 0);
 $worker = (string) ($argv[4] ?? 'worker');
 $holdMilliseconds = (int) ($argv[5] ?? 0);
 $readyFile = $argv[6] ?? null;
+$expectedState = $argv[7] ?? null;
 
 try {
-    $task = DB::transaction(function () use ($operation, $taskId, $actorId, $worker, $holdMilliseconds, $readyFile) {
+    $task = DB::transaction(function () use ($operation, $taskId, $actorId, $worker, $holdMilliseconds, $readyFile, $expectedState) {
         if ($holdMilliseconds > 0) {
             Task::withTrashed()->whereKey($taskId)->lockForUpdate()->firstOrFail();
 
@@ -45,7 +47,6 @@ try {
 
         $task = Task::withTrashed()->findOrFail($taskId);
         $actor = User::query()->findOrFail($actorId);
-        $service = app(TaskLifecycleService::class);
         $executor = app(TaskTransitionExecutor::class);
         $context = TaskOperationContext::test(
             $actor->id,
@@ -60,7 +61,24 @@ try {
                 app()->make(OverrideApproveTask::class, ['overrideReason' => 'Concurrent Manager override']),
                 $context,
             )->task,
-            'reopen' => $service->reopen($task, $actor, $context),
+            'reopen' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(ReopenApprovedTask::class, [
+                    'reopenReason' => 'Concurrent approved-work reopen',
+                    'revisionDueDate' => now()->addDays(3)->toDateString(),
+                ]),
+                $context,
+            )->task,
+            'cancel' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(CancelTask::class, [
+                    'cancellationReason' => 'Concurrent cancellation',
+                    'expectedState' => $expectedState,
+                ]),
+                $context,
+            )->task,
             'start' => $executor->execute($task, $actor, app(StartTask::class), $context)->task,
             'hold' => $executor->execute(
                 $task,

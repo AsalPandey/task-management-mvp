@@ -8,7 +8,6 @@ use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskOverdueNotification;
-use App\Notifications\TaskRevertedNotification;
 use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Services\TaskLifecycleService;
@@ -114,16 +113,17 @@ class TaskNotificationAfterCommitTest extends TestCase
     {
         [$manager, $project, $assignee] = $this->managedProject();
         $task = $this->completedTask($project, $assignee, $manager);
+        Notification::fake();
 
         DB::transaction(function () use ($manager, $task): void {
-            app(TaskLifecycleService::class)->reopen($task, $manager);
+            $this->reopenApprovedTask($task, $manager);
             Notification::assertNothingSent();
         });
 
         Notification::assertSentTo(
             $assignee,
-            TaskRevertedNotification::class,
-            fn (TaskRevertedNotification $notification): bool => $this->hasTaskIdentity($notification, $assignee, $task),
+            TaskReviewWorkflowNotification::class,
+            fn (TaskReviewWorkflowNotification $notification): bool => $this->hasTaskIdentity($notification, $assignee, $task),
         );
     }
 
@@ -175,14 +175,15 @@ class TaskNotificationAfterCommitTest extends TestCase
     public function test_duplicate_reopen_does_not_dispatch_another_notification(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
-        $service = app(TaskLifecycleService::class);
-        $reopened = $service->reopen($this->completedTask($project, $assignee, $manager), $manager);
+        $completed = $this->completedTask($project, $assignee, $manager);
+        Notification::fake();
+        $reopened = $this->reopenApprovedTask($completed, $manager);
 
         try {
-            $service->reopen($reopened, $manager);
+            $this->reopenApprovedTask($reopened, $manager);
             $this->fail('Expected duplicate reopen to be rejected.');
         } catch (ValidationException) {
-            Notification::assertSentToTimes($assignee, TaskRevertedNotification::class, 1);
+            Notification::assertSentToTimes($assignee, TaskReviewWorkflowNotification::class, 1);
         }
     }
 
@@ -234,17 +235,7 @@ class TaskNotificationAfterCommitTest extends TestCase
 
     private function completedTask(Project $project, User $assignee, User $manager): Task
     {
-        $task = $this->task($project, $assignee, [
-            'status' => 'Completed',
-            'progress' => 100,
-        ]);
-
-        $task->forceFill([
-            'completed_at' => now(),
-            'completed_by' => $manager->id,
-        ])->save();
-
-        return $task->fresh();
+        return $this->approveTask($this->task($project, $assignee), $manager);
     }
 
     private function hasTaskIdentity(object $notification, User $notifiable, Task $task): bool
