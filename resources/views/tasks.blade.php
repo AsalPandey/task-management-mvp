@@ -36,13 +36,16 @@ body { background: #f7f8fa; }
     ]);
 @endphp
 <script>
-window.projectMembers = @json($projectMembersForScript);
+window.projectMembers = {{ Illuminate\Support\Js::from($projectMembersForScript) }};
+window.assignmentCandidates = {{ Illuminate\Support\Js::from($assignmentCandidates) }};
 window.reviewerCandidates = {{ Illuminate\Support\Js::from($reviewerCandidates) }};
 window.projectMembership = {{ Illuminate\Support\Js::from($projectMembershipForScript) }};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Modal logic
     const newTaskBtn = document.getElementById('newTaskBtn');
+window.taskStoreUrl = {{ Illuminate\Support\Js::from(route('tasks.store')) }};
+window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.update', ['task' => '__TASK_ID__'])) }};
     const taskModal = document.getElementById('taskModal');
     const taskForm = document.getElementById('taskForm');
     const modalClose = taskModal ? taskModal.querySelector('.modal-close') : null;
@@ -185,12 +188,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     populateAssignees(task.project_id || '', task.assignee_id || '');
                     populateReviewers(task.project_id || '', task.reviewer_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
-                    taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
                     taskForm.querySelector('#taskDueDate').value = task.due_date || '';
                     taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
-                    taskForm.querySelector('#taskProgress').value = task.progress || 0;
-                    taskForm.querySelector('#progressValue').textContent = task.progress || 0;
+                    taskForm.querySelector('#taskReviewDueDate').disabled = true;
+                    taskForm.querySelector('#taskReviewer').disabled = true;
                     taskForm.querySelector('#taskComments').value = task.comments || '';
                     editTaskId = task.id;
                 } else {
@@ -212,6 +214,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonColor: '#d33',
                 cancelButtonColor: '#3085d6',
                 confirmButtonText: 'Yes, delete it!'
+            taskReviewerSelect.disabled = false;
+            document.getElementById('taskDueDate').disabled = false;
+            document.getElementById('taskReviewDueDate').disabled = false;
             }).then((result) => {
                 if (!result.isConfirmed) return;
             const card = this.closest('.task-card');
@@ -240,7 +245,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     // Create/update task
-    taskForm.addEventListener('submit', function(e) {
+    taskForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         setLoading(true);
         const formData = new FormData(taskForm);
@@ -249,16 +254,18 @@ document.addEventListener('DOMContentLoaded', function() {
             description: formData.get('taskDescription'),
             project_id: formData.get('taskProject'),
             assignee_id: formData.get('taskAssignee'),
-            reviewer_id: formData.get('taskReviewer') || null,
             priority: formData.get('taskPriority'),
-            status: formData.get('taskStatus'),
-            progress: formData.get('taskProgress'),
             start_date: formData.get('taskStartDate'),
-            due_date: formData.get('taskDueDate'),
-            review_due_date: formData.get('taskReviewDueDate') || null,
             comments: formData.get('taskComments'),
         };
-        const url = editTaskId ? /tasks/${editTaskId} : '/tasks';
+        if (!editTaskId) {
+            payload.reviewer_id = formData.get('taskReviewer');
+            payload.due_date = formData.get('taskDueDate');
+            payload.review_due_date = formData.get('taskReviewDueDate') || null;
+        }
+        const url = editTaskId
+            ? window.taskUpdateUrlTemplate.replace('__TASK_ID__', encodeURIComponent(editTaskId))
+            : window.taskStoreUrl;
         const method = editTaskId ? 'PUT' : 'POST';
 
         fetch(url, {
@@ -270,6 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify(payload),
         })
+                    taskForm.querySelector('#taskDueDate').disabled = true;
         .then(r => r.json())
         .then(data => {
             setLoading(false);
@@ -401,8 +409,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.task-card').forEach(card => {
         card.addEventListener('click', function(e) {
             // Prevent triggering when clicking an action button.
-            if (e.target.closest('.delete-btn, .execution-transition-btn')) return;
-            if (card.dataset.finalState === 'true') return;
+            if (e.target.closest('.delete-btn, .execution-transition-btn, .management-action-btn, .timeline-btn, .progress-update-btn')) return;
+            if (card.dataset.genericEditable !== 'true') return;
             const taskId = card.dataset.taskId;
             fetch(`/tasks/${taskId}/edit`, {
                 headers: { 'Accept': 'application/json' }
@@ -422,12 +430,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     populateAssignees(task.project_id || '', task.assignee_id || '');
                     populateReviewers(task.project_id || '', task.reviewer_id || '');
                     taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
-                    taskForm.querySelector('#taskStatus').value = task.status || 'Not Started';
                     taskForm.querySelector('#taskStartDate').value = task.start_date || '';
                     taskForm.querySelector('#taskDueDate').value = task.due_date || '';
                     taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
-                    taskForm.querySelector('#taskProgress').value = task.progress || 0;
-                    taskForm.querySelector('#progressValue').textContent = task.progress || 0;
+                    taskForm.querySelector('#taskReviewDueDate').disabled = true;
+                    taskForm.querySelector('#taskReviewer').disabled = true;
                     taskForm.querySelector('#taskComments').value = task.comments || '';
                     editTaskId = task.id;
                 } else {
@@ -520,6 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     title: 'Request revision',
                     input: 'textarea',
                     inputLabel: 'Formal feedback',
+                    taskForm.querySelector('#taskDueDate').disabled = true;
                     inputAttributes: { maxlength: '5000' },
                     showCancelButton: true,
                     confirmButtonText: 'Continue',
@@ -769,6 +777,174 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (data.message) {
                     Swal.fire('Error', data.message, 'error');
                 } else {
+    document.querySelectorAll('.management-action-btn').forEach(button => {
+        button.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (this.dataset.action === 'reassign-reviewer') {
+                const options = {};
+                reviewerCandidates.forEach(candidate => {
+                    options[candidate.id] = candidate.name;
+                });
+                const reviewer = await Swal.fire({
+                    title: 'Reassign reviewer',
+                    input: 'select',
+                    inputOptions: options,
+                    inputPlaceholder: 'Select reviewer',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    inputValidator: value => value ? undefined : 'A reviewer is required.',
+                });
+                if (!reviewer.isConfirmed) return;
+
+                const reason = await Swal.fire({
+                    title: 'Reason for reassignment',
+                    input: 'textarea',
+                    inputLabel: this.dataset.reasonRequired === 'true'
+                        ? 'Required after submission'
+                        : 'Optional before submission',
+                    inputAttributes: { maxlength: '1000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Reassign Reviewer',
+                    inputValidator: value => this.dataset.reasonRequired === 'true' && !value.trim()
+                        ? 'A reason is required after submission.'
+                        : undefined,
+                });
+                if (!reason.isConfirmed) return;
+
+                await postExecutionTransition(this, {
+                    reviewer_id: reviewer.value,
+                    reason: reason.value?.trim() || null,
+                });
+
+                return;
+            }
+
+            if (this.dataset.action === 'change-deadline') {
+                const deadline = await Swal.fire({
+                    title: `Change ${this.dataset.deadlineType} deadline`,
+                    input: 'date',
+                    inputLabel: 'Choose a future date',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    inputValidator: value => value ? undefined : 'A deadline is required.',
+                });
+                if (!deadline.isConfirmed) return;
+
+                const reason = await Swal.fire({
+                    title: 'Reason for deadline change',
+                    input: 'textarea',
+                    inputLabel: this.dataset.reasonRequired === 'true'
+                        ? 'Required for the active workflow period'
+                        : 'Optional before work begins',
+                    inputAttributes: { maxlength: '1000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Change Deadline',
+                    inputValidator: value => this.dataset.reasonRequired === 'true' && !value.trim()
+                        ? 'A reason is required.'
+                        : undefined,
+                });
+                if (!reason.isConfirmed) return;
+
+                await postExecutionTransition(this, {
+                    due_date: deadline.value,
+                    reason: reason.value?.trim() || null,
+                });
+            }
+        });
+    });
+
+    document.querySelectorAll('.timeline-btn').forEach(button => {
+        button.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            button.disabled = true;
+
+            try {
+                const response = await fetch(button.dataset.url, {
+                    headers: { 'Accept': 'application/json' },
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'The timeline could not be loaded.');
+                }
+                const timelineText = data.entries.length
+                    ? data.entries.map(entry => {
+                        const when = entry.occurred_at ? new Date(entry.occurred_at).toLocaleString() : '';
+                        const details = entry.details?.length ? ` ? ${entry.details.join('; ')}` : '';
+
+                        return `${when} ? ${entry.label} ? ${entry.actor}${details}`;
+                    }).join('\n')
+                    : 'No timeline entries are available.';
+
+                await Swal.fire({
+                    title: 'Task timeline',
+                    text: timelineText,
+                    width: 720,
+                });
+            } catch (error) {
+                showMessage(error.message || 'The timeline could not be loaded.', false);
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.progress-update-btn').forEach(button => {
+        button.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const progress = await Swal.fire({
+                title: 'Update progress',
+                input: 'number',
+                inputLabel: 'Progress must remain between 0 and 99 until approval.',
+                inputValue: this.dataset.progress,
+                inputAttributes: { min: '0', max: '99', step: '1' },
+                showCancelButton: true,
+                confirmButtonText: 'Continue',
+                inputValidator: value => value === '' || Number(value) < 0 || Number(value) > 99
+                    ? 'Enter a progress value from 0 to 99.'
+                    : undefined,
+            });
+            if (!progress.isConfirmed) return;
+
+            const comments = await Swal.fire({
+                title: 'Visible comments',
+                input: 'textarea',
+                inputLabel: 'Optional',
+                inputValue: this.dataset.comments || '',
+                showCancelButton: true,
+                confirmButtonText: 'Update Progress',
+            });
+            if (!comments.isConfirmed) return;
+
+            this.disabled = true;
+            try {
+                const response = await fetch(this.dataset.url, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        progress: Number(progress.value),
+                        comments: comments.value?.trim() || null,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(firstErrorMessage(data, 'Progress could not be updated.'));
+                }
+                window.location.reload();
+            } catch (error) {
+                showMessage(error.message || 'Progress could not be updated.', false);
+                this.disabled = false;
+            }
+        });
+    });
+
                     Swal.fire('Error', 'Error deleting tasks.', 'error');
                 }
             })
@@ -820,7 +996,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <select id="statusFilter" name="status" aria-label="Filter tasks by status">
                     <option value="">All Status</option>
-                    @foreach (\App\Support\TaskStateCompatibility::genericOptions() as $status => $label)
+                    @foreach (\App\Enums\TaskState::options() as $status => $label)
                         <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ $label }}</option>
                     @endforeach
                 </select>
@@ -952,6 +1128,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             @can('start', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
                                     data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
+                <select id="reviewerFilter" name="reviewer" aria-label="Filter tasks by reviewer">
+                    <option value="">All Reviewers</option>
+                    @foreach ($filterReviewers as $reviewer)
+                        <option value="{{ $reviewer->id }}" @selected((string) ($filters['reviewer'] ?? '') === (string) $reviewer->id)>{{ $reviewer->name }}</option>
+                    @endforeach
+                </select>
+                <select id="scopeFilter" name="scope" aria-label="Filter tasks by relationship">
+                    <option value="">All Authorized Tasks</option>
+                    <option value="assigned_to_me" @selected(($filters['scope'] ?? '') === 'assigned_to_me')>Assigned to me</option>
+                    <option value="created_by_me" @selected(($filters['scope'] ?? '') === 'created_by_me')>Created by me</option>
+                    <option value="waiting_for_review" @selected(($filters['scope'] ?? '') === 'waiting_for_review')>Waiting for my review</option>
+                </select>
                             @endcan
                         @elseif ($taskState === \App\Enums\TaskState::InProgress)
                             @can('hold', $task)
@@ -990,6 +1178,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         @endcan
                         @if ((int) $task->assignee_id !== (int) $user->id)
                             @can('approve', $task)
+                data-generic-editable="{{ ! $user->hasRole('team_member') && $user->can('update', $task) && ! $taskState->isFinal() && ! $task->submitted_at && ! $task->active_revision_cycle_id ? 'true' : 'false' }}"
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
                                     data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
                             @endcan
@@ -1128,6 +1317,43 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
                                             data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
                                     @endcan
+                <div class="execution-actions">
+                    @if ($taskState === \App\Enums\TaskState::InProgress)
+                        @can('updateProgress', $task)
+                            <button type="button" class="btn-small btn-secondary progress-update-btn"
+                                data-progress="{{ $task->progress }}"
+                                data-comments="{{ $task->comments }}"
+                                data-url="{{ route('tasks.update', $task) }}">Update Progress</button>
+                        @endcan
+                    @endif
+                    <button type="button" class="btn-small btn-secondary timeline-btn"
+                        data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
+                    @if (! $taskState->isFinal())
+                        @can('reassignReviewer', $task)
+                            <button type="button" class="btn-small btn-secondary management-action-btn"
+                                data-action="reassign-reviewer"
+                                data-reason-required="{{ $task->submitted_at || $task->active_revision_cycle_id ? 'true' : 'false' }}"
+                                data-url="{{ route('tasks.reviewer.reassign', $task) }}">Reassign Reviewer</button>
+                        @endcan
+                        @can('changeDeadline', $task)
+                            @php
+                                $deadlineType = $taskState === \App\Enums\TaskState::RevisionRequested || $task->active_revision_cycle_id
+                                    ? 'revision'
+                                    : ($taskState->isReviewState() ? 'review' : 'execution');
+                                $deadlineReasonRequired = $deadlineType === 'revision'
+                                    || ($deadlineType === 'review' && $taskState->isReviewState())
+                                    || ($deadlineType === 'execution' && $taskState !== \App\Enums\TaskState::NotStarted);
+                            @endphp
+                            <button type="button" class="btn-small btn-secondary management-action-btn"
+                                data-action="change-deadline"
+                                data-deadline-type="{{ $deadlineType }}"
+                                data-reason-required="{{ $deadlineReasonRequired ? 'true' : 'false' }}"
+                                data-url="{{ route('tasks.deadline.change', ['task' => $task, 'deadlineType' => $deadlineType]) }}">
+                                Change {{ ucfirst($deadlineType) }} Deadline
+                            </button>
+                        @endcan
+                    @endif
+                </div>
                                 @endif
                             @endif
                             @if ($taskState === \App\Enums\TaskState::InReview)
@@ -1219,19 +1445,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="taskStatus">Status *</label>
-                        <select id="taskStatus" name="taskStatus" required>
-                            <option value="Not Started" selected>Not Started</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                            <option value="On Hold">On Hold</option>
-                        </select>
+                        <label>Initial State</label>
+                        <p class="form-help">New tasks always begin as Not Started.</p>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="taskReviewer">Reviewer</label>
-                        <select id="taskReviewer" name="taskReviewer">
+                        <label for="taskReviewer">Reviewer *</label>
+                        <select id="taskReviewer" name="taskReviewer" required>
                             <option value="">Select Reviewer</option>
                         </select>
                     </div>
@@ -1248,17 +1469,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="form-group">
                         <label for="taskDueDate">Due Date *</label>
                         <input type="date" id="taskDueDate" name="taskDueDate" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="taskProgress">Progress: <span id="progressValue">0</span>%</label>
-                    <input type="range" id="taskProgress" name="taskProgress" min="0" max="100" value="0" step="10">
-                    <div class="progress-markers">
-                        <span>0%</span>
-                        <span>25%</span>
-                        <span>50%</span>
-                        <span>75%</span>
-                        <span>100%</span>
                     </div>
                 </div>
                 <div class="form-group">

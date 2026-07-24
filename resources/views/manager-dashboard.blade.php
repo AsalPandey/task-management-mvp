@@ -40,9 +40,16 @@ body { background: #f7f8fa; }
             })->values(),
         ];
     });
+    $projectMembershipForScript = $projects->mapWithKeys(fn ($project) => [
+        $project->id => [
+            'project_manager_id' => $project->project_manager_id,
+        ],
+    ]);
 @endphp
 <script>
-window.projectMembers = @json($projectMembersForScript);
+window.projectMembers = {{ Illuminate\Support\Js::from($projectMembersForScript) }};
+window.reviewerCandidates = {{ Illuminate\Support\Js::from($reviewerCandidates) }};
+window.projectMembership = {{ Illuminate\Support\Js::from($projectMembershipForScript) }};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching logic
@@ -72,7 +79,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const messageContainer = document.getElementById('messageContainer');
     const taskProjectSelect = document.getElementById('taskProject');
     const taskAssigneeSelect = document.getElementById('taskAssignee');
+    const taskReviewerSelect = document.getElementById('taskReviewer');
     const projectMembers = window.projectMembers || {};
+    const reviewerCandidates = window.reviewerCandidates || [];
+    const projectMembership = window.projectMembership || {};
 
     function populateAssignees(projectId, selectedId = '') {
         if (!taskAssigneeSelect) return;
@@ -87,6 +97,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             taskAssigneeSelect.appendChild(option);
         });
+    }
+
+    function populateReviewers(projectId, selectedId = '') {
+        if (!taskReviewerSelect) return;
+
+        taskReviewerSelect.replaceChildren(new Option('Select Reviewer', ''));
+        const project = projectMembership[projectId];
+        reviewerCandidates
+            .filter(candidate => candidate.role?.name === 'manager'
+                || String(candidate.id) === String(project?.project_manager_id))
+            .forEach(candidate => {
+                const option = new Option(candidate.name, candidate.id);
+                option.selected = String(candidate.id) === String(selectedId);
+                taskReviewerSelect.appendChild(option);
+            });
     }
 
     function showMessage(msg, success = true) {
@@ -119,6 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('taskStartDate').value = new Date().toISOString().split('T')[0];
             if (taskProjectSelect) {
                 populateAssignees(taskProjectSelect.value);
+                populateReviewers(taskProjectSelect.value);
             }
             taskModal.classList.add('active');
         });
@@ -147,8 +173,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (taskProjectSelect) {
         taskProjectSelect.addEventListener('change', function() {
             populateAssignees(this.value);
+            populateReviewers(this.value);
         });
         populateAssignees(taskProjectSelect.value);
+        populateReviewers(taskProjectSelect.value);
     }
     // Add submit handler for feedback (AJAX example, adapt as needed)
     if (taskForm) {
@@ -161,9 +189,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 description: formData.get('taskDescription'),
                 project_id: formData.get('taskProject'),
                 assignee_id: formData.get('taskAssignee'),
+                reviewer_id: formData.get('taskReviewer'),
                 priority: formData.get('taskPriority'),
-                status: formData.get('taskStatus'),
-                progress: formData.get('taskProgress'),
                 start_date: formData.get('taskStartDate'),
                 due_date: formData.get('taskDueDate'),
                 comments: formData.get('taskComments'),
@@ -338,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="metric-value">{{ $currentActiveCount }}</div>
                     <div class="metric-label">Active Tasks</div>
-                    <div class="metric-subtitle">Currently Active</div>
+                    <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
                 </div>
                 <div class="metric-card green">
                     <div class="metric-header">
@@ -584,12 +611,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="taskStatus">Status *</label>
-                        <select id="taskStatus" name="taskStatus" required>
-                            <option value="Not Started" selected>Not Started</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                            <option value="On Hold">On Hold</option>
+                        <label for="taskReviewer">Reviewer *</label>
+                        <select id="taskReviewer" name="taskReviewer" required>
+                            <option value="">Select Reviewer</option>
                         </select>
                     </div>
                 </div>
@@ -601,17 +625,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="form-group">
                         <label for="taskDueDate">Due Date *</label>
                         <input type="date" id="taskDueDate" name="taskDueDate" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="taskProgress">Progress: <span id="progressValue">0</span>%</label>
-                    <input type="range" id="taskProgress" name="taskProgress" min="0" max="100" value="0" step="10">
-                    <div class="progress-markers">
-                        <span>0%</span>
-                        <span>25%</span>
-                        <span>50%</span>
-                        <span>75%</span>
-                        <span>100%</span>
                     </div>
                 </div>
                 <div class="form-group">

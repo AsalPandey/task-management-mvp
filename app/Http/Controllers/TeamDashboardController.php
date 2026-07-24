@@ -23,6 +23,10 @@ class TeamDashboardController extends Controller
         $currentTasks = $this->taskReads->activeVisibleTo($user)
             ->with(['project', 'creator'])
             ->get();
+        $executionTasks = $currentTasks
+            ->filter(fn ($task) => $task->machineState()->isExecutionState());
+        $reviewQueueTasks = $currentTasks
+            ->filter(fn ($task) => $task->machineState()->isReviewState());
 
         // Today's completed tasks
         $completedTasksQuery = $this->taskReads->completedVisibleTo($user);
@@ -55,6 +59,10 @@ class TeamDashboardController extends Controller
         $todayStatusCounts = [
             'Not Started' => $todayTasks->where('status', 'Not Started')->count(),
             'In Progress' => $todayInProgressTasks,
+            'On Hold' => $todayTasks->where('status', 'On Hold')->count(),
+            'Submitted' => $todayTasks->where('status', 'Submitted')->count(),
+            'In Review' => $todayTasks->where('status', 'In Review')->count(),
+            'Revision Requested' => $todayTasks->where('status', 'Revision Requested')->count(),
             'Completed' => $todayCompletedTasks,
         ];
 
@@ -108,6 +116,7 @@ class TeamDashboardController extends Controller
             'user', 'todayTasks', 'currentTasks', 'todayTotalTasks', 'todayCompletedTasks',
             'todayInProgressTasks', 'todayOverdueTasks', 'todayAvgProgress', 'todayCompletionRate',
             'currentTotalTasks', 'currentInProgressTasks', 'currentOverdueTasks',
+            'executionTasks', 'reviewQueueTasks',
             'todayPriorityCounts', 'todayStatusCounts', 'todayOverdueList', 'productivity',
             'notifications', 'achievements', 'improvements', 'recentCompletedHistory'
         ));

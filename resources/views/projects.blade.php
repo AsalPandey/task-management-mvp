@@ -248,7 +248,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="projects-grid">
             @foreach ($projects as $project)
                 @php
-                    $activeTasks = $project->tasks->where('status', '!=', 'Completed')->count();
+                    $activeTasks = $project->tasks
+                        ->whereNotIn('status', ['Completed', 'Cancelled'])
+                        ->count();
                     $completedTasks = $project->tasks->where('status', 'Completed')->count();
                 @endphp
                 <article class="project-card"

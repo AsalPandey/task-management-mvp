@@ -17,6 +17,9 @@
         <tr><th>Metric</th><th>Value</th></tr>
         <tr><td>Active Tasks</td><td>{{ $totalActiveTasks }}</td></tr>
         <tr><td>Completed Tasks</td><td>{{ $totalCompletedTasks }}</td></tr>
+        <tr><td>Active Execution</td><td>{{ $executionTasks->count() }}</td></tr>
+        <tr><td>Review Queue</td><td>{{ $reviewQueueTasks->count() }}</td></tr>
+        <tr><td>Cancelled Tasks</td><td>{{ $cancelledTasks }}</td></tr>
         <tr><td>In Progress</td><td>{{ $inProgressTasks }}</td></tr>
         <tr><td>Overdue</td><td>{{ $overdueTasks }}</td></tr>
         <tr><td>Completion Rate</td><td>{{ $completionRate }}%</td></tr>

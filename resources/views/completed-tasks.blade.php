@@ -11,84 +11,38 @@
 .btn-small { font-size: 0.95rem; padding: 0.2rem 0.7rem; border-radius: 6px; border: none; cursor: pointer; margin-right: 0.3rem; }
 .btn-small.btn-primary { background: #4f8cff; color: #fff; }
 .btn-small.btn-danger { background: #ff6b6b; color: #fff; }
-tr.reverted, tr.reverted td { opacity: 0.5; pointer-events: none; }
 </style>
 @endpush
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const messageContainer = document.getElementById('messageContainer');
-    function showMessage(msg, success = true) {
-        if (!messageContainer) return;
-        messageContainer.textContent = msg;
-        messageContainer.style.display = 'block';
-        messageContainer.className = 'message-container ' + (success ? 'success' : 'error');
-        setTimeout(() => { messageContainer.style.display = 'none'; }, 3000);
-    }
-    const revertBtns = document.querySelectorAll('.revert-btn');
-    revertBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const url = this.dataset.url;
-            const row = this.closest('tr');
-            const originalText = this.textContent;
-            const button = this;
-            Swal.fire({
-                title: 'Legacy reopen control unavailable',
-                text: 'Use the Reopen for Revision action.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#aaa',
-                confirmButtonText: 'Yes, revert!'
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-                button.disabled = true;
-                button.textContent = '⏳ Reverting...';
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-            })
-                .then(async r => {
-                    let data;
-                    try {
-                        data = await r.json();
-                    } catch (e) {
-                        const text = await r.text();
-                        Swal.fire('Error', `Server error (status ${r.status}): ${text.substring(0, 200)}`, 'error');
-                        button.disabled = false;
-                        button.textContent = originalText;
-                        return;
-                    }
-                    if (r.ok && data.success) {
-                        row.remove();
-                        Swal.fire('Reopened!', 'Task reopened for revision.', 'success');
-                    } else if (data && data.message) {
-                        Swal.fire('Error', data.message, 'error');
-                        button.disabled = false;
-                        button.textContent = originalText;
-                    } else {
-                        Swal.fire('Error', 'Failed to revert task.', 'error');
-                        button.disabled = false;
-                        button.textContent = originalText;
-                    }
-                })
-                .catch(error => {
-                    Swal.fire('Error', 'Network or server error: ' + (error.message || error), 'error');
-                    button.disabled = false;
-                    button.textContent = originalText;
+    document.querySelectorAll('.timeline-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            button.disabled = true;
+            try {
+                const response = await fetch(button.dataset.url, {
+                    headers: { 'Accept': 'application/json' },
                 });
-            });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || 'The timeline could not be loaded.');
+                }
+                const text = data.entries.length
+                    ? data.entries.map(entry => {
+                        const when = entry.occurred_at ? new Date(entry.occurred_at).toLocaleString() : '';
+
+                        return `${when} — ${entry.label} — ${entry.actor}`;
+                    }).join('\n')
+                    : 'No timeline entries are available.';
+                await Swal.fire({ title: 'Task timeline', text, width: 720 });
+            } catch (error) {
+                Swal.fire('Error', error.message || 'The timeline could not be loaded.', 'error');
+            } finally {
+                button.disabled = false;
+            }
         });
     });
-});
-</script>
-@endpush
-@push('scripts')
-<script>
-document.addEventListener('DOMContentLoaded', function() {
+
     document.querySelectorAll('.reopen-revision-btn').forEach(button => {
         button.addEventListener('click', async function() {
             const originalText = button.textContent;
@@ -178,6 +132,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
                     <td>{{ $task->completed_at ? \Carbon\Carbon::parse($task->completed_at)->format('m/d/Y') : '-' }}</td>
                     <td>
+                        <button type="button" class="btn-small btn-secondary timeline-btn"
+                            data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
                         @can('reopen', $task)
                             <button class="btn-small btn-primary reopen-revision-btn" data-url="{{ route('tasks.reopen', $task) }}">Reopen for Revision</button>
                         @else

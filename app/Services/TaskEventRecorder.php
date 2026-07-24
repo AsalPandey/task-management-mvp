@@ -43,6 +43,10 @@ class TaskEventRecorder
 
     public const CANCELLED = 'task.cancelled';
 
+    public const REVIEWER_REASSIGNED = 'task.reviewer_reassigned';
+
+    public const DEADLINE_CHANGED = 'task.deadline_changed';
+
     private const MAX_INSERT_ATTEMPTS = 5;
 
     public function __construct(private readonly UlidGenerator $ulids) {}
@@ -108,6 +112,8 @@ class TaskEventRecorder
             self::RESUBMITTED,
             self::APPROVED,
             self::CANCELLED,
+            self::REVIEWER_REASSIGNED,
+            self::DEADLINE_CHANGED,
         ];
     }
 

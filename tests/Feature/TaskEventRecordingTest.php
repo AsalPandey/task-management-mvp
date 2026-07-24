@@ -33,22 +33,34 @@ class TaskEventRecordingTest extends TestCase
         Notification::fake();
     }
 
-    public function test_http_creation_records_one_created_event_with_safe_context_and_ignores_a_supplied_uid(): void
+    public function test_http_creation_rejects_protected_fields_then_records_one_created_event_with_safe_context(): void
     {
-        [$manager, $project] = $this->managerAndProject();
+        [$manager, $project, $assignee] = $this->managerAndProject();
         $suppliedUid = '00000000000000000000000001';
         $correlationId = 'browser-create-request-1';
 
         $this->actingAs($manager)
-            ->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
             ->postJson(route('tasks.store'), [
                 'task_uid' => $suppliedUid,
+                'title' => 'Protected field attempt',
+                'project_id' => $project->id,
+                'assignee_id' => $assignee->id,
+                'reviewer_id' => $manager->id,
+                'priority' => 'High',
+                'status' => 'not_started',
+                'progress' => 0,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['task_uid', 'status', 'progress']);
+
+        $this->actingAs($manager)
+            ->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
+            ->postJson(route('tasks.store'), [
                 'title' => 'प्रतिवेदन तयार गर्नुहोस्',
                 'project_id' => $project->id,
-                'assignee_id' => null,
+                'assignee_id' => $assignee->id,
+                'reviewer_id' => $manager->id,
                 'priority' => 'High',
-                'status' => 'Not Started',
-                'progress' => 0,
                 'start_date' => '2026-07-19',
                 'comments' => 'Keep "quotes" and punctuation!',
             ])
@@ -103,7 +115,6 @@ class TaskEventRecordingTest extends TestCase
 
         $updated = $service->update($task, [
             'title' => 'Updated title',
-            'progress' => 25,
             'start_date' => '2026-07-20',
         ], $manager, TaskOperationContext::test(
             $manager->id,
@@ -113,9 +124,8 @@ class TaskEventRecordingTest extends TestCase
 
         $event = $updated->events()->where('event_type', TaskEventRecorder::UPDATED)->sole();
         $this->assertSame(2, $event->sequence);
-        $this->assertSame(['title', 'progress', 'start_date'], array_keys($event->changed_fields));
+        $this->assertSame(['title', 'start_date'], array_keys($event->changed_fields));
         $this->assertSame(['before' => 'Test task', 'after' => 'Updated title'], $event->changed_fields['title']);
-        $this->assertSame(['before' => 0, 'after' => 25], $event->changed_fields['progress']);
         $this->assertSame(['before' => null, 'after' => '2026-07-20'], $event->changed_fields['start_date']);
         $this->assertSame($manager->id, $event->actor_id);
         $this->assertSame('test', $event->source);
@@ -154,10 +164,14 @@ class TaskEventRecordingTest extends TestCase
                 'task_uid' => '00000000000000000000000009',
                 'title' => 'HTTP updated title',
             ])
-            ->assertOk()
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('task_uid')
             ->assertHeader(EnsureTaskCorrelationId::HEADER, $correlationId);
 
         $this->assertSame($originalUid, $task->fresh()->task_uid);
+        $this->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
+            ->putJson(route('tasks.update', $task), ['title' => 'HTTP updated title'])
+            ->assertOk();
         $event = $task->events()->where('event_type', TaskEventRecorder::UPDATED)->sole();
         $this->assertSame($correlationId, $event->correlation_id);
         $this->assertSame('web', $event->source);
@@ -377,8 +391,12 @@ class TaskEventRecordingTest extends TestCase
             'role_id' => Role::query()->where('name', 'manager')->value('id'),
         ]);
         $project = Project::factory()->create(['project_manager_id' => $manager->id]);
+        $assignee = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
+        $project->members()->attach($assignee->id);
 
-        return [$manager, $project];
+        return [$manager, $project, $assignee];
     }
 
     private function taskData(Project $project, array $attributes = []): array
@@ -386,10 +404,9 @@ class TaskEventRecordingTest extends TestCase
         return array_merge([
             'title' => 'Test task',
             'project_id' => $project->id,
-            'assignee_id' => null,
+            'assignee_id' => $project->members()->firstOrFail()->id,
+            'reviewer_id' => $project->project_manager_id,
             'priority' => 'Medium',
-            'status' => 'Not Started',
-            'progress' => 0,
         ], $attributes);
     }
 }

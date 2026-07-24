@@ -6,6 +6,8 @@ use Closure;
 
 final readonly class TaskTransitionEffects
 {
+    public const HISTORY_REFERENCE = '@task_history';
+
     /**
      * @param  array<string, mixed>  $historyChanges
      * @param  array<int, array{type: string, changed_fields: array<string, mixed>, metadata?: array<string, mixed>|null}>  $events

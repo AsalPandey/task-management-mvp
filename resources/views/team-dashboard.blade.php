@@ -190,7 +190,7 @@ body { background: #f7f8fa; }
                     <div class="metric-icon">📊</div>
                     <div class="metric-value" id="myTotalTasks">{{ $todayTotalTasks }}</div>
                     <div class="metric-label">Today's Tasks</div>
-                    <div class="metric-subtitle">Assigned to you</div>
+                    <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
                 </div>
                 <div class="metric-card green">
                     <div class="metric-icon">✅</div>
@@ -230,6 +230,16 @@ body { background: #f7f8fa; }
                             </div>
                             <span>{{ $todayInProgressTasks }}</span>
                         </div>
+                        @foreach (['On Hold', 'Submitted', 'In Review', 'Revision Requested'] as $stateLabel)
+                            <div class="status-item">
+                                <div class="status-indicator"></div>
+                                <span>{{ $stateLabel }}</span>
+                                <div class="status-bar">
+                                    <div class="status-fill" style="width: {{ $todayTotalTasks ? round($todayStatusCounts[$stateLabel] / $todayTotalTasks * 100) : 0 }}%"></div>
+                                </div>
+                                <span>{{ $todayStatusCounts[$stateLabel] }}</span>
+                            </div>
+                        @endforeach
                         <div class="status-item">
                             <div class="status-indicator overdue"></div>
                             <span>Overdue</span>

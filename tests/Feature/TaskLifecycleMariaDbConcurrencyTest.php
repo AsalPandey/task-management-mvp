@@ -273,7 +273,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $this->markTestSkipped('Row-lock lifecycle concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase2(?:d|6|7)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+        if (preg_match('/^task_management_phase2(?:(?:d|6|7)|8)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
             $this->markTestSkipped('Lifecycle concurrency is restricted to a disposable Phase 2D/2.6/2.7 QA database.');
         }
     }

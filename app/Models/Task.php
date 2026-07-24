@@ -16,6 +16,14 @@ class Task extends Model
 
     protected $hidden = [
         'cancellation_reason',
+        'hold_reason',
+        'importance_level',
+        'manual_urgency_level',
+        'calculated_urgency_score',
+        'effective_urgency_level',
+        'priority_tier',
+        'priority_calculated_at',
+        'priority_override_reason',
     ];
 
     protected $fillable = [
@@ -159,6 +167,11 @@ class Task extends Model
     public function submissions()
     {
         return $this->hasMany(TaskSubmission::class);
+    }
+
+    public function approvals()
+    {
+        return $this->hasMany(TaskApproval::class);
     }
 
     public function approval()

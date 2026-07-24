@@ -6,8 +6,10 @@ use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\ApproveTaskRequest;
 use App\Http\Requests\CancelTaskRequest;
+use App\Http\Requests\ChangeTaskDeadlineRequest;
 use App\Http\Requests\HoldTaskRequest;
 use App\Http\Requests\OverrideApproveTaskRequest;
+use App\Http\Requests\ReassignTaskReviewerRequest;
 use App\Http\Requests\ReopenApprovedTaskRequest;
 use App\Http\Requests\RequestTaskRevisionRequest;
 use App\Http\Requests\ResubmitTaskRequest;
@@ -23,11 +25,16 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
+use App\Services\TaskReadService;
+use App\Services\TaskTimelineService;
 use App\Services\TaskTransitionExecutor;
+use App\Services\TaskViewData;
 use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\CancelTask;
+use App\TaskTransitions\ChangeTaskDeadline;
 use App\TaskTransitions\HoldTask;
 use App\TaskTransitions\OverrideApproveTask;
+use App\TaskTransitions\ReassignTaskReviewer;
 use App\TaskTransitions\ReopenApprovedTask;
 use App\TaskTransitions\RequestTaskRevision;
 use App\TaskTransitions\ResubmitTask;
@@ -49,6 +56,12 @@ class TasksController extends Controller
 
     private const TASKS_PER_PAGE = 24;
 
+    public function __construct(
+        private readonly TaskReadService $taskReads,
+        private readonly TaskViewData $taskViewData,
+        private readonly TaskTimelineService $taskTimeline,
+    ) {}
+
     public function index(TaskIndexRequest $request)
     {
         $user = $request->user();
@@ -58,12 +71,33 @@ class TasksController extends Controller
         );
 
         $tasksQuery = $this->visibleTasks()
-            ->where('status', '!=', TaskState::Completed->value)
+            ->when(
+                ! isset($filters['status']),
+                fn ($query) => $query->whereNotIn('status', [
+                    TaskState::Completed->value,
+                    TaskState::Cancelled->value,
+                ]),
+            )
             ->with(['project', 'assignee', 'creator', 'reviewer', 'activeRevisionCycle'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
-            ->when($filters['assignee'] ?? null, fn ($query, $assignee) => $query->where('assignee_id', $assignee));
+            ->when($filters['assignee'] ?? null, fn ($query, $assignee) => $query->where('assignee_id', $assignee))
+            ->when($filters['reviewer'] ?? null, fn ($query, $reviewer) => $query->where('reviewer_id', $reviewer))
+            ->when(
+                ($filters['scope'] ?? null) === 'assigned_to_me',
+                fn ($query) => $query->where('assignee_id', $user->id),
+            )
+            ->when(
+                ($filters['scope'] ?? null) === 'created_by_me',
+                fn ($query) => $query->where('created_by', $user->id),
+            )
+            ->when(
+                ($filters['scope'] ?? null) === 'waiting_for_review',
+                fn ($query) => $query
+                    ->where('reviewer_id', $user->id)
+                    ->whereIn('status', [TaskState::Submitted->value, TaskState::InReview->value]),
+            );
 
         if (isset($filters['search'])) {
             $this->applySearch($tasksQuery, $filters['search']);
@@ -82,6 +116,11 @@ class TasksController extends Controller
 
         $assignees = User::query()
             ->whereIn('id', $this->visibleTasks()->whereNotNull('assignee_id')->select('assignee_id'))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $filterReviewers = User::query()
+            ->whereIn('id', $this->visibleTasks()->whereNotNull('reviewer_id')->select('reviewer_id'))
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -114,6 +153,7 @@ class TasksController extends Controller
             'reviewerCandidates' => $reviewerCandidates,
             'projects' => $projects,
             'filterProjects' => $filterProjects,
+            'filterReviewers' => $filterReviewers,
             'filters' => $filters,
             'hasActiveFilters' => $filters !== [],
             'user' => $user,
@@ -133,8 +173,8 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'moved' => $task->machineState() === TaskState::Completed,
-            'task' => $task,
+            'moved' => false,
+            'task' => $this->formatTask($task, $request->user()),
         ]);
     }
 
@@ -220,6 +260,35 @@ class TasksController extends Controller
         $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
         return $this->transitionResponse($result, 'Task cancelled.');
+    }
+
+    public function reassignReviewer(
+        ReassignTaskReviewerRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(ReassignTaskReviewer::class, [
+            'reviewerId' => (int) $request->validated()['reviewer_id'],
+            'reason' => $request->validated()['reason'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Reviewer reassigned.');
+    }
+
+    public function changeDeadline(
+        ChangeTaskDeadlineRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(ChangeTaskDeadline::class, [
+            'deadlineType' => $request->validated()['deadline_type'],
+            'dueDate' => $request->validated()['due_date'],
+            'reason' => $request->validated()['reason'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task deadline changed.');
     }
 
     public function start(
@@ -352,23 +421,31 @@ class TasksController extends Controller
 
         return response()->json([
             'success' => true,
-            'task' => $this->formatTask($task->load(['project', 'assignee', 'reviewer', 'activeRevisionCycle'])),
+            'task' => $this->formatTask(
+                $task->load(['project', 'assignee', 'reviewer', 'activeRevisionCycle']),
+                request()->user(),
+            ),
+        ]);
+    }
+
+    public function timeline(Request $request, Task $task)
+    {
+        $this->authorize('view', $task);
+
+        return response()->json([
+            'success' => true,
+            'task' => [
+                'id' => (int) $task->id,
+                'task_uid' => $task->task_uid,
+                'title' => $task->title,
+            ],
+            'entries' => $this->taskTimeline->forViewer($task, $request->user()),
         ]);
     }
 
     private function visibleTasks(): Builder
     {
-        $user = auth()->user();
-
-        if ($user->hasRole('manager')) {
-            return Task::query();
-        }
-
-        if ($user->hasRole('project_manager')) {
-            return Task::query()->whereHas('project', fn ($query) => $query->where('project_manager_id', $user->id));
-        }
-
-        return Task::query()->where('assignee_id', $user->id);
+        return $this->taskReads->visibleTo(auth()->user());
     }
 
     private function visibleProjects(): Builder
@@ -402,16 +479,12 @@ class TasksController extends Controller
         });
     }
 
-    private function formatTask($task): array
+    private function formatTask(Task $task, ?User $viewer = null): array
     {
-        $taskArr = $task->toArray();
-        $taskArr['start_date'] = $task->start_date ? $task->start_date->format('Y-m-d') : null;
-        $taskArr['due_date'] = $task->due_date ? $task->due_date->format('Y-m-d') : null;
-        $taskArr['review_due_date'] = $task->review_due_date?->format('Y-m-d');
-        $taskArr['revision_due_date'] = $task->revision_due_date?->format('Y-m-d');
-        $taskArr['cancelled_at'] = $task->cancelled_at?->toAtomString();
+        $viewer ??= auth()->user();
+        $task->loadMissing(['project', 'assignee', 'reviewer']);
 
-        return $taskArr;
+        return $this->taskViewData->make($task, $viewer);
     }
 
     private function operationContext(Request $request): TaskOperationContext

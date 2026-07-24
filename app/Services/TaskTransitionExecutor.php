@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
 use App\ValueObjects\TaskOperationContext;
+use App\ValueObjects\TaskTransitionEffects;
 use App\ValueObjects\TaskTransitionResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -43,12 +44,18 @@ class TaskTransitionExecutor
             $events = [];
 
             foreach ($effects->events as $event) {
+                $metadata = $event['metadata'] ?? null;
+                if ($history
+                    && data_get($metadata, 'reason_reference') === TaskTransitionEffects::HISTORY_REFERENCE) {
+                    $metadata['reason_reference'] = "task_histories:{$history->id}";
+                }
+
                 $events[] = $this->eventRecorder->record(
                     $lockedTask,
                     $event['type'],
                     $context,
                     $event['changed_fields'],
-                    $event['metadata'] ?? null,
+                    $metadata,
                 );
             }
 

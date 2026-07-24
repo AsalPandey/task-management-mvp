@@ -12,9 +12,7 @@ class TaskEventMariaDbConcurrencyTest extends TestCase
 {
     public function test_two_connections_serialize_event_sequences_on_the_task_row(): void
     {
-        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
-            $this->markTestSkipped('Row-lock concurrency requires an isolated MySQL/MariaDB database.');
-        }
+        $this->requireDisposableMariaDb();
 
         $task = Task::query()->create(['title' => 'MariaDB event concurrency task']);
         $readyFile = tempnam(sys_get_temp_dir(), 'task-event-lock-');
@@ -66,6 +64,17 @@ class TaskEventMariaDbConcurrencyTest extends TestCase
 
             TaskEvent::query()->where('task_id', $task->id)->delete();
             $task->forceDelete();
+        }
+    }
+
+    private function requireDisposableMariaDb(): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('Row-lock concurrency requires an isolated MySQL/MariaDB database.');
+        }
+
+        if (preg_match('/^task_management_phase28_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+            $this->markTestSkipped('Event concurrency is restricted to a disposable Phase 2.8 QA database.');
         }
     }
 

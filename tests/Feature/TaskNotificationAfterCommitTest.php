@@ -39,9 +39,8 @@ class TaskNotificationAfterCommitTest extends TestCase
                 'project_id' => $project->id,
                 'title' => 'After-commit creation',
                 'assignee_id' => $assignee->id,
+                'reviewer_id' => $project->project_manager_id,
                 'priority' => 'High',
-                'status' => 'In Progress',
-                'progress' => 10,
             ], $manager);
 
             Notification::assertNothingSent();
@@ -137,9 +136,8 @@ class TaskNotificationAfterCommitTest extends TestCase
                     'project_id' => $project->id,
                     'title' => 'Rolled-back creation',
                     'assignee_id' => $assignee->id,
+                    'reviewer_id' => $project->project_manager_id,
                     'priority' => 'Medium',
-                    'status' => 'In Progress',
-                    'progress' => 20,
                 ], $manager);
 
                 Notification::assertNothingSent();

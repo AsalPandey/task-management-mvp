@@ -29,6 +29,9 @@ class AnalyticsController extends Controller
             fputcsv($out, ['Metric', 'Value']);
             fputcsv($out, ['Active Tasks', $data['totalActiveTasks']]);
             fputcsv($out, ['Completed Tasks', $data['totalCompletedTasks']]);
+            fputcsv($out, ['Active Execution', $data['executionTasks']->count()]);
+            fputcsv($out, ['Review Queue', $data['reviewQueueTasks']->count()]);
+            fputcsv($out, ['Cancelled Tasks', $data['cancelledTasks']]);
             fputcsv($out, ['In Progress Tasks', $data['inProgressTasks']]);
             fputcsv($out, ['Overdue Tasks', $data['overdueTasks']]);
             fputcsv($out, ['Completion Rate', $data['completionRate'].'%']);
@@ -72,11 +75,16 @@ class AnalyticsController extends Controller
 
         $activeTasks = $activeTasksQuery->with('assignee')->get();
         $completedTasks = $completedTasksQuery->with('assignee')->get();
+        $executionTasks = $activeTasks->filter(fn ($task) => $task->machineState()->isExecutionState());
+        $reviewQueueTasks = $activeTasks->filter(fn ($task) => $task->machineState()->isReviewState());
+        $cancelledTasks = $this->taskReads->cancelledVisibleTo($request->user())
+            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
+            ->count();
         $totalActiveTasks = $activeTasks->count();
         $totalCompletedTasks = $completedTasks->count();
         $totalTasksForRate = $totalActiveTasks + $totalCompletedTasks;
         $inProgressTasks = $activeTasks->where('status', 'In Progress')->count();
-        $overdueTasks = $activeTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        $overdueTasks = $executionTasks->where('due_date', '<', now())->count();
         $completionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
         $avgProgress = $activeTasks->count() ? round($activeTasks->avg('progress')) : 0;
         $priorityCounts = $activeTasks->groupBy('priority')->map->count();
@@ -120,6 +128,9 @@ class AnalyticsController extends Controller
         return [
             'activeTasks' => $activeTasks,
             'completedTasks' => $completedTasks,
+            'executionTasks' => $executionTasks,
+            'reviewQueueTasks' => $reviewQueueTasks,
+            'cancelledTasks' => $cancelledTasks,
             'totalActiveTasks' => $totalActiveTasks,
             'totalCompletedTasks' => $totalCompletedTasks,
             'inProgressTasks' => $inProgressTasks,

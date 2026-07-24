@@ -124,7 +124,14 @@ class TaskPolicy
 
     public function reassignReviewer(User $user, Task $task): bool
     {
-        return $this->controlsManagement($user, $task);
+        return ! $task->machineState()->isFinal()
+            && $this->controlsManagement($user, $task);
+    }
+
+    public function changeDeadline(User $user, Task $task): bool
+    {
+        return ! $task->machineState()->isFinal()
+            && $this->controlsManagement($user, $task);
     }
 
     public function updateProgress(User $user, Task $task): bool

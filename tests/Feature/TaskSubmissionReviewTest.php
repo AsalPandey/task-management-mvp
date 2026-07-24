@@ -197,17 +197,23 @@ class TaskSubmissionReviewTest extends TestCase
         $f = $this->fixtures(TaskState::NotStarted, ['reviewer_id' => null]);
 
         $this->actingAs($f['project_manager'])
-            ->putJson(route('tasks.update', $f['task']), ['reviewer_id' => $f['project_manager']->id])
+            ->postJson(route('tasks.reviewer.reassign', $f['task']), [
+                'reviewer_id' => $f['project_manager']->id,
+            ])
             ->assertOk();
         $this->assertSame($f['project_manager']->id, $f['task']->fresh()->reviewer_id);
 
-        $this->putJson(route('tasks.update', $f['task']), ['reviewer_id' => $f['other_project_manager']->id])
+        $this->postJson(route('tasks.reviewer.reassign', $f['task']), [
+            'reviewer_id' => $f['other_project_manager']->id,
+        ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('reviewer_id');
 
         $this->actingAs($f['assignee'])
-            ->putJson(route('tasks.update', $f['task']), ['reviewer_id' => $f['creator']->id])
-            ->assertStatus(422);
+            ->postJson(route('tasks.reviewer.reassign', $f['task']), [
+                'reviewer_id' => $f['creator']->id,
+            ])
+            ->assertForbidden();
     }
 
     public function test_task_page_scopes_submission_and_review_controls_and_payload_hides_management_fields(): void

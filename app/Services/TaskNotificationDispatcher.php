@@ -188,6 +188,41 @@ class TaskNotificationDispatcher
         );
     }
 
+    public function dispatchReviewerReassigned(
+        Task $task,
+        User $actor,
+        ?User $oldReviewer,
+    ): void {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'reviewer_reassigned',
+            collect([
+                $oldReviewer,
+                $task->reviewer,
+                $task->assignee,
+                $task->creator,
+            ]),
+            'Review the updated reviewer assignment',
+        );
+    }
+
+    public function dispatchDeadlineChanged(
+        Task $task,
+        User $actor,
+        string $deadlineType,
+    ): void {
+        $responsibleUser = $deadlineType === 'review' ? $task->reviewer : $task->assignee;
+
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'deadline_changed',
+            collect([$responsibleUser, $task->creator, $task->project?->projectManager]),
+            'Review the updated '.ucfirst($deadlineType).' deadline',
+        );
+    }
+
     private function dispatchReviewTransition(
         Task $task,
         User $actor,

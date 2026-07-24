@@ -68,6 +68,11 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::post('/tasks/{task}/complete', [TasksController::class, 'retiredDirectCompletion'])->whereNumber('task')->name('tasks.complete');
         Route::post('/tasks/{task}/reopen', [TasksController::class, 'reopen'])->whereNumber('task')->name('tasks.reopen');
         Route::post('/tasks/{task}/cancel', [TasksController::class, 'cancel'])->whereNumber('task')->name('tasks.cancel');
+        Route::post('/tasks/{task}/reviewer/reassign', [TasksController::class, 'reassignReviewer'])->whereNumber('task')->name('tasks.reviewer.reassign');
+        Route::post('/tasks/{task}/deadline/{deadlineType}', [TasksController::class, 'changeDeadline'])
+            ->whereNumber('task')
+            ->whereIn('deadlineType', ['execution', 'review', 'revision'])
+            ->name('tasks.deadline.change');
         Route::post('/tasks/{task}/start', [TasksController::class, 'start'])->whereNumber('task')->name('tasks.start');
         Route::post('/tasks/{task}/hold', [TasksController::class, 'hold'])->whereNumber('task')->name('tasks.hold');
         Route::post('/tasks/{task}/resume', [TasksController::class, 'resume'])->whereNumber('task')->name('tasks.resume');
@@ -80,6 +85,7 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::post('/tasks/{task}/approve/override', [TasksController::class, 'overrideApprove'])->whereNumber('task')->name('tasks.approve.override');
     });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
+    Route::get('/tasks/{task}/timeline', [TasksController::class, 'timeline'])->whereNumber('task')->name('tasks.timeline');
 
     Route::get('/history', [CompletedTasksController::class, 'index'])->name('completed-tasks');
     Route::post('/history/revert/{completedTask}', [CompletedTasksController::class, 'retiredRevert'])

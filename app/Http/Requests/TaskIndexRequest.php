@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\TaskState;
 use App\Models\Task;
 use App\Support\TaskStateCompatibility;
 use Illuminate\Foundation\Http\FormRequest;
@@ -33,10 +34,19 @@ class TaskIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:200'],
-            'status' => ['nullable', 'string', Rule::in(TaskStateCompatibility::genericStates())],
+            'status' => [
+                'nullable',
+                'string',
+                Rule::in(array_column(TaskState::cases(), 'value')),
+            ],
             'priority' => ['nullable', 'string', Rule::in(Task::PRIORITIES)],
             'project' => ['nullable', 'integer', 'min:1'],
             'assignee' => ['nullable', 'integer', 'min:1'],
+            'reviewer' => ['nullable', 'integer', 'min:1'],
+            'scope' => [
+                'nullable',
+                Rule::in(['assigned_to_me', 'created_by_me', 'waiting_for_review']),
+            ],
         ];
     }
 }

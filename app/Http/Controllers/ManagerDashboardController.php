@@ -28,6 +28,10 @@ class ManagerDashboardController extends Controller
 
         $currentActiveTasks = (clone $taskQuery)->with(['assignee', 'project'])
             ->get();
+        $executionTasks = $currentActiveTasks
+            ->filter(fn ($task) => $task->machineState()->isExecutionState());
+        $reviewQueueTasks = $currentActiveTasks
+            ->filter(fn ($task) => $task->machineState()->isReviewState());
 
         $todayTotalTasks = $todayActiveTasks->count();
         $todayCompletedCount = $todayCompletedTasks->count();
@@ -71,11 +75,19 @@ class ManagerDashboardController extends Controller
             ->orderBy('name')
             ->get();
         $assignees = $this->visibleAssignees()->get();
+        $reviewerCandidates = User::query()
+            ->where('active', true)
+            ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
+            ->with('role')
+            ->orderBy('name')
+            ->get(['id', 'name', 'role_id']);
 
         return view('manager-dashboard', compact(
             'todayActiveTasks',
             'todayCompletedTasks',
             'currentActiveTasks',
+            'executionTasks',
+            'reviewQueueTasks',
             'todayTotalTasks',
             'todayCompletedCount',
             'currentActiveCount',
@@ -89,6 +101,7 @@ class ManagerDashboardController extends Controller
             'notifications',
             'projects',
             'assignees',
+            'reviewerCandidates',
         ));
     }
 

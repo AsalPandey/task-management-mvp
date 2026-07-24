@@ -43,4 +43,27 @@ final class TaskReadService
     {
         return $this->visibleTo($user)->where('status', TaskState::Completed->value);
     }
+
+    public function cancelledVisibleTo(User $user): Builder
+    {
+        return $this->visibleTo($user)->where('status', TaskState::Cancelled->value);
+    }
+
+    public function executionVisibleTo(User $user): Builder
+    {
+        return $this->visibleTo($user)->whereIn('status', [
+            TaskState::NotStarted->value,
+            TaskState::InProgress->value,
+            TaskState::OnHold->value,
+            TaskState::RevisionRequested->value,
+        ]);
+    }
+
+    public function reviewQueueVisibleTo(User $user): Builder
+    {
+        return $this->visibleTo($user)->whereIn('status', [
+            TaskState::Submitted->value,
+            TaskState::InReview->value,
+        ]);
+    }
 }

@@ -75,9 +75,8 @@ class ProjectMembershipTest extends TestCase
             'title' => 'Test Task',
             'project_id' => $project->id,
             'assignee_id' => $member->id,
+            'reviewer_id' => $this->manager->id,
             'priority' => 'Medium',
-            'status' => 'Not Started',
-            'progress' => 0,
         ]);
         $resp->assertStatus(422);
         $this->assertFalse($project->tasks()->where('assignee_id', $member->id)->exists());
@@ -123,9 +122,8 @@ class ProjectMembershipTest extends TestCase
                 'title' => 'Revertable Task',
                 'project_id' => $project->id,
                 'assignee_id' => $member->id,
+                'reviewer_id' => $manager->id,
                 'priority' => 'High',
-                'status' => 'Not Started',
-                'progress' => 0,
             ])
             ->assertOk();
 

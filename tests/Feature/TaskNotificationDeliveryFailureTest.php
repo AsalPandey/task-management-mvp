@@ -56,9 +56,8 @@ class TaskNotificationDeliveryFailureTest extends TestCase
                     'project_id' => $project->id,
                     'title' => 'Root transaction rollback',
                     'assignee_id' => $assignee->id,
+                    'reviewer_id' => $project->project_manager_id,
                     'priority' => 'Medium',
-                    'status' => 'In Progress',
-                    'progress' => 20,
                 ], $manager);
 
                 Notification::assertNothingSent();

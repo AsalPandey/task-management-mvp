@@ -148,7 +148,7 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $this->markTestSkipped('Row-lock execution concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase2(?:3|4|5)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+        if (preg_match('/^task_management_phase2(?:(?:3|4|5)|8)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
             $this->markTestSkipped('Execution concurrency is restricted to a disposable Phase 2.3-2.5 QA database.');
         }
     }

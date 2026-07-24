@@ -64,14 +64,17 @@ class TaskUidTest extends TestCase
             'role_id' => Role::query()->where('name', 'manager')->value('id'),
         ]);
         $project = Project::factory()->create(['project_manager_id' => $manager->id]);
+        $assignee = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
+        $project->members()->attach($assignee->id);
 
         $task = app(TaskLifecycleService::class)->create([
             'title' => 'Collision retry task',
             'project_id' => $project->id,
-            'assignee_id' => null,
+            'assignee_id' => $assignee->id,
+            'reviewer_id' => $manager->id,
             'priority' => 'Medium',
-            'status' => 'Not Started',
-            'progress' => 0,
         ], $manager);
 
         $this->assertInstanceOf(Task::class, $task);

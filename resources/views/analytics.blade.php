@@ -61,8 +61,8 @@ body { background: #f7f8fa; }
                 <div class="metric-trend">+12%</div>
             </div>
             <div class="metric-value">{{ $totalActiveTasks }}</div>
-            <div class="metric-label">Total Tasks</div>
-            <div class="metric-subtitle">All Tasks</div>
+            <div class="metric-label">Active Workflow</div>
+            <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
         </div>
         <div class="metric-card green">
             <div class="metric-header">
@@ -89,7 +89,7 @@ body { background: #f7f8fa; }
             </div>
             <div class="metric-value">{{ $overdueTasks }}</div>
             <div class="metric-label">Overdue Tasks</div>
-            <div class="metric-subtitle">Needs attention</div>
+            <div class="metric-subtitle">{{ $cancelledTasks }} cancelled and excluded</div>
         </div>
     </div>
     <!-- Detailed Analytics -->

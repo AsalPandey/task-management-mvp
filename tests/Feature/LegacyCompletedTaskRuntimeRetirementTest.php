@@ -8,8 +8,7 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
-use App\Notifications\TaskCompletedNotification;
-use App\Notifications\TaskRevertedNotification;
+use App\Notifications\TaskReviewWorkflowNotification;
 use App\Policies\TaskPolicy;
 use App\Providers\AuthServiceProvider;
 use App\Services\TaskLifecycleService;
@@ -107,12 +106,8 @@ class LegacyCompletedTaskRuntimeRetirementTest extends TestCase
             }
         }
 
-        foreach ([TaskCompletedNotification::class, TaskRevertedNotification::class] as $notification) {
-            $type = (new ReflectionClass($notification))->getConstructor()?->getParameters()[0]->getType();
-
-            $this->assertInstanceOf(ReflectionNamedType::class, $type);
-            $this->assertSame(Task::class, $type->getName());
-        }
+        $this->assertFileDoesNotExist(app_path('Notifications/TaskCompletedNotification.php'));
+        $this->assertFileDoesNotExist(app_path('Notifications/TaskRevertedNotification.php'));
     }
 
     public function test_new_notifications_contain_only_canonical_task_identifiers(): void
@@ -125,17 +120,18 @@ class LegacyCompletedTaskRuntimeRetirementTest extends TestCase
             'completed_by' => $manager->id,
         ]);
 
-        foreach ([
-            new TaskCompletedNotification($task, $manager),
-            new TaskRevertedNotification($task, $manager),
-        ] as $notification) {
-            $payload = $notification->toArray($assignee);
+        $notification = new TaskReviewWorkflowNotification(
+            $task,
+            $manager,
+            'approved_completed',
+            'None',
+        );
+        $payload = $notification->toArray($assignee);
 
-            $this->assertSame($task->id, $payload['task_id']);
-            $this->assertSame($task->task_uid, $payload['task_uid']);
-            $this->assertArrayNotHasKey('completed_task_id', $payload);
-            $this->assertArrayNotHasKey('original_task_id', $payload);
-        }
+        $this->assertSame($task->id, $payload['task_id']);
+        $this->assertSame($task->task_uid, $payload['task_uid']);
+        $this->assertArrayNotHasKey('completed_task_id', $payload);
+        $this->assertArrayNotHasKey('original_task_id', $payload);
     }
 
     public function test_canonical_lifecycle_never_queries_the_legacy_completed_tasks_table(): void

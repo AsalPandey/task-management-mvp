@@ -8,7 +8,6 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
-use App\Support\TaskStateCompatibility;
 use App\ValueObjects\TaskOperationContext;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -47,18 +46,53 @@ class TaskLifecycleService
     public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
-        if (isset($data['status']) && is_string($data['status'])) {
-            $data['status'] = TaskStateCompatibility::normalizeGenericInput($data['status']);
+        $forbidden = array_values(array_intersect(array_keys($data), [
+            'task_uid',
+            'status',
+            'state',
+            'progress',
+            'started_at',
+            'submitted_at',
+            'review_started_at',
+            'approved_at',
+            'approved_by',
+            'held_at',
+            'held_by',
+            'hold_reason',
+            'completed_at',
+            'completed_by',
+            'cancelled_at',
+            'cancelled_by',
+            'cancellation_reason',
+            'revision_count',
+            'active_revision_cycle_id',
+            'execution_due_date',
+            'review_due_date',
+            'revision_due_date',
+        ]));
+        if ($forbidden !== []) {
+            throw ValidationException::withMessages([
+                $forbidden[0] => 'Lifecycle state and metadata cannot be supplied during task creation.',
+            ]);
         }
         $reviewerId = array_key_exists('reviewer_id', $data) ? $data['reviewer_id'] : null;
-        $reviewDueDate = $data['review_due_date'] ?? null;
-        unset($data['reviewer_id'], $data['review_due_date']);
+        unset($data['reviewer_id']);
 
-        return DB::transaction(function () use ($data, $actor, $context, $reviewerId, $reviewDueDate) {
+        return DB::transaction(function () use ($data, $actor, $context, $reviewerId) {
+            $data['status'] = TaskState::NotStarted;
+            $data['progress'] = 0;
             $data['created_by'] = $actor->id;
             $data['assigned_by'] = $actor->id;
+            if (array_key_exists('due_date', $data)) {
+                $data['execution_due_date'] = $data['due_date'];
+            }
             $project = $this->assertProjectAccess($data['project_id'], $actor);
             $this->assertProjectAcceptsNewTasks($project);
+            if (! ($data['assignee_id'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'assignee_id' => 'An active project assignee is required.',
+                ]);
+            }
             $this->assertAssigneeIsProjectMember($data['project_id'], $data['assignee_id'] ?? null);
             $this->assertCompletionState($data);
             $this->assertReviewerAssignment($project, $data['assignee_id'] ?? null, $reviewerId, $actor);
@@ -66,7 +100,7 @@ class TaskLifecycleService
             $task = $this->createTaskWithUidRetry($data);
             $task->forceFill([
                 'reviewer_id' => $reviewerId,
-                'review_due_date' => $reviewDueDate,
+                'execution_due_date' => $data['execution_due_date'] ?? null,
             ])->save();
             $this->recordHistory($task, 'created', $data, $actor);
             $this->eventRecorder->record(
@@ -85,13 +119,6 @@ class TaskLifecycleService
     public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
-        if (isset($data['status']) && is_string($data['status'])) {
-            $data['status'] = TaskStateCompatibility::normalizeGenericInput($data['status']);
-        }
-
-        if ($actor->hasRole('team_member')) {
-            $data = array_intersect_key($data, array_flip(['status', 'progress', 'comments']));
-        }
 
         return DB::transaction(function () use ($task, $data, $actor, $context) {
             $lockedTask = Task::query()
@@ -101,41 +128,17 @@ class TaskLifecycleService
 
             Gate::forUser($actor)->authorize('update', $lockedTask);
 
-            if ($lockedTask->machineState() === TaskState::Completed) {
+            if ($lockedTask->machineState()->isFinal()) {
                 throw ValidationException::withMessages([
-                    'task' => 'Completed tasks must be reopened before they can be updated.',
+                    'task' => 'Final tasks require a dedicated workflow action.',
                 ]);
             }
 
-            if (in_array($lockedTask->machineState(), [TaskState::Submitted, TaskState::InReview, TaskState::RevisionRequested], true)
-                && $data !== []) {
-                throw ValidationException::withMessages([
-                    'task' => 'Submitted and in-review tasks are frozen until a dedicated correction action is available.',
-                ]);
-            }
-
-            if ($lockedTask->active_revision_cycle_id
-                && (array_key_exists('assignee_id', $data) || array_key_exists('reviewer_id', $data))) {
-                throw ValidationException::withMessages([
-                    'task' => 'Assignee and reviewer changes require a dedicated workflow action while a revision cycle is active.',
-                ]);
-            }
-
-            if (isset($data['status']) && is_string($data['status'])) {
-                TaskStateCompatibility::assertGenericTransitionAllowed(
-                    $lockedTask->machineState(),
-                    TaskState::from($data['status']),
-                );
-            }
+            $this->assertGenericUpdateAllowed($lockedTask, $data, $actor);
 
             $lockedTask->load(['project', 'assignee', 'reviewer']);
             $old = $lockedTask->toArray();
             $beforeEventValues = $this->taskEventValues($lockedTask);
-            $reviewerProvided = array_key_exists('reviewer_id', $data);
-            $reviewDueDateProvided = array_key_exists('review_due_date', $data);
-            $reviewerId = $reviewerProvided ? $data['reviewer_id'] : $lockedTask->reviewer_id;
-            $reviewDueDate = $reviewDueDateProvided ? $data['review_due_date'] : $lockedTask->review_due_date;
-            unset($data['reviewer_id'], $data['review_due_date']);
             $merged = array_merge($lockedTask->only(self::TASK_EVENT_FIELDS), $data);
 
             $project = $this->assertProjectAccess((int) $merged['project_id'], $actor);
@@ -144,21 +147,19 @@ class TaskLifecycleService
             }
             $this->assertAssigneeIsProjectMember((int) $merged['project_id'], $merged['assignee_id'] ?? null);
             $this->assertCompletionState($merged);
-            if ($reviewerProvided || $reviewDueDateProvided) {
-                $this->assertReviewerAssignment($project, $merged['assignee_id'] ?? null, $reviewerId, $actor);
+            if (array_key_exists('project_id', $data) || array_key_exists('assignee_id', $data)) {
+                $this->assertReviewerAssignment(
+                    $project,
+                    $merged['assignee_id'] ?? null,
+                    $lockedTask->reviewer_id,
+                    $actor,
+                );
             }
-
             if (($merged['assignee_id'] ?? null) && (int) $merged['assignee_id'] !== (int) $lockedTask->assignee_id) {
                 $merged['assigned_by'] = $actor->id;
             }
 
             $lockedTask->update($merged);
-            if ($reviewerProvided || $reviewDueDateProvided) {
-                $lockedTask->forceFill([
-                    'reviewer_id' => $reviewerId,
-                    'review_due_date' => $reviewDueDate,
-                ])->save();
-            }
             $lockedTask->refresh()->load(['project', 'assignee', 'reviewer']);
             $this->recordHistory($lockedTask, 'updated', ['old' => $old, 'new' => $merged], $actor);
             $changedFields = $this->changedEventValues($beforeEventValues, $this->taskEventValues($lockedTask));
@@ -172,7 +173,12 @@ class TaskLifecycleService
                 );
             }
 
-            $this->notificationDispatcher->taskUpdated($lockedTask, $merged, $actor);
+            $notificationChanges = collect($changedFields)
+                ->mapWithKeys(fn (array $change, string $field) => [$field => $change['after']])
+                ->all();
+            if ($notificationChanges !== []) {
+                $this->notificationDispatcher->taskUpdated($lockedTask, $notificationChanges, $actor);
+            }
 
             return $lockedTask;
         }, self::TRANSACTION_ATTEMPTS);
@@ -275,7 +281,9 @@ class TaskLifecycleService
         }
 
         if ($reviewerId === null || $reviewerId === '') {
-            return;
+            throw ValidationException::withMessages([
+                'reviewer_id' => 'An eligible reviewer is required.',
+            ]);
         }
 
         $reviewer = User::query()->with('role')->find($reviewerId);
@@ -296,6 +304,53 @@ class TaskLifecycleService
         if ((int) ($data['progress'] ?? 0) > 99) {
             throw ValidationException::withMessages([
                 'progress' => 'Progress may reach 100% only through reviewer approval.',
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function assertGenericUpdateAllowed(Task $task, array $data, User $actor): void
+    {
+        $teamMemberFields = ['progress', 'comments'];
+        $managementFields = [
+            'title',
+            'project_id',
+            'description',
+            'assignee_id',
+            'priority',
+            'start_date',
+            'comments',
+        ];
+        $allowed = $actor->hasRole('team_member') ? $teamMemberFields : $managementFields;
+        $blocked = array_values(array_diff(array_keys($data), $allowed));
+
+        if ($blocked !== []) {
+            throw ValidationException::withMessages([
+                $blocked[0] => 'This field requires a dedicated workflow action.',
+            ]);
+        }
+
+        if ($actor->hasRole('team_member')) {
+            if ($task->machineState() !== TaskState::InProgress) {
+                throw ValidationException::withMessages([
+                    'progress' => 'Progress and comments may be updated only while work is in progress.',
+                ]);
+            }
+
+            return;
+        }
+
+        if ($task->submitted_at !== null
+            || $task->active_revision_cycle_id !== null
+            || in_array($task->machineState(), [
+                TaskState::Submitted,
+                TaskState::InReview,
+                TaskState::RevisionRequested,
+            ], true)) {
+            throw ValidationException::withMessages([
+                'task' => 'Task details are frozen after submission; use a dedicated audited action.',
             ]);
         }
     }
