@@ -64,7 +64,8 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::put('/tasks/{task}', [TasksController::class, 'update'])->name('tasks.update');
         Route::delete('/tasks/{task}', [TasksController::class, 'destroy'])->name('tasks.destroy');
         Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
-        Route::post('/tasks/bulk-complete', [TasksController::class, 'bulkComplete'])->name('tasks.bulk-complete');
+        Route::post('/tasks/bulk-complete', [TasksController::class, 'retiredDirectCompletion'])->name('tasks.bulk-complete');
+        Route::post('/tasks/{task}/complete', [TasksController::class, 'retiredDirectCompletion'])->whereNumber('task')->name('tasks.complete');
         Route::post('/tasks/{task}/reopen', [TasksController::class, 'reopen'])->name('tasks.reopen');
         Route::post('/tasks/{task}/start', [TasksController::class, 'start'])->whereNumber('task')->name('tasks.start');
         Route::post('/tasks/{task}/hold', [TasksController::class, 'hold'])->whereNumber('task')->name('tasks.hold');
@@ -74,6 +75,8 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
         Route::post('/tasks/{task}/revision-request', [TasksController::class, 'requestRevision'])->whereNumber('task')->name('tasks.revision.request');
         Route::post('/tasks/{task}/revision/start', [TasksController::class, 'startRevision'])->whereNumber('task')->name('tasks.revision.start');
         Route::post('/tasks/{task}/resubmit', [TasksController::class, 'resubmit'])->whereNumber('task')->name('tasks.resubmit');
+        Route::post('/tasks/{task}/approve', [TasksController::class, 'approve'])->whereNumber('task')->name('tasks.approve');
+        Route::post('/tasks/{task}/approve/override', [TasksController::class, 'overrideApprove'])->whereNumber('task')->name('tasks.approve.override');
     });
     Route::get('/tasks/{task}/edit', [TasksController::class, 'edit'])->name('tasks.edit');
 

@@ -27,6 +27,7 @@ class TaskReviewWorkflowNotification extends Notification
     public function toArray(object $notifiable): array
     {
         $cycle = $this->task->activeRevisionCycle;
+        $approval = $this->task->approval;
 
         return [
             'task_id' => (int) $this->task->id,
@@ -39,6 +40,13 @@ class TaskReviewWorkflowNotification extends Notification
             'submitted_at' => $this->task->submitted_at?->toAtomString(),
             'review_started_at' => $this->task->review_started_at?->toAtomString(),
             'review_due_date' => $this->task->review_due_date?->toDateString(),
+            'approver_id' => $approval?->approved_by,
+            'approver' => $approval?->approver?->name ?? $this->actor->name,
+            'approved_at' => $this->task->approved_at?->toAtomString(),
+            'completed_at' => $this->task->completed_at?->toAtomString(),
+            'approval_comment_reference' => $approval?->approval_comment
+                ? "task_approvals:{$approval->id}"
+                : null,
             'revision_count' => (int) $this->task->revision_count,
             'revision_cycle_id' => $cycle?->id,
             'revision_cycle_number' => $cycle?->cycle_number,

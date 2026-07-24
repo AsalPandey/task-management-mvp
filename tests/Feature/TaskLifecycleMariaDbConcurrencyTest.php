@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
+use App\Models\TaskApproval;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
+use App\Models\TaskSubmission;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use Illuminate\Support\Facades\DB;
@@ -15,21 +18,32 @@ use Tests\TestCase;
 
 class TaskLifecycleMariaDbConcurrencyTest extends TestCase
 {
-    public function test_two_connections_create_one_canonical_completion(): void
+    public function test_two_connections_create_one_canonical_approval_completion(): void
     {
         $this->requireDisposableMariaDb();
         [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
         $task = $this->task($project, $assignee);
+        $task->forceFill([
+            'status' => TaskState::InReview,
+            'reviewer_id' => $manager->id,
+            'submitted_at' => now()->subHour(),
+            'review_started_at' => now()->subMinutes(30),
+        ])->save();
+        TaskSubmission::query()->create([
+            'task_id' => $task->id,
+            'submitted_by' => $assignee->id,
+            'submitted_at' => now()->subHour(),
+        ]);
         $taskId = $task->id;
         $taskUid = $task->task_uid;
         $completedTaskCount = DB::table('completed_tasks')->count();
         $notificationCount = DB::table('notifications')->count();
 
         try {
-            [$first, $second] = $this->race('complete', $task, $manager);
+            [$first, $second] = $this->race('approve', $task, $manager);
 
             $this->assertSame(['transitioned', 'conflict'], [$first['result'], $second['result']]);
-            $this->assertSame('Task is already completed.', $second['message']);
+            $this->assertSame('Only a task in review may be approved.', $second['message']);
             $this->assertSame($taskId, $first['task_id']);
             $this->assertSame($taskUid, $first['task_uid']);
 
@@ -43,9 +57,11 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $this->assertSame($completedTaskCount, DB::table('completed_tasks')->count());
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
                 ->where('event_type', TaskEventRecorder::COMPLETED)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::APPROVED)->count());
             $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)
-                ->where('action', 'completed')->count());
-            $this->assertSame($notificationCount + 1, DB::table('notifications')->count());
+                ->where('action', 'approved_completed')->count());
+            $this->assertSame($notificationCount + 2, DB::table('notifications')->count());
         } finally {
             $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
         }
@@ -94,14 +110,105 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         }
     }
 
+    public function test_concurrent_approval_beats_revision_request_without_partial_revision_side_effects(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->reviewTask($project, $assignee, $manager);
+        $taskId = $task->id;
+
+        try {
+            [$approval, $revision] = $this->race('approve', $task, $manager, 'revision-request');
+
+            $this->assertSame('transitioned', $approval['result']);
+            $this->assertSame('conflict', $revision['result']);
+            $this->assertSame('Only a task in review may have a revision requested.', $revision['message']);
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::APPROVED)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::COMPLETED)->count());
+            $this->assertSame(0, DB::table('task_revision_cycles')->where('task_id', $taskId)->count());
+            $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)->count());
+        } finally {
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
+    public function test_concurrent_normal_and_override_approval_create_one_completion_outcome(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->reviewTask($project, $assignee, $manager);
+        $taskId = $task->id;
+
+        try {
+            [$normal, $override] = $this->race('approve', $task, $manager, 'override-approve');
+
+            $this->assertSame(['transitioned', 'conflict'], [$normal['result'], $override['result']]);
+            $this->assertSame(1, TaskApproval::query()->where('task_id', $taskId)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::APPROVED)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::COMPLETED)->count());
+            $this->assertSame(1, TaskHistory::query()->where('task_id', $taskId)
+                ->where('action', 'approved_completed')->count());
+        } finally {
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
+    public function test_retired_direct_completion_endpoint_cannot_win_a_race_with_approval(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $project, $assignee, $createdRoles] = $this->fixtures();
+        $task = $this->reviewTask($project, $assignee, $manager);
+        $taskId = $task->id;
+        $readyFile = tempnam(sys_get_temp_dir(), 'task-direct-completion-lock-');
+
+        if ($readyFile === false) {
+            $this->fail('Unable to allocate the direct-completion concurrency barrier file.');
+        }
+
+        unlink($readyFile);
+
+        try {
+            $approval = $this->worker('approve', $task, $manager, 'approval', 1500, $readyFile);
+            $approval->start();
+            $this->waitForLock($approval, $readyFile);
+
+            $this->actingAs($manager)
+                ->postJson(route('tasks.complete', $task))
+                ->assertGone();
+
+            $approval->wait();
+            $this->assertTrue($approval->isSuccessful(), $approval->getErrorOutput().$approval->getOutput());
+            $this->assertSame('transitioned', $this->decodeWorkerResult($approval)['result']);
+            $this->assertSame(1, TaskApproval::query()->where('task_id', $taskId)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::APPROVED)->count());
+            $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
+                ->where('event_type', TaskEventRecorder::COMPLETED)->count());
+        } finally {
+            if (isset($approval) && $approval->isRunning()) {
+                $approval->stop();
+            }
+
+            if (file_exists($readyFile)) {
+                unlink($readyFile);
+            }
+
+            $this->cleanup($taskId, $project, [$manager, $assignee], $createdRoles);
+        }
+    }
+
     private function requireDisposableMariaDb(): void
     {
         if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             $this->markTestSkipped('Row-lock lifecycle concurrency requires an isolated MySQL/MariaDB database.');
         }
 
-        if (preg_match('/^task_management_phase2d_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
-            $this->markTestSkipped('Lifecycle concurrency is restricted to a disposable Phase 2D QA database.');
+        if (preg_match('/^task_management_phase2(?:d|6)_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
+            $this->markTestSkipped('Lifecycle concurrency is restricted to a disposable Phase 2D/2.6 QA database.');
         }
     }
 
@@ -142,8 +249,31 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
         ]);
     }
 
-    private function race(string $operation, Task $task, User $actor): array
+    private function reviewTask(Project $project, User $assignee, User $reviewer): Task
     {
+        $task = $this->task($project, $assignee);
+        $task->forceFill([
+            'status' => TaskState::InReview,
+            'reviewer_id' => $reviewer->id,
+            'submitted_at' => now()->subHour(),
+            'review_started_at' => now()->subMinutes(30),
+        ])->save();
+        TaskSubmission::query()->create([
+            'task_id' => $task->id,
+            'submitted_by' => $assignee->id,
+            'submitted_at' => now()->subHour(),
+        ]);
+
+        return $task->fresh();
+    }
+
+    private function race(
+        string $operation,
+        Task $task,
+        User $actor,
+        ?string $secondOperation = null,
+        ?User $secondActor = null,
+    ): array {
         $readyFile = tempnam(sys_get_temp_dir(), 'task-lifecycle-lock-');
 
         if ($readyFile === false) {
@@ -157,7 +287,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             $first->start();
             $this->waitForLock($first, $readyFile);
 
-            $second = $this->worker($operation, $task, $actor, '2');
+            $second = $this->worker($secondOperation ?? $operation, $task, $secondActor ?? $actor, '2');
             $second->start();
             usleep(200_000);
             $this->assertTrue($second->isRunning(), 'The second connection should wait for the canonical task row lock.');
@@ -237,6 +367,8 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
     private function cleanup(int $taskId, Project $project, array $users, array $createdRoles): void
     {
         DB::table('notifications')->whereIn('notifiable_id', collect($users)->pluck('id'))->delete();
+        TaskApproval::query()->where('task_id', $taskId)->delete();
+        TaskSubmission::query()->where('task_id', $taskId)->delete();
         TaskEvent::query()->where('task_id', $taskId)->delete();
         TaskHistory::query()->where('task_id', $taskId)->delete();
         Task::withTrashed()->whereKey($taskId)->forceDelete();

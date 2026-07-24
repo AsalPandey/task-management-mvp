@@ -151,7 +151,7 @@ class LegacyCompletedTaskRuntimeRetirementTest extends TestCase
         });
 
         $service = app(TaskLifecycleService::class);
-        $reopened = $service->reopen($service->complete($task, $manager), $manager);
+        $reopened = $service->reopen($this->approveTask($task, $manager), $manager);
 
         $this->assertSame($taskId, $reopened->id);
         $this->assertSame($taskUid, $reopened->task_uid);
@@ -182,7 +182,7 @@ class LegacyCompletedTaskRuntimeRetirementTest extends TestCase
 
         $service = app(TaskLifecycleService::class);
         $task = $this->task($project, $assignee);
-        $service->reopen($service->complete($task, $manager), $manager);
+        $service->reopen($this->approveTask($task, $manager), $manager);
 
         $newHistories = TaskHistory::query()->where('task_id', $task->id)->get();
         $this->assertCount(2, $newHistories);

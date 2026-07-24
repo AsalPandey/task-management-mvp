@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
+use App\Http\Requests\ApproveTaskRequest;
 use App\Http\Requests\HoldTaskRequest;
+use App\Http\Requests\OverrideApproveTaskRequest;
 use App\Http\Requests\RequestTaskRevisionRequest;
 use App\Http\Requests\ResubmitTaskRequest;
 use App\Http\Requests\ResumeTaskRequest;
@@ -20,7 +22,9 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
+use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\OverrideApproveTask;
 use App\TaskTransitions\RequestTaskRevision;
 use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
@@ -178,35 +182,12 @@ class TasksController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function bulkComplete(Request $request, TaskLifecycleService $service)
+    public function retiredDirectCompletion()
     {
-        $this->authorize('bulkActions', Task::class);
-
-        $ids = collect($request->validate([
-            'task_ids' => ['required', 'array', 'min:1'],
-            'task_ids.*' => ['integer', 'exists:tasks,id'],
-        ])['task_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values();
-
-        $tasks = Task::withTrashed()
-            ->whereKey($ids->all())
-            ->orderBy('id')
-            ->with('project')
-            ->get();
-
-        foreach ($tasks as $task) {
-            $this->authorize('complete', $task);
-        }
-
-        $service->completeMany(
-            $ids->all(),
-            $request->user(),
-            TaskOperationContext::web(
-                $request->user(),
-                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
-            ),
-        );
-
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Direct completion is retired. Tasks must be completed through reviewer approval.',
+        ], 410);
     }
 
     public function reopen(Request $request, Task $task, TaskLifecycleService $service)
@@ -323,6 +304,33 @@ class TasksController extends Controller
         $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
         return $this->transitionResponse($result, 'Task resubmitted for review.');
+    }
+
+    public function approve(
+        ApproveTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(ApproveTask::class, [
+            'approvalComment' => $request->validated()['approval_comment'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task approved and completed.');
+    }
+
+    public function overrideApprove(
+        OverrideApproveTaskRequest $request,
+        Task $task,
+        TaskTransitionExecutor $executor,
+    ) {
+        $command = app()->make(OverrideApproveTask::class, [
+            'overrideReason' => $request->validated()['override_reason'],
+            'approvalComment' => $request->validated()['approval_comment'] ?? null,
+        ]);
+        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
+
+        return $this->transitionResponse($result, 'Task approved and completed by Manager override.');
     }
 
     public function edit(Task $task)

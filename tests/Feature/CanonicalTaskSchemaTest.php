@@ -185,11 +185,14 @@ class CanonicalTaskSchemaTest extends TestCase
     public function test_completion_and_reopen_preserve_the_canonical_task_identity(): void
     {
         $managerRole = Role::query()->create(['name' => 'manager', 'label' => 'Manager']);
+        $memberRole = Role::query()->create(['name' => 'team_member', 'label' => 'Team Member']);
         $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $assignee = User::factory()->create(['role_id' => $memberRole->id]);
         $project = Project::factory()->create(['project_manager_id' => $manager->id]);
+        $project->members()->attach($assignee->id);
         $task = $this->createTask([
             'project_id' => $project->id,
-            'assignee_id' => $manager->id,
+            'assignee_id' => $assignee->id,
             'created_by' => $manager->id,
             'assigned_by' => $manager->id,
             'title' => 'Legacy lifecycle task',
@@ -199,7 +202,7 @@ class CanonicalTaskSchemaTest extends TestCase
 
         $taskId = $task->id;
         $taskUid = $task->task_uid;
-        $completed = app(TaskLifecycleService::class)->complete($task, $manager);
+        $completed = $this->approveTask($task, $manager);
 
         $this->assertSame($taskId, $completed->id);
         $this->assertSame($taskUid, $completed->task_uid);
@@ -220,7 +223,7 @@ class CanonicalTaskSchemaTest extends TestCase
             'deleted_at' => null,
         ]);
         $this->assertSame(
-            ['task.completed', 'task.reopened'],
+            ['task.approved', 'task.completed', 'task.reopened'],
             $reopened->events()->pluck('event_type')->all(),
         );
     }

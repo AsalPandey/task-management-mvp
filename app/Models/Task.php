@@ -156,4 +156,9 @@ class Task extends Model
     {
         return $this->hasMany(TaskSubmission::class);
     }
+
+    public function approval()
+    {
+        return $this->hasOne(TaskApproval::class)->latestOfMany('approved_at');
+    }
 }

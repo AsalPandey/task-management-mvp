@@ -563,6 +563,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            if (this.dataset.transition === 'approve') {
+                const prompt = await Swal.fire({
+                    title: 'Approve and complete task?',
+                    input: 'textarea',
+                    inputLabel: 'Approval comment (optional)',
+                    inputAttributes: { maxlength: '2000' },
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Approve and Complete',
+                });
+
+                if (prompt.isConfirmed) {
+                    await postExecutionTransition(this, {
+                        approval_comment: prompt.value?.trim() || null,
+                    });
+                }
+
+                return;
+            }
+
+            if (this.dataset.transition === 'override-approve') {
+                const reason = await Swal.fire({
+                    title: 'Emergency Override Approval',
+                    input: 'textarea',
+                    inputLabel: 'Management-only override reason',
+                    inputAttributes: { maxlength: '5000' },
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    inputValidator: value => value.trim() ? undefined : 'An override reason is required.',
+                });
+                if (!reason.isConfirmed) return;
+
+                const comment = await Swal.fire({
+                    title: 'Approval comment',
+                    input: 'textarea',
+                    inputLabel: 'Optional user-visible approval comment',
+                    inputAttributes: { maxlength: '2000' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Approve and Complete',
+                });
+                if (!comment.isConfirmed) return;
+
+                await postExecutionTransition(this, {
+                    override_reason: reason.value.trim(),
+                    approval_comment: comment.value?.trim() || null,
+                });
+
+                return;
+            }
+
             const labels = {
                 start: {
                     title: 'Start work?',
@@ -641,13 +692,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const taskCheckboxes = document.querySelectorAll('.task-checkbox');
     const bulkActions = document.getElementById('bulkActions');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-    const bulkCompleteBtn = document.getElementById('bulkCompleteBtn');
 
     function updateBulkActions() {
         const checkedCount = document.querySelectorAll('.task-checkbox:checked').length;
         selectAllTasksCheckbox.checked = taskCheckboxes.length > 0 && checkedCount === taskCheckboxes.length;
         bulkDeleteBtn.disabled = checkedCount === 0;
-        bulkCompleteBtn.disabled = checkedCount === 0;
         bulkActions.style.display = checkedCount > 0 ? '' : 'none';
     }
 
@@ -706,160 +755,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Single task complete (card)
-    document.querySelectorAll('.complete-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            Swal.fire({
-                title: 'Mark this task as completed?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#aaa',
-                confirmButtonText: 'Yes, complete it!'
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-                const card = this.closest('.task-card');
-                const id = card.dataset.taskId;
-                // Fetch the full task data first
-                fetch(`/tasks/${id}/edit`, {
-                    headers: { 'Accept': 'application/json' }
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success && data.task) {
-                        const task = data.task;
-                        // Prepare full payload with status/progress overridden
-                        const payload = {
-                            title: task.title,
-                            description: task.description,
-                            project_id: task.project_id,
-                            assignee_id: task.assignee_id,
-                            priority: task.priority,
-                            status: 'Completed',
-                            progress: 100,
-                            start_date: task.start_date,
-                            due_date: task.due_date,
-                            comments: task.comments
-                        };
-                        fetch(`/tasks/${id}`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                                'Accept': 'application/json',
-                            },
-                            body: JSON.stringify(payload),
-                        })
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.success || (data.task && data.task.status === 'Completed')) {
-                                card.remove();
-                                Swal.fire('Completed!', 'Task marked as completed and moved to history.', 'success');
-                            } else if (data.message) {
-                                Swal.fire('Error', data.message, 'error');
-                            } else {
-                                Swal.fire('Error', 'Error marking task as completed.', 'error');
-                            }
-                        })
-                        .catch(error => {
-                            Swal.fire('Error', 'Error marking task as completed: ' + (error.message || error), 'error');
-                        });
-                    } else {
-                        Swal.fire('Error', 'Could not fetch task data.', 'error');
-                    }
-                })
-                .catch(error => {
-                    Swal.fire('Error', 'Error fetching task data: ' + (error.message || error), 'error');
-                });
-            });
-        });
-    });
-    // Single task complete (table)
-    document.querySelectorAll('.table-complete-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            Swal.fire({
-                title: 'Mark this task as completed?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#aaa',
-                confirmButtonText: 'Yes, complete it!'
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-                const row = this.closest('tr');
-                const id = row.dataset.taskId;
-                const card = document.querySelector(`.task-card[data-task-id='${id}']`);
-                fetch(`/tasks/${id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ status: 'Completed', progress: 100 }),
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success || (data.task && data.task.status === 'Completed')) {
-                        row.remove();
-                        if (card) card.remove();
-                        Swal.fire('Completed!', 'Task marked as completed and moved to history.', 'success');
-                    } else if (data.message) {
-                        Swal.fire('Error', data.message, 'error');
-                    } else {
-                        Swal.fire('Error', 'Error marking task as completed.', 'error');
-                    }
-                })
-                .catch(error => {
-                    Swal.fire('Error', 'Error marking task as completed: ' + (error.message || error), 'error');
-            });
-            });
-    });
-    });
-    bulkCompleteBtn.addEventListener('click', function() {
-        const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
-        Swal.fire({
-            title: 'Mark selected tasks as completed?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#aaa',
-            confirmButtonText: 'Yes, complete them!'
-        }).then((result) => {
-            if (!result.isConfirmed) return;
-            fetch(`/tasks/bulk-complete`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({ task_ids: selectedTaskIds }),
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    selectedTaskIds.forEach(id => {
-                        const card = document.querySelector(`.task-card[data-task-id='${id}']`);
-                        if (card) card.remove();
-                        const row = document.querySelector(`tr[data-task-id='${id}']`);
-                        if (row) row.remove();
-                    });
-                    updateBulkActions();
-                    Swal.fire('Completed!', 'Tasks marked as completed and moved to history.', 'success');
-                } else if (data.message) {
-                    Swal.fire('Error', data.message, 'error');
-                } else {
-                    Swal.fire('Error', 'Error marking tasks as completed.', 'error');
-                }
-            })
-            .catch(error => {
-                Swal.fire('Error', 'Error marking tasks as completed: ' + (error.message || error), 'error');
-            });
-        });
-    });
 });
 </script>
 @endpush
@@ -1060,12 +955,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 @endif
                 @if ($taskState === \App\Enums\TaskState::InReview)
-                    @can('requestRevision', $task)
-                        <div class="execution-actions">
+                    <div class="execution-actions">
+                        @can('requestRevision', $task)
                             <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                 data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
-                        </div>
-                    @endcan
+                        @endcan
+                        @if ((int) $task->assignee_id !== (int) $user->id)
+                            @can('approve', $task)
+                                <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                    data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
+                            @endcan
+                        @endif
+                        @if ($user->hasRole('manager') && (int) $task->reviewer_id !== (int) $user->id)
+                            @can('overrideApprove', $task)
+                                <button type="button" class="btn-small btn-danger execution-transition-btn"
+                                    data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
+                            @endcan
+                        @endif
+                    </div>
                 @endif
                 @if ($taskState === \App\Enums\TaskState::Submitted)
                     @can('startReview', $task)
@@ -1097,7 +1004,6 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Bulk Actions -->
     <div id="bulkActions" style="display:none; margin-bottom:1rem;">
         <button id="bulkDeleteBtn" class="btn-small btn-danger">??? Delete Selected</button>
-        <button id="bulkCompleteBtn" class="btn-small btn-primary">? Mark Completed</button>
     </div>
     <!-- Tasks Table View (hidden by default) -->
     <div id="tasksTableWrapper" style="display:none;">
@@ -1180,6 +1086,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button type="button" class="btn-small btn-secondary execution-transition-btn"
                                         data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
                                 @endcan
+                                @if ((int) $task->assignee_id !== (int) $user->id)
+                                    @can('approve', $task)
+                                        <button type="button" class="btn-small btn-primary execution-transition-btn"
+                                            data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
+                                    @endcan
+                                @endif
+                                @if ($user->hasRole('manager') && (int) $task->reviewer_id !== (int) $user->id)
+                                    @can('overrideApprove', $task)
+                                        <button type="button" class="btn-small btn-danger execution-transition-btn"
+                                            data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
+                                    @endcan
+                                @endif
                             @endif
                             @if ($taskState === \App\Enums\TaskState::Submitted)
                                 @can('startReview', $task)

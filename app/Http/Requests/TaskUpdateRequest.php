@@ -24,10 +24,8 @@ class TaskUpdateRequest extends FormRequest
     {
         $task = $this->route('task');
 
-        $ability = $this->input('status') === TaskState::Completed->value ? 'complete' : 'update';
-
         return $task
-            ? ($this->user()?->can($ability, $task) ?? false)
+            ? ($this->user()?->can('update', $task) ?? false)
             : (bool) $this->user();
     }
 
@@ -42,12 +40,16 @@ class TaskUpdateRequest extends FormRequest
             'review_due_date' => 'sometimes|nullable|date|after:today',
             'submitted_at' => ['prohibited'],
             'review_started_at' => ['prohibited'],
+            'approved_at' => ['prohibited'],
+            'approved_by' => ['prohibited'],
+            'completed_at' => ['prohibited'],
+            'completed_by' => ['prohibited'],
             'revision_count' => ['prohibited'],
             'active_revision_cycle_id' => ['prohibited'],
             'revision_due_date' => ['prohibited'],
             'priority' => ['sometimes', 'required', Rule::in(Task::PRIORITIES)],
             'status' => ['sometimes', 'required', Rule::in(TaskStateCompatibility::genericStates())],
-            'progress' => 'sometimes|required|integer|min:0|max:100',
+            'progress' => 'sometimes|required|integer|min:0|max:99',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date|after_or_equal:start_date',
             'comments' => 'nullable|string',

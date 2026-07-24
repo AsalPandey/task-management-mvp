@@ -52,7 +52,7 @@ class TaskPolicy
 
     public function complete(User $user, Task $task): bool
     {
-        return $this->controlsLifecycle($user, $task);
+        return false;
     }
 
     public function reopen(User $user, Task $task): bool
@@ -102,8 +102,13 @@ class TaskPolicy
 
     public function approve(User $user, Task $task): bool
     {
-        return (int) $user->id !== (int) $task->assignee_id
-            && $this->isAssignedEligibleReviewer($user, $task);
+        return $user->isActive()
+            && (int) $task->reviewer_id === (int) $user->id;
+    }
+
+    public function overrideApprove(User $user, Task $task): bool
+    {
+        return $user->isActive() && $user->hasRole('manager');
     }
 
     public function cancel(User $user, Task $task): bool

@@ -11,12 +11,10 @@ use App\Models\TaskHistory;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskLifecycleService;
-use Illuminate\Contracts\Notifications\Dispatcher;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
-use Mockery\MockInterface;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -96,17 +94,15 @@ class TaskNotificationDeliveryFailureTest extends TestCase
             'progress' => 75,
         ]);
 
-        $this->mock(Dispatcher::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('send')
-                ->once()
-                ->andThrow(new RuntimeException('Injected notification transport failure.'));
-        });
+        Notification::shouldReceive('send')
+            ->once()
+            ->andThrow(new RuntimeException('Injected notification transport failure.'));
 
         try {
-            app(TaskLifecycleService::class)->complete($task, $manager);
+            $this->approveTask($task, $manager);
             $this->fail('Expected the post-commit notification failure to be reported.');
         } catch (TaskNotificationDispatchException $exception) {
-            $this->assertSame('task.completed', $exception->operation);
+            $this->assertSame('task.approved_completed', $exception->operation);
             $this->assertSame($task->id, $exception->taskId);
             $this->assertSame('Injected notification transport failure.', $exception->getPrevious()?->getMessage());
         }
@@ -121,6 +117,11 @@ class TaskNotificationDeliveryFailureTest extends TestCase
             ->where('task_id', $task->id)
             ->where('event_type', TaskEventRecorder::COMPLETED)
             ->count());
+        $this->assertSame(1, TaskEvent::query()
+            ->where('task_id', $task->id)
+            ->where('event_type', TaskEventRecorder::APPROVED)
+            ->count());
+        $this->assertDatabaseCount('task_approvals', 1);
         $this->assertDatabaseCount('completed_tasks', 0);
     }
 

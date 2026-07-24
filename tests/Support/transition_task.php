@@ -4,7 +4,9 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
+use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\HoldTask;
+use App\TaskTransitions\OverrideApproveTask;
 use App\TaskTransitions\RequestTaskRevision;
 use App\TaskTransitions\ResubmitTask;
 use App\TaskTransitions\ResumeTask;
@@ -51,7 +53,13 @@ try {
         );
 
         return match ($operation) {
-            'complete' => $service->complete($task, $actor, context: $context),
+            'approve' => $executor->execute($task, $actor, app(ApproveTask::class), $context)->task,
+            'override-approve' => $executor->execute(
+                $task,
+                $actor,
+                app()->make(OverrideApproveTask::class, ['overrideReason' => 'Concurrent Manager override']),
+                $context,
+            )->task,
             'reopen' => $service->reopen($task, $actor, $context),
             'start' => $executor->execute($task, $actor, app(StartTask::class), $context)->task,
             'hold' => $executor->execute(

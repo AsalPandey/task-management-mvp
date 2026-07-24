@@ -341,12 +341,17 @@ class TaskEventRecordingTest extends TestCase
     {
         [$manager, $project] = $this->managerAndProject();
         $service = app(TaskLifecycleService::class);
-        $task = $service->create($this->taskData($project), $manager, TaskOperationContext::test($manager->id));
+        $assignee = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
+        $project->members()->attach($assignee->id);
+        $task = $service->create(
+            $this->taskData($project, ['assignee_id' => $assignee->id]),
+            $manager,
+            TaskOperationContext::test($manager->id),
+        );
 
-        $completed = $service->update($task, [
-            'status' => 'Completed',
-            'progress' => 100,
-        ], $manager, TaskOperationContext::test($manager->id));
+        $completed = $this->approveTask($task, $manager, TaskOperationContext::test($manager->id));
 
         $this->assertSame($task->id, $completed->id);
         $this->assertSame($task->task_uid, $completed->task_uid);
@@ -359,6 +364,7 @@ class TaskEventRecordingTest extends TestCase
         $this->assertSame($task->task_uid, $reopened->task_uid);
         $this->assertSame([
             TaskEventRecorder::CREATED,
+            TaskEventRecorder::APPROVED,
             TaskEventRecorder::COMPLETED,
             TaskEventRecorder::REOPENED,
         ], $reopened->events()->pluck('event_type')->all());

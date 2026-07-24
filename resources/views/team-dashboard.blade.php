@@ -157,63 +157,6 @@ body { background: #f7f8fa; }
 @media (max-width: 600px) { .metrics-grid { grid-template-columns: 1fr; } .app-container { padding: 1rem 0.2rem; } }
 </style>
 @endpush
-@push('scripts')
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Message container logic for future modals/forms
-    const messageContainer = document.getElementById('messageContainer');
-    function showMessage(msg, success = true) {
-        if (!messageContainer) return;
-        messageContainer.textContent = msg;
-        messageContainer.style.display = 'block';
-        messageContainer.className = 'message-container ' + (success ? 'success' : 'error');
-        setTimeout(() => { messageContainer.style.display = 'none'; }, 3000);
-    }
-
-    // AJAX: Mark task as complete
-    document.querySelectorAll('.overdue-task .btn-small.btn-primary').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const taskCard = this.closest('.overdue-task');
-            const title = taskCard.querySelector('h4').textContent;
-            if (!confirm('Mark task "' + title + '" as completed?')) return;
-            this.disabled = true;
-            this.textContent = 'Completing...';
-            const taskId = taskCard.dataset.taskId;
-            fetch(`/tasks/${taskId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({ status: 'Completed', progress: 100 }),
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success || (data.task && data.task.status === 'Completed')) {
-                    showMessage('Task marked as completed!');
-                    taskCard.remove();
-                } else if (data.message) {
-                    showMessage(data.message, false);
-                    this.disabled = false;
-                    this.textContent = 'Mark Complete';
-                } else {
-                    showMessage('Error marking task as completed.', false);
-                    this.disabled = false;
-                    this.textContent = 'Mark Complete';
-                }
-            })
-            .catch(error => {
-                showMessage('Error: ' + (error.message || error), false);
-                this.disabled = false;
-                this.textContent = 'Mark Complete';
-            });
-        });
-    });
-});
-</script>
-@endpush
 @section('content')
 <div class="app-container">
     <div id="messageContainer" class="message-container" style="display: none;"></div>
@@ -356,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <p class="priority">{{ $task->priority }} priority</p>
                             </div>
                             <div class="task-actions">
-                                <a href="#" class="btn-small btn-primary">Mark Complete</a>
+                                <a href="{{ route('tasks') }}" class="btn-small btn-primary">Open Task</a>
                             </div>
                         </div>
                     @empty

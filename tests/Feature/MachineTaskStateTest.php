@@ -49,12 +49,10 @@ class MachineTaskStateTest extends TestCase
         $this->assertSame('not_started', TaskStateCompatibility::normalizeGenericInput('Not Started'));
         $this->assertSame('in_progress', TaskStateCompatibility::normalizeGenericInput('In Progress'));
         $this->assertSame('on_hold', TaskStateCompatibility::normalizeGenericInput('On Hold'));
-        $this->assertSame('completed', TaskStateCompatibility::normalizeGenericInput('Completed'));
-        $this->assertSame('completed', TaskStateCompatibility::normalizeGenericInput('completed'));
         $this->assertSame('In Review', TaskStateCompatibility::label('in_review'));
 
         $this->expectException(ValidationException::class);
-        TaskStateCompatibility::normalizeGenericInput('submitted');
+        TaskStateCompatibility::normalizeGenericInput('Completed');
     }
 
     public function test_task_storage_uses_machine_values_while_legacy_presentation_remains_compatible(): void

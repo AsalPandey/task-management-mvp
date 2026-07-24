@@ -6,7 +6,6 @@ use App\Exceptions\TaskNotificationDispatchException;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
-use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskRevertedNotification;
 use App\Notifications\TaskReviewWorkflowNotification;
@@ -44,13 +43,6 @@ class TaskNotificationDispatcher
                     ->whereNull('overdue_notification_sent_at')
                     ->update(['overdue_notification_sent_at' => now()]);
             }
-        });
-    }
-
-    public function taskCompleted(Task $task, User $actor): void
-    {
-        $this->afterCommit($task, 'task.completed', function (Task $committedTask) use ($actor): void {
-            $committedTask->assignee?->notify(new TaskCompletedNotification($committedTask, $actor, true));
         });
     }
 
@@ -156,6 +148,22 @@ class TaskNotificationDispatcher
         );
     }
 
+    public function dispatchTaskApprovedAndCompleted(Task $task, User $actor): void
+    {
+        $this->dispatchReviewTransition(
+            $task,
+            $actor,
+            'approved_completed',
+            collect([
+                $task->assignee,
+                $task->creator,
+                $task->reviewer,
+                $task->project?->projectManager,
+            ]),
+            'None',
+        );
+    }
+
     private function dispatchReviewTransition(
         Task $task,
         User $actor,
@@ -164,7 +172,7 @@ class TaskNotificationDispatcher
         string $requiredAction,
     ): void {
         try {
-            $task->loadMissing(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'project.projectManager']);
+            $task->loadMissing(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'approval', 'project.projectManager']);
             $recipients = $recipients->filter()->unique(fn (User $user) => (int) $user->id)->values();
 
             if ($recipients->isNotEmpty()) {
@@ -224,7 +232,7 @@ class TaskNotificationDispatcher
         $connection->afterCommit(function () use ($connectionName, $dispatch, $operation, $taskId): void {
             try {
                 $committedTask = Task::on($connectionName)
-                    ->with(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'project.projectManager'])
+                    ->with(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'approval', 'project.projectManager'])
                     ->find($taskId);
 
                 if (! $committedTask) {

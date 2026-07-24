@@ -131,12 +131,7 @@ class ProjectMembershipTest extends TestCase
 
         $task = Task::where('title', 'Revertable Task')->firstOrFail();
 
-        $this->putJson("/tasks/{$task->id}", [
-            'status' => 'Completed',
-            'progress' => 100,
-        ])->assertOk();
-
-        $completed = $task->fresh();
+        $completed = $this->approveTask($task, $manager);
 
         $this->postJson(route('tasks.reopen', $completed))
             ->assertOk()

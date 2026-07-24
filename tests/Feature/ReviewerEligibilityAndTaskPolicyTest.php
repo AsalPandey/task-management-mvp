@@ -88,7 +88,7 @@ class ReviewerEligibilityAndTaskPolicyTest extends TestCase
 
         $this->assertTrue($fixtures['manager']->can('overrideReviewer', $task));
         $this->assertFalse($fixtures['project_manager']->can('overrideReviewer', $task));
-        $this->assertTrue($fixtures['assignee']->can('complete', $task));
+        $this->assertFalse($fixtures['assignee']->can('complete', $task));
         $this->assertTrue($fixtures['assignee']->can('reopen', $task));
     }
 
@@ -101,7 +101,8 @@ class ReviewerEligibilityAndTaskPolicyTest extends TestCase
             'reviewer_id' => $fixtures['manager']->id,
         ])->save();
 
-        $this->assertFalse($fixtures['manager']->can('approve', $task));
+        // The assigned reviewer reaches the locked command, which rejects self-approval with 422.
+        $this->assertTrue($fixtures['manager']->can('approve', $task));
     }
 
     private function fixtures(): array

@@ -60,7 +60,7 @@ class CanonicalTaskReadPathTest extends TestCase
             ->assertOk()
             ->assertDontSee($task->title);
 
-        $completed = $service->complete($task, $manager);
+        $completed = $this->approveTask($task, $manager);
 
         $this->actingAs($manager)
             ->get(route('completed-tasks'))

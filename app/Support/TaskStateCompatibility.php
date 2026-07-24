@@ -29,7 +29,6 @@ final class TaskStateCompatibility
             TaskState::NotStarted->value,
             TaskState::InProgress->value,
             TaskState::OnHold->value,
-            TaskState::Completed->value,
         ];
     }
 

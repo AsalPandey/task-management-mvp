@@ -10,7 +10,6 @@ use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
 use App\Models\User;
-use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskRevertedNotification;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskLifecycleService;
@@ -34,7 +33,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         Notification::fake();
     }
 
-    public function test_http_completion_updates_the_same_row_and_keeps_the_legacy_response_shape(): void
+    public function test_http_generic_completion_is_rejected_without_mutating_the_canonical_row(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
         $task = $this->task($project, $assignee, ['progress' => 60]);
@@ -43,58 +42,26 @@ class CanonicalTaskLifecycleTest extends TestCase
         $taskCount = Task::withTrashed()->count();
         $correlationId = 'complete-request-1';
 
-        $response = $this->actingAs($manager)
+        $this->actingAs($manager)
             ->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
             ->putJson(route('tasks.update', $task), [
                 'status' => 'Completed',
                 'progress' => 100,
             ])
-            ->assertOk()
-            ->assertHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
-            ->assertJson([
-                'success' => true,
-                'moved' => true,
-                'task' => [
-                    'id' => $taskId,
-                    'task_uid' => $taskUid,
-                    'status' => 'Completed',
-                    'progress' => 100,
-                ],
-            ]);
+            ->assertUnprocessable()
+            ->assertHeader(EnsureTaskCorrelationId::HEADER, $correlationId);
 
-        $completed = $task->fresh();
-        $this->assertSame($taskId, $response->json('task.id'));
+        $unchanged = $task->fresh();
         $this->assertSame($taskCount, Task::withTrashed()->count());
-        $this->assertSame($taskUid, $completed->task_uid);
-        $this->assertSame('Completed', $completed->status);
-        $this->assertSame(100, $completed->progress);
-        $this->assertNotNull($completed->completed_at);
-        $this->assertSame($manager->id, $completed->completed_by);
-        $this->assertNull($completed->deleted_at);
+        $this->assertSame($taskId, $unchanged->id);
+        $this->assertSame($taskUid, $unchanged->task_uid);
+        $this->assertSame('In Progress', $unchanged->status);
+        $this->assertSame(60, $unchanged->progress);
+        $this->assertNull($unchanged->completed_at);
         $this->assertDatabaseCount('completed_tasks', 0);
-        $this->assertDatabaseHas('task_histories', [
-            'task_id' => $taskId,
-            'completed_task_id' => null,
-            'action' => 'completed',
-            'user_id' => $manager->id,
-        ]);
-
-        $event = TaskEvent::query()->sole();
-        $this->assertSame(TaskEventRecorder::COMPLETED, $event->event_type);
-        $this->assertSame($correlationId, $event->correlation_id);
-        $this->assertSame($manager->id, $event->actor_id);
-        $this->assertSame('web', $event->source);
-        $this->assertSame(['status', 'progress', 'completed_at', 'completed_by'], array_keys($event->changed_fields));
-        $this->assertSame(['before' => 'In Progress', 'after' => 'Completed'], $event->changed_fields['status']);
-        $this->assertSame(['before' => 60, 'after' => 100], $event->changed_fields['progress']);
-
-        Notification::assertSentToTimes($assignee, TaskCompletedNotification::class, 1);
-        Notification::assertSentTo(
-            $assignee,
-            TaskCompletedNotification::class,
-            fn (TaskCompletedNotification $notification) => $notification->toArray($assignee)['task_uid'] === $taskUid
-                && $notification->toArray($assignee)['task_id'] === $taskId,
-        );
+        $this->assertDatabaseCount('task_histories', 0);
+        $this->assertDatabaseCount('task_events', 0);
+        Notification::assertNothingSent();
     }
 
     public function test_canonical_reopen_preserves_identity_clears_metadata_and_records_inverse_changes(): void
@@ -107,10 +74,10 @@ class CanonicalTaskLifecycleTest extends TestCase
         $reopenedAt = CarbonImmutable::parse('2026-07-19T13:00:00+05:45');
         $service = app(TaskLifecycleService::class);
 
-        $completed = $service->complete(
+        $completed = $this->approveTask(
             $task,
             $manager,
-            context: TaskOperationContext::test($manager->id, 'complete-operation', $completedAt),
+            TaskOperationContext::test($manager->id, 'complete-operation', $completedAt),
         );
         $reopened = $service->reopen(
             $completed,
@@ -135,7 +102,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         ]);
 
         $event = $reopened->events()->where('event_type', TaskEventRecorder::REOPENED)->sole();
-        $this->assertSame(2, $event->sequence);
+        $this->assertSame(3, $event->sequence);
         $this->assertSame('reopen-operation', $event->correlation_id);
         $this->assertTrue($reopenedAt->equalTo($event->occurred_at));
         $this->assertSame(['status', 'progress', 'completed_at', 'completed_by'], array_keys($event->changed_fields));
@@ -152,22 +119,18 @@ class CanonicalTaskLifecycleTest extends TestCase
         );
     }
 
-    public function test_duplicate_completion_and_reopen_are_deterministic_and_side_effect_free(): void
+    public function test_duplicate_approval_and_reopen_are_deterministic_and_side_effect_free(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
         $service = app(TaskLifecycleService::class);
         $task = $this->task($project, $assignee);
-        $completed = $service->complete($task, $manager);
+        $completed = $this->approveTask($task, $manager);
         $afterCompletion = $this->lifecycleCounts();
 
-        try {
-            $service->complete($completed, $manager);
-            $this->fail('Expected duplicate completion to be rejected.');
-        } catch (ValidationException $exception) {
-            $this->assertSame('Task is already completed.', $exception->errors()['task'][0]);
-            $this->assertSame($afterCompletion, $this->lifecycleCounts());
-            Notification::assertSentToTimes($assignee, TaskCompletedNotification::class, 1);
-        }
+        $this->actingAs($manager)
+            ->postJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
+            ->assertUnprocessable();
+        $this->assertSame($afterCompletion, $this->lifecycleCounts());
 
         $reopened = $service->reopen($completed, $manager);
         $afterReopen = $this->lifecycleCounts();
@@ -182,24 +145,13 @@ class CanonicalTaskLifecycleTest extends TestCase
         }
     }
 
-    public function test_service_authorization_denies_unrelated_and_inactive_actors_without_side_effects(): void
+    public function test_removed_completion_service_cannot_be_called_and_reopen_authorization_still_applies(): void
     {
         [$manager, $project, $assignee, $coworker] = $this->managedProject(withCoworker: true);
         $outside = $this->userWithRole('team_member');
         $inactive = $this->userWithRole('team_member', ['active' => false]);
-        $task = $this->task($project, $assignee);
-        $before = $this->lifecycleCounts();
-
-        foreach ([$coworker, $outside, $inactive] as $actor) {
-            try {
-                app(TaskLifecycleService::class)->complete($task, $actor);
-                $this->fail('Expected unauthorized completion to fail.');
-            } catch (AuthorizationException) {
-                $this->assertSame($before, $this->lifecycleCounts());
-            }
-        }
-
-        $completed = app(TaskLifecycleService::class)->complete($task, $manager);
+        $this->assertFalse(method_exists(TaskLifecycleService::class, 'complete'));
+        $completed = $this->approveTask($this->task($project, $assignee), $manager);
         $completedCounts = $this->lifecycleCounts();
 
         foreach ([$coworker, $outside, $inactive] as $actor) {
@@ -226,7 +178,7 @@ class CanonicalTaskLifecycleTest extends TestCase
             ->assertForbidden();
 
         $this->assertSame($before, $this->lifecycleCounts());
-        $completed = app(TaskLifecycleService::class)->complete($task, $manager);
+        $completed = $this->approveTask($task, $manager);
         $afterCompletion = $this->lifecycleCounts();
 
         $this->actingAs($coworker)
@@ -237,23 +189,20 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertSame('Completed', $completed->fresh()->status);
     }
 
-    public function test_authorized_manager_project_manager_and_assignee_keep_lifecycle_access(): void
+    public function test_only_assigned_reviewer_approval_completes_before_existing_reopen_access(): void
     {
         [$manager, $project, $assignee, , $projectManager] = $this->managedProject(withCoworker: true);
         $service = app(TaskLifecycleService::class);
 
-        $managerTask = $this->task($project, $assignee, ['title' => 'Manager transition']);
-        $service->reopen($service->complete($managerTask, $manager), $manager);
-
         $projectManagerTask = $this->task($project, $assignee, ['title' => 'Project manager transition']);
-        $service->reopen($service->complete($projectManagerTask, $projectManager), $projectManager);
+        $service->reopen($this->approveTask($projectManagerTask, $projectManager), $projectManager);
 
-        $assigneeTask = $this->task($project, $assignee, ['title' => 'Assignee transition']);
-        $service->reopen($service->complete($assigneeTask, $assignee), $assignee);
+        $this->actingAs($assignee)
+            ->postJson(route('tasks.complete', $this->task($project, $assignee)))
+            ->assertGone();
 
-        $this->assertSame(3, Task::query()->where('status', TaskState::InProgress->value)->count());
-        $this->assertSame(3, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
-        $this->assertSame(3, TaskEvent::query()->where('event_type', TaskEventRecorder::REOPENED)->count());
+        $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
+        $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::REOPENED)->count());
     }
 
     public function test_bulk_completion_deduplicates_ids_and_transitions_every_task_once(): void
@@ -266,14 +215,13 @@ class CanonicalTaskLifecycleTest extends TestCase
             ->postJson(route('tasks.bulk-complete'), [
                 'task_ids' => [$second->id, $first->id, $first->id],
             ])
-            ->assertOk()
-            ->assertJson(['success' => true]);
+            ->assertGone();
 
-        $this->assertSame(2, Task::query()->where('status', TaskState::Completed->value)->count());
-        $this->assertSame(2, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
-        $this->assertSame(2, TaskHistory::query()->where('action', 'bulk_completed')->count());
+        $this->assertSame(0, Task::query()->where('status', TaskState::Completed->value)->count());
+        $this->assertSame(0, TaskEvent::query()->where('event_type', TaskEventRecorder::COMPLETED)->count());
+        $this->assertSame(0, TaskHistory::query()->where('action', 'bulk_completed')->count());
         $this->assertDatabaseCount('completed_tasks', 0);
-        Notification::assertSentToTimes($assignee, TaskCompletedNotification::class, 2);
+        Notification::assertNothingSent();
     }
 
     public function test_bulk_completion_is_all_or_nothing_for_invalid_state_and_authorization(): void
@@ -290,8 +238,7 @@ class CanonicalTaskLifecycleTest extends TestCase
 
         $this->actingAs($manager)
             ->postJson(route('tasks.bulk-complete'), ['task_ids' => [$active->id, $alreadyCompleted->id]])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('task');
+            ->assertGone();
 
         $this->assertSame('In Progress', $active->fresh()->status);
         $this->assertDatabaseCount('task_events', 0);
@@ -306,7 +253,7 @@ class CanonicalTaskLifecycleTest extends TestCase
 
         $this->actingAs($projectManager)
             ->postJson(route('tasks.bulk-complete'), ['task_ids' => [$active->id, $outsideTask->id]])
-            ->assertForbidden();
+            ->assertGone();
 
         $this->assertSame('In Progress', $active->fresh()->status);
         $this->assertSame('In Progress', $outsideTask->fresh()->status);
@@ -335,7 +282,7 @@ class CanonicalTaskLifecycleTest extends TestCase
     public function test_completed_tasks_cannot_bypass_reopen_through_the_update_endpoint(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
-        $completed = app(TaskLifecycleService::class)->complete($this->task($project, $assignee), $manager);
+        $completed = $this->approveTask($this->task($project, $assignee), $manager);
         $before = $this->lifecycleCounts();
 
         $this->actingAs($manager)
@@ -348,11 +295,11 @@ class CanonicalTaskLifecycleTest extends TestCase
         $this->assertSame($before, $this->lifecycleCounts());
     }
 
-    public function test_create_as_completed_keeps_one_row_and_records_created_then_completed(): void
+    public function test_create_as_completed_is_rejected_without_creating_any_row(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
 
-        $response = $this->actingAs($manager)
+        $this->actingAs($manager)
             ->postJson(route('tasks.store'), [
                 'title' => 'Completed on create',
                 'project_id' => $project->id,
@@ -361,18 +308,10 @@ class CanonicalTaskLifecycleTest extends TestCase
                 'status' => 'Completed',
                 'progress' => 100,
             ])
-            ->assertOk()
-            ->assertJson(['success' => true, 'moved' => true]);
+            ->assertUnprocessable();
 
-        $task = Task::query()->findOrFail($response->json('task.id'));
-        $this->assertSame('Completed', $task->status);
-        $this->assertNotNull($task->completed_at);
-        $this->assertSame($manager->id, $task->completed_by);
-        $this->assertNull($task->deleted_at);
-        $this->assertSame(
-            [TaskEventRecorder::CREATED, TaskEventRecorder::COMPLETED],
-            $task->events()->pluck('event_type')->all(),
-        );
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('task_events', 0);
         $this->assertDatabaseCount('completed_tasks', 0);
     }
 

@@ -7,9 +7,9 @@ use App\Models\Role;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
-use App\Notifications\TaskCompletedNotification;
 use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskRevertedNotification;
+use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Services\TaskLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,20 +93,20 @@ class TaskNotificationAfterCommitTest extends TestCase
         $this->assertNotNull($task->fresh()->overdue_notification_sent_at);
     }
 
-    public function test_completion_notification_is_dispatched_after_commit_with_both_task_identifiers(): void
+    public function test_approval_notification_is_dispatched_after_commit_with_both_task_identifiers(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
         $task = $this->task($project, $assignee);
 
         DB::transaction(function () use ($manager, $task): void {
-            app(TaskLifecycleService::class)->complete($task, $manager);
+            $this->approveTask($task, $manager);
             Notification::assertNothingSent();
         });
 
         Notification::assertSentTo(
             $assignee,
-            TaskCompletedNotification::class,
-            fn (TaskCompletedNotification $notification): bool => $this->hasTaskIdentity($notification, $assignee, $task),
+            TaskReviewWorkflowNotification::class,
+            fn (TaskReviewWorkflowNotification $notification): bool => $this->hasTaskIdentity($notification, $assignee, $task),
         );
     }
 
@@ -158,18 +158,18 @@ class TaskNotificationAfterCommitTest extends TestCase
         $this->assertDatabaseCount('task_events', 0);
     }
 
-    public function test_duplicate_completion_does_not_dispatch_another_notification(): void
+    public function test_duplicate_approval_does_not_dispatch_another_notification(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
-        $service = app(TaskLifecycleService::class);
-        $completed = $service->complete($this->task($project, $assignee), $manager);
+        $completed = $this->approveTask($this->task($project, $assignee), $manager);
+        Notification::assertSentToTimes($assignee, TaskReviewWorkflowNotification::class, 1);
+        Notification::fake();
 
-        try {
-            $service->complete($completed, $manager);
-            $this->fail('Expected duplicate completion to be rejected.');
-        } catch (ValidationException) {
-            Notification::assertSentToTimes($assignee, TaskCompletedNotification::class, 1);
-        }
+        $this->actingAs($manager)
+            ->postJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
+            ->assertUnprocessable();
+
+        Notification::assertNothingSent();
     }
 
     public function test_duplicate_reopen_does_not_dispatch_another_notification(): void
@@ -186,26 +186,19 @@ class TaskNotificationAfterCommitTest extends TestCase
         }
     }
 
-    public function test_bulk_completion_dispatches_once_for_each_successfully_completed_task(): void
+    public function test_retired_bulk_completion_dispatches_nothing(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
         $first = $this->task($project, $assignee, ['title' => 'First bulk notification']);
         $second = $this->task($project, $assignee, ['title' => 'Second bulk notification']);
 
-        DB::transaction(function () use ($manager, $first, $second): void {
-            app(TaskLifecycleService::class)->completeMany([$second->id, $first->id, $first->id], $manager);
-            Notification::assertNothingSent();
-        });
+        $this->actingAs($manager)
+            ->postJson(route('tasks.bulk-complete'), ['task_ids' => [$second->id, $first->id, $first->id]])
+            ->assertGone();
 
-        Notification::assertSentToTimes($assignee, TaskCompletedNotification::class, 2);
-
-        $notifiedTaskIds = Notification::sent($assignee, TaskCompletedNotification::class)
-            ->map(fn (TaskCompletedNotification $notification): int => (int) $notification->toArray($assignee)['task_id'])
-            ->sort()
-            ->values()
-            ->all();
-
-        $this->assertSame([$first->id, $second->id], $notifiedTaskIds);
+        Notification::assertNothingSent();
+        $this->assertSame('In Progress', $first->fresh()->status);
+        $this->assertSame('In Progress', $second->fresh()->status);
     }
 
     private function managedProject(): array
