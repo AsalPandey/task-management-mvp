@@ -2,7 +2,7 @@
 @section('content')
 <div class="container" style="max-width:800px; margin:2rem auto;">
     <div class="notifications-page-header">
-        <div class="header-content">
+        <div class="notifications-page-heading">
             <div class="header-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -25,34 +25,80 @@
     </div>
     
     @if($notifications->count())
-        <div class="notifications-list">
-            @foreach($notifications as $notification)
-                <div class="notification-page-item {{ $notification->read_at ? 'read' : 'unread' }}" data-id="{{ $notification->id }}">
-                    <div class="notification-page-icon">
+        @php
+            $notificationGroups = $notifications->getCollection()->groupBy(function ($notification) {
+                if ($notification->created_at->isToday()) {
+                    return 'Today';
+                }
+
+                if ($notification->created_at->isYesterday()) {
+                    return 'Yesterday';
+                }
+
+                return 'Older';
+            });
+        @endphp
+        @foreach($notificationGroups as $groupLabel => $groupNotifications)
+            @php $groupId = 'notifications-'.Illuminate\Support\Str::slug($groupLabel); @endphp
+            <section class="notification-group" aria-labelledby="{{ $groupId }}">
+                <h2 id="{{ $groupId }}" class="notification-group-title">{{ $groupLabel }}</h2>
+                <div class="notifications-list">
+                    @foreach($groupNotifications as $notification)
                         @php
                             $type = $notification->data['type'] ?? '';
-                            if(str_contains($type, 'assigned')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m22 21-2-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                            elseif(str_contains($type, 'completed')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 11 3 3L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                            elseif(str_contains($type, 'deadline') || str_contains($type, 'overdue')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                            elseif(str_contains($type, 'updated')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                            elseif(str_contains($type, 'reverted')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 3v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21v-5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                            else echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                                @endphp
-                    </div>
-                    <div class="notification-page-content">
-                        <div class="notification-page-message">{{ $notification->data['message'] ?? 'You have a new notification.' }}</div>
-                        <div class="notification-page-time">{{ $notification->created_at->diffForHumans() }}</div>
-                    </div>
-                    @if(!$notification->read_at)
-                        <button class="mark-read-page-btn" onclick="markAsRead('{{ $notification->id }}')">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                    @endif
+                            $taskId = $notification->data['task_id'] ?? null;
+                            $taskTitle = $notification->data['task_title'] ?? null;
+                            $currentState = $notification->data['current_state'] ?? null;
+                            $taskParameters = $taskTitle ? ['search' => $taskTitle] : [];
+
+                            if (in_array($currentState, ['completed', 'cancelled'], true)) {
+                                $taskParameters['status'] = $currentState;
+                            }
+
+                            $taskUrl = $taskId
+                                ? route('tasks', $taskParameters).'#task-'.$taskId
+                                : null;
+                        @endphp
+                        <div class="notification-page-item {{ $notification->read_at ? 'read' : 'unread' }}" data-id="{{ $notification->id }}">
+                            @if($taskUrl)
+                                <a class="notification-page-link" href="{{ $taskUrl }}" aria-label="Open task notification">
+                            @else
+                                <div class="notification-page-link">
+                            @endif
+                                <div class="notification-page-icon" aria-hidden="true">
+                                    @php
+                                        if(str_contains($type, 'assigned')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m22 21-2-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                        elseif(str_contains($type, 'completed') || str_contains($type, 'approved')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 11 3 3L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                        elseif(str_contains($type, 'deadline') || str_contains($type, 'overdue')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                        elseif(str_contains($type, 'revision') || str_contains($type, 'reopen')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 12a9 9 0 0 1 15.7-6L21 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M21 3v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                        elseif(str_contains($type, 'updated')) echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                        else echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                                    @endphp
+                                </div>
+                                <div class="notification-page-content">
+                                    <div class="notification-page-message">{{ $notification->data['message'] ?? 'You have a new notification.' }}</div>
+                                    <div class="notification-page-time">{{ $notification->created_at->diffForHumans() }}</div>
+                                    @if($taskUrl)
+                                        <span class="notification-task-action">Open task</span>
+                                    @endif
+                                </div>
+                            @if($taskUrl)
+                                </a>
+                            @else
+                                </div>
+                            @endif
+                            @if(!$notification->read_at)
+                                <button class="mark-read-page-btn" type="button" aria-label="Mark notification as read" onclick="markAsRead('{{ $notification->id }}')">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            @endif
+                        </div>
+                    @endforeach
                 </div>
-            @endforeach
-        </div>
+            </section>
+        @endforeach
         <div class="notifications-pagination">
             {{ $notifications->links() }}
         </div>

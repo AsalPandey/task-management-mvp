@@ -116,9 +116,9 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = isLoading;
         if (isLoading) {
-            submitBtn.textContent = '? Please wait...';
+            submitBtn.textContent = '⏳ Please wait...';
         } else {
-            submitBtn.textContent = editTaskId ? '?? Update Task' : '? Create Task';
+            submitBtn.textContent = editTaskId ? '✏️ Update Task' : '➕ Create Task';
         }
     }
 
@@ -180,7 +180,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 if (data.success && data.task) {
                     const task = data.task;
                     taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '?? Update Task';
+                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
@@ -422,7 +422,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                     const taskModal = document.getElementById('taskModal');
                     const taskForm = document.getElementById('taskForm');
                     taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '?? Update Task';
+                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
                     document.getElementById('modalTitle').textContent = 'Edit Task';
                     taskForm.querySelector('#taskTitle').value = task.title || '';
                     taskForm.querySelector('#taskDescription').value = task.description || '';
@@ -682,101 +682,6 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
         });
     });
 
-    // Toggle view logic
-    const toggleViewBtn = document.getElementById('toggleViewBtn');
-    const tasksTableWrapper = document.getElementById('tasksTableWrapper');
-    let isTable = false;
-    if (toggleViewBtn && tasksGrid && tasksTableWrapper) {
-        toggleViewBtn.addEventListener('click', function() {
-            isTable = !isTable;
-            if (isTable) {
-                tasksGrid.style.display = 'none';
-                tasksTableWrapper.style.display = '';
-                toggleViewBtn.textContent = '?? Card View';
-            } else {
-                tasksGrid.style.display = '';
-                tasksTableWrapper.style.display = 'none';
-                toggleViewBtn.textContent = '?? Table View';
-            }
-        });
-    }
-    // Table edit/delete
-    document.querySelectorAll('.table-edit-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const row = this.closest('tr');
-            const card = document.querySelector(`.task-card[data-task-id='${row.dataset.taskId}']`);
-            if (card) card.click();
-        });
-    });
-    document.querySelectorAll('.table-delete-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const row = this.closest('tr');
-            const card = document.querySelector(`.task-card[data-task-id='${row.dataset.taskId}']`);
-            if (card) card.querySelector('.delete-btn').click();
-        });
-    });
-
-    // Bulk Actions
-    const selectAllTasksCheckbox = document.getElementById('selectAllTasks');
-    const taskCheckboxes = document.querySelectorAll('.task-checkbox');
-    const bulkActions = document.getElementById('bulkActions');
-    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-
-    function updateBulkActions() {
-        const checkedCount = document.querySelectorAll('.task-checkbox:checked').length;
-        selectAllTasksCheckbox.checked = taskCheckboxes.length > 0 && checkedCount === taskCheckboxes.length;
-        bulkDeleteBtn.disabled = checkedCount === 0;
-        bulkActions.style.display = checkedCount > 0 ? '' : 'none';
-    }
-
-    selectAllTasksCheckbox.addEventListener('change', function() {
-        taskCheckboxes.forEach(checkbox => {
-            checkbox.checked = this.checked;
-        });
-        updateBulkActions();
-    });
-
-    taskCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updateBulkActions);
-    });
-
-    bulkDeleteBtn.addEventListener('click', function() {
-        const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
-        Swal.fire({
-            title: 'Delete selected tasks?',
-            text: 'This action cannot be undone.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete them!'
-        }).then((result) => {
-            if (!result.isConfirmed) return;
-            fetch(`/tasks/bulk-delete`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({ task_ids: selectedTaskIds }),
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    selectedTaskIds.forEach(id => {
-                        const card = document.querySelector(`.task-card[data-task-id='${id}']`);
-                        if (card) card.remove();
-                        const row = document.querySelector(`tr[data-task-id='${id}']`);
-                        if (row) row.remove();
-                    });
-                    updateBulkActions();
-                    Swal.fire('Deleted!', 'Tasks deleted.', 'success');
-                } else if (data.message) {
-                    Swal.fire('Error', data.message, 'error');
-                } else {
     document.querySelectorAll('.management-action-btn').forEach(button => {
         button.addEventListener('click', async function(e) {
             e.preventDefault();
@@ -869,20 +774,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 if (!response.ok || !data.success) {
                     throw new Error(data.message || 'The timeline could not be loaded.');
                 }
-                const timelineText = data.entries.length
-                    ? data.entries.map(entry => {
-                        const when = entry.occurred_at ? new Date(entry.occurred_at).toLocaleString() : '';
-                        const details = entry.details?.length ? ` ? ${entry.details.join('; ')}` : '';
-
-                        return `${when} ? ${entry.label} ? ${entry.actor}${details}`;
-                    }).join('\n')
-                    : 'No timeline entries are available.';
-
-                await Swal.fire({
-                    title: 'Task timeline',
-                    text: timelineText,
-                    width: 720,
-                });
+                await window.Phase3UI.showTimeline(data.entries);
             } catch (error) {
                 showMessage(error.message || 'The timeline could not be loaded.', false);
             } finally {
@@ -945,6 +837,116 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
         });
     });
 
+    // Toggle view logic
+    const toggleViewBtn = document.getElementById('toggleViewBtn');
+    const tasksTableWrapper = document.getElementById('tasksTableWrapper');
+    const taskViewStorageKey = 'task-management.tasks.view';
+    let isTable = false;
+
+    function applyTaskView(view) {
+        isTable = view === 'table';
+        tasksGrid.style.display = isTable ? 'none' : '';
+        tasksTableWrapper.style.display = isTable ? '' : 'none';
+        toggleViewBtn.textContent = isTable ? 'Card View' : 'Table View';
+        toggleViewBtn.setAttribute('aria-pressed', isTable ? 'true' : 'false');
+    }
+
+    if (toggleViewBtn && tasksGrid && tasksTableWrapper) {
+        let savedView = 'cards';
+        try {
+            savedView = localStorage.getItem(taskViewStorageKey) || 'cards';
+        } catch (error) {
+            savedView = 'cards';
+        }
+        applyTaskView(savedView);
+
+        toggleViewBtn.addEventListener('click', function() {
+            const nextView = isTable ? 'cards' : 'table';
+            applyTaskView(nextView);
+            try {
+                localStorage.setItem(taskViewStorageKey, nextView);
+            } catch (error) {
+                // The selected view still applies for this page load.
+            }
+        });
+    }
+    // Table edit/delete
+    document.querySelectorAll('.table-edit-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const row = this.closest('tr');
+            const card = document.querySelector(`.task-card[data-task-id='${row.dataset.taskId}']`);
+            if (card) card.click();
+        });
+    });
+    document.querySelectorAll('.table-delete-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const row = this.closest('tr');
+            const card = document.querySelector(`.task-card[data-task-id='${row.dataset.taskId}']`);
+            if (card) card.querySelector('.delete-btn').click();
+        });
+    });
+
+    // Bulk Actions
+    const selectAllTasksCheckbox = document.getElementById('selectAllTasks');
+    const taskCheckboxes = document.querySelectorAll('.task-checkbox');
+    const bulkActions = document.getElementById('bulkActions');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+
+    function updateBulkActions() {
+        const checkedCount = document.querySelectorAll('.task-checkbox:checked').length;
+        selectAllTasksCheckbox.checked = taskCheckboxes.length > 0 && checkedCount === taskCheckboxes.length;
+        bulkDeleteBtn.disabled = checkedCount === 0;
+        bulkActions.style.display = checkedCount > 0 ? '' : 'none';
+    }
+
+    selectAllTasksCheckbox.addEventListener('change', function() {
+        taskCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkActions();
+    });
+
+    taskCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActions);
+    });
+
+    bulkDeleteBtn.addEventListener('click', function() {
+        const selectedTaskIds = Array.from(taskCheckboxes).filter(checkbox => checkbox.checked).map(checkbox => checkbox.value);
+        Swal.fire({
+            title: 'Delete selected tasks?',
+            text: 'This action cannot be undone.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete them!'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+            fetch(`/tasks/bulk-delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ task_ids: selectedTaskIds }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    selectedTaskIds.forEach(id => {
+                        const card = document.querySelector(`.task-card[data-task-id='${id}']`);
+                        if (card) card.remove();
+                        const row = document.querySelector(`tr[data-task-id='${id}']`);
+                        if (row) row.remove();
+                    });
+                    updateBulkActions();
+                    Swal.fire('Deleted!', 'Tasks deleted.', 'success');
+                } else if (data.message) {
+                    Swal.fire('Error', data.message, 'error');
+                } else {
                     Swal.fire('Error', 'Error deleting tasks.', 'error');
                 }
             })
@@ -962,8 +964,8 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
 
     <div class="tasks-header">
         <h1>Task Management</h1>
-        <button id="toggleViewBtn" class="btn-secondary" style="margin-right: 1rem;">?? Table View</button>
-        <button id="newTaskBtn" class="btn-primary">? New Task</button>
+        <button id="toggleViewBtn" class="btn-secondary" style="margin-right: 1rem;">🔳 Table View</button>
+        <button id="newTaskBtn" class="btn-primary">➕ New Task</button>
     </div>
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <!-- Filters -->
@@ -982,7 +984,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
             <div class="filters-grid">
                 <div class="search-group">
                     <div class="search-input">
-                        <span class="search-icon">??</span>
+                        <span class="search-icon">🔍</span>
                         <input
                             type="search"
                             id="searchTasks"
@@ -1018,6 +1020,18 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                         <option value="{{ $assignee->id }}" @selected((string) ($filters['assignee'] ?? '') === (string) $assignee->id)>{{ $assignee->name }}</option>
                     @endforeach
                 </select>
+                <select id="reviewerFilter" name="reviewer" aria-label="Filter tasks by reviewer">
+                    <option value="">All Reviewers</option>
+                    @foreach ($filterReviewers as $reviewer)
+                        <option value="{{ $reviewer->id }}" @selected((string) ($filters['reviewer'] ?? '') === (string) $reviewer->id)>{{ $reviewer->name }}</option>
+                    @endforeach
+                </select>
+                <select id="scopeFilter" name="scope" aria-label="Filter tasks by relationship">
+                    <option value="">All Authorized Tasks</option>
+                    <option value="assigned_to_me" @selected(($filters['scope'] ?? '') === 'assigned_to_me')>Assigned to me</option>
+                    <option value="created_by_me" @selected(($filters['scope'] ?? '') === 'created_by_me')>Created by me</option>
+                    <option value="waiting_for_review" @selected(($filters['scope'] ?? '') === 'waiting_for_review')>Waiting for my review</option>
+                </select>
             </div>
             <div class="filter-actions">
                 <button type="submit" class="btn-primary">Apply filters</button>
@@ -1043,9 +1057,11 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 $taskState = $task->machineState();
                 $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
                 $activeRevisionCycle = $task->activeRevisionCycle;
+                $activeDeadline = $task->activeDeadline();
             @endphp
-            <div class="task-card" tabindex="0" style="cursor:pointer"
+            <div id="task-{{ $task->id }}" class="task-card" tabindex="0" style="cursor:pointer"
                 data-task-id="{{ $task->id }}"
+                data-task-uid="{{ $task->task_uid }}"
                 data-assignee-id="{{ $task->assignee_id }}"
                 data-project-id="{{ $task->project_id }}"
                 data-priority="{{ $task->priority }}"
@@ -1056,11 +1072,12 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 data-description="{{ htmlspecialchars($task->description ?? '', ENT_QUOTES) }}"
                 data-comments="{{ htmlspecialchars($task->comments ?? '', ENT_QUOTES) }}"
                 data-final-state="{{ $taskState->isFinal() ? 'true' : 'false' }}"
+                data-generic-editable="{{ ! $user->hasRole('team_member') && $user->can('update', $task) && ! $taskState->isFinal() && ! $task->submitted_at && ! $task->active_revision_cycle_id ? 'true' : 'false' }}"
             >
                 <div class="task-header">
                     <div class="task-status-icon">
                         <span class="status-icon {{ str_replace(' ', '-', strtolower($task->status)) }}">
-                            @if($task->status === 'Completed')?@elseif($task->status === 'In Progress')??@elseif($task->status === 'On Hold')??@else?@endif
+                            @if($task->status === 'Completed')✅@elseif($task->status === 'In Progress')📈@elseif($task->status === 'On Hold')⏸️@else⭕@endif
                         </span>
                         <span class="task-number">#{{ $task->id }}</span>
                     </div>
@@ -1095,11 +1112,13 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 </div>
                 <div class="task-dates">
                     <div class="date-item">
-                        <span class="date-icon">??</span>
-                        <span class="due-date">{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</span>
+                        <span class="date-icon" aria-hidden="true">📅</span>
+                        <span class="due-date">
+                            Deadline: {{ $activeDeadline?->format('M j, Y') ?? 'Not set' }}
+                        </span>
                     </div>
                     <div class="date-item">
-                        <span class="date-icon">?</span>
+                        <span class="date-icon">⏰</span>
                         <span>Updated {{ $task->updated_at ? $task->updated_at->format('m/d/Y') : '-' }}</span>
                     </div>
                 </div>
@@ -1128,18 +1147,6 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                             @can('start', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
                                     data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
-                <select id="reviewerFilter" name="reviewer" aria-label="Filter tasks by reviewer">
-                    <option value="">All Reviewers</option>
-                    @foreach ($filterReviewers as $reviewer)
-                        <option value="{{ $reviewer->id }}" @selected((string) ($filters['reviewer'] ?? '') === (string) $reviewer->id)>{{ $reviewer->name }}</option>
-                    @endforeach
-                </select>
-                <select id="scopeFilter" name="scope" aria-label="Filter tasks by relationship">
-                    <option value="">All Authorized Tasks</option>
-                    <option value="assigned_to_me" @selected(($filters['scope'] ?? '') === 'assigned_to_me')>Assigned to me</option>
-                    <option value="created_by_me" @selected(($filters['scope'] ?? '') === 'created_by_me')>Created by me</option>
-                    <option value="waiting_for_review" @selected(($filters['scope'] ?? '') === 'waiting_for_review')>Waiting for my review</option>
-                </select>
                             @endcan
                         @elseif ($taskState === \App\Enums\TaskState::InProgress)
                             @can('hold', $task)
@@ -1178,7 +1185,6 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                         @endcan
                         @if ((int) $task->assignee_id !== (int) $user->id)
                             @can('approve', $task)
-                data-generic-editable="{{ ! $user->hasRole('team_member') && $user->can('update', $task) && ! $taskState->isFinal() && ! $task->submitted_at && ! $task->active_revision_cycle_id ? 'true' : 'false' }}"
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
                                     data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
                             @endcan
@@ -1207,18 +1213,55 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                         </div>
                     @endcan
                 @endif
+                <div class="execution-actions">
+                    @if ($taskState === \App\Enums\TaskState::InProgress)
+                        @can('updateProgress', $task)
+                            <button type="button" class="btn-small btn-secondary progress-update-btn"
+                                data-progress="{{ $task->progress }}"
+                                data-comments="{{ $task->comments }}"
+                                data-url="{{ route('tasks.update', $task) }}">Update Progress</button>
+                        @endcan
+                    @endif
+                    <button type="button" class="btn-small btn-secondary timeline-btn"
+                        data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
+                    @if (! $taskState->isFinal())
+                        @can('reassignReviewer', $task)
+                            <button type="button" class="btn-small btn-secondary management-action-btn"
+                                data-action="reassign-reviewer"
+                                data-reason-required="{{ $task->submitted_at || $task->active_revision_cycle_id ? 'true' : 'false' }}"
+                                data-url="{{ route('tasks.reviewer.reassign', $task) }}">Reassign Reviewer</button>
+                        @endcan
+                        @can('changeDeadline', $task)
+                            @php
+                                $deadlineType = $taskState === \App\Enums\TaskState::RevisionRequested || $task->active_revision_cycle_id
+                                    ? 'revision'
+                                    : ($taskState->isReviewState() ? 'review' : 'execution');
+                                $deadlineReasonRequired = $deadlineType === 'revision'
+                                    || ($deadlineType === 'review' && $taskState->isReviewState())
+                                    || ($deadlineType === 'execution' && $taskState !== \App\Enums\TaskState::NotStarted);
+                            @endphp
+                            <button type="button" class="btn-small btn-secondary management-action-btn"
+                                data-action="change-deadline"
+                                data-deadline-type="{{ $deadlineType }}"
+                                data-reason-required="{{ $deadlineReasonRequired ? 'true' : 'false' }}"
+                                data-url="{{ route('tasks.deadline.change', ['task' => $task, 'deadlineType' => $deadlineType]) }}">
+                                Change {{ ucfirst($deadlineType) }} Deadline
+                            </button>
+                        @endcan
+                    @endif
+                </div>
                 @if ($taskState === \App\Enums\TaskState::Cancelled)
                     <div class="task-meta">Cancelled {{ $task->cancelled_at?->format('m/d/Y H:i') }}</div>
                 @endif
-                @if($task->status !== 'Completed' && $task->due_date && \Carbon\Carbon::parse($task->due_date)->isPast())
+                @if(! $taskState->isFinal() && $activeDeadline?->isPast())
                 <div class="overdue-warning">
-                    <p>?? Overdue</p>
+                    <p><span aria-hidden="true">⚠️</span> Overdue</p>
                 </div>
                 @endif
             </div>
         @empty
             <div class="empty-state">
-                <div class="empty-icon">??</div>
+                <div class="empty-icon">📋</div>
                 @if ($hasActiveFilters)
                     <h3>No tasks match your filters</h3>
                     <p>Try changing your filters or <a href="{{ route('tasks') }}">clear all filters</a>.</p>
@@ -1231,7 +1274,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
     </div>
     <!-- Bulk Actions -->
     <div id="bulkActions" style="display:none; margin-bottom:1rem;">
-        <button id="bulkDeleteBtn" class="btn-small btn-danger">??? Delete Selected</button>
+        <button id="bulkDeleteBtn" class="btn-small btn-danger">🗑️ Delete Selected</button>
     </div>
     <!-- Tasks Table View (hidden by default) -->
     <div id="tasksTableWrapper" style="display:none;">
@@ -1256,6 +1299,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                         $taskState = $task->machineState();
                         $canExecuteTask = (int) $task->assignee_id === (int) $user->id;
                         $activeRevisionCycle = $task->activeRevisionCycle;
+                        $activeDeadline = $task->activeDeadline();
                     @endphp
                     <tr data-task-id="{{ $task->id }}">
                         <td>
@@ -1274,7 +1318,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                                 {{ $task->assignee ? $task->assignee->name : '-' }}
                             @endif
                         </td>
-                        <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</td>
+                        <td>{{ $activeDeadline?->format('M j, Y') ?? '-' }}</td>
                         <td>{{ $task->progress }}%</td>
                         <td>
                             @if (! $taskState->isFinal())
@@ -1317,43 +1361,6 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
                                             data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
                                     @endcan
-                <div class="execution-actions">
-                    @if ($taskState === \App\Enums\TaskState::InProgress)
-                        @can('updateProgress', $task)
-                            <button type="button" class="btn-small btn-secondary progress-update-btn"
-                                data-progress="{{ $task->progress }}"
-                                data-comments="{{ $task->comments }}"
-                                data-url="{{ route('tasks.update', $task) }}">Update Progress</button>
-                        @endcan
-                    @endif
-                    <button type="button" class="btn-small btn-secondary timeline-btn"
-                        data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
-                    @if (! $taskState->isFinal())
-                        @can('reassignReviewer', $task)
-                            <button type="button" class="btn-small btn-secondary management-action-btn"
-                                data-action="reassign-reviewer"
-                                data-reason-required="{{ $task->submitted_at || $task->active_revision_cycle_id ? 'true' : 'false' }}"
-                                data-url="{{ route('tasks.reviewer.reassign', $task) }}">Reassign Reviewer</button>
-                        @endcan
-                        @can('changeDeadline', $task)
-                            @php
-                                $deadlineType = $taskState === \App\Enums\TaskState::RevisionRequested || $task->active_revision_cycle_id
-                                    ? 'revision'
-                                    : ($taskState->isReviewState() ? 'review' : 'execution');
-                                $deadlineReasonRequired = $deadlineType === 'revision'
-                                    || ($deadlineType === 'review' && $taskState->isReviewState())
-                                    || ($deadlineType === 'execution' && $taskState !== \App\Enums\TaskState::NotStarted);
-                            @endphp
-                            <button type="button" class="btn-small btn-secondary management-action-btn"
-                                data-action="change-deadline"
-                                data-deadline-type="{{ $deadlineType }}"
-                                data-reason-required="{{ $deadlineReasonRequired ? 'true' : 'false' }}"
-                                data-url="{{ route('tasks.deadline.change', ['task' => $task, 'deadlineType' => $deadlineType]) }}">
-                                Change {{ ucfirst($deadlineType) }} Deadline
-                            </button>
-                        @endcan
-                    @endif
-                </div>
                                 @endif
                             @endif
                             @if ($taskState === \App\Enums\TaskState::InReview)
@@ -1477,7 +1484,7 @@ window.taskUpdateUrlTemplate = {{ Illuminate\Support\Js::from(route('tasks.updat
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="taskModal.classList.remove('active')">Cancel</button>
-                    <button type="submit" class="btn-primary" id="submitBtn">? Create Task</button>
+                    <button type="submit" class="btn-primary" id="submitBtn">➕ Create Task</button>
                 </div>
             </form>
         </div>

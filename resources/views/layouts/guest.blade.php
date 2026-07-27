@@ -13,18 +13,24 @@
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <link rel="stylesheet" href="{{ asset('css/phase3.css') }}?v={{ filemtime(public_path('css/phase3.css')) }}">
     </head>
-    <body class="font-sans text-gray-900 antialiased">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100">
-            <div>
-                <a href="/">
+    <body class="font-sans text-gray-900 antialiased guest-body" data-ui-version="phase-3a">
+        <a class="skip-link" href="#main-content">Skip to sign in</a>
+        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 guest-shell">
+            <div class="auth-brand">
+                <a href="/" aria-label="Task Management home">
                     <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
                 </a>
+                <div>
+                    <strong>Task Management</strong>
+                    <span>Keep work moving, one clear step at a time.</span>
+                </div>
             </div>
 
-            <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white shadow-md overflow-hidden sm:rounded-lg">
+            <main id="main-content" class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white shadow-md overflow-hidden sm:rounded-lg auth-card" tabindex="-1">
                 {{ $slot }}
-            </div>
+            </main>
         </div>
     </body>
 </html>

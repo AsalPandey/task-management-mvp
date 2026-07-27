@@ -7,19 +7,23 @@
 
         <title>{{ config('app.name', 'Task Management') }}</title>
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
         <!-- Styles -->
         @stack('styles')
+        <link rel="stylesheet" href="{{ asset('css/phase3.css') }}?v={{ filemtime(public_path('css/phase3.css')) }}">
         
         <!-- Scripts -->
         {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script src="{{ asset('js/phase3.js') }}?v={{ filemtime(public_path('js/phase3.js')) }}" defer></script>
     </head>
-    <body class="font-sans antialiased" data-user-role="{{ auth()->user()?->role?->name }}">
-        <div class="min-h-screen bg-gray-100">
+    <body
+        class="font-sans antialiased app-body"
+        data-user-role="{{ auth()->user()?->role?->name }}"
+        data-page="{{ request()->route()?->getName() }}"
+        data-ui-version="phase-3a"
+    >
+        <a class="skip-link" href="#main-content">Skip to main content</a>
+        <div class="min-h-screen bg-gray-100 app-shell">
             @include('partials.navigation')
 
             <!-- Page Heading -->
@@ -32,9 +36,11 @@
             @endisset
 
             <!-- Page Content -->
-            <main>
+            <main id="main-content" tabindex="-1">
                 @yield('content')
             </main>
+
+            @include('partials.mobile-bottom-navigation')
         </div>
         @stack('scripts')
     </body>

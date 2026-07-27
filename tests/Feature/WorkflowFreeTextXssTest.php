@@ -61,12 +61,15 @@ class WorkflowFreeTextXssTest extends TestCase
         $completedView = file_get_contents(resource_path('views/completed-tasks.blade.php'));
         $this->assertIsString($taskView);
         $this->assertIsString($completedView);
-        $this->assertStringContainsString('text: timelineText', $taskView);
-        $this->assertStringContainsString("Swal.fire({ title: 'Task timeline', text, width: 720 })", $completedView);
         foreach ([$taskView, $completedView] as $view) {
-            $this->assertStringNotContainsString('html: timelineText', $view);
-            $this->assertStringNotContainsString('html: text', $view);
+            $this->assertStringContainsString('window.Phase3UI.showTimeline(data.entries)', $view);
         }
+
+        $timelineRenderer = file_get_contents(public_path('js/phase3.js'));
+        $this->assertIsString($timelineRenderer);
+        $this->assertStringContainsString('element.textContent = text', $timelineRenderer);
+        $this->assertStringContainsString('html: timeline', $timelineRenderer);
+        $this->assertStringNotContainsString('innerHTML = entry', $timelineRenderer);
 
         $this->assertSame($payload, $task->fresh()->title);
         $this->assertSame($payload, $task->fresh()->description);
