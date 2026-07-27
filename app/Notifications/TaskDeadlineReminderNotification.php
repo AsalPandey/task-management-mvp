@@ -6,6 +6,7 @@ use App\Models\Task;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Carbon;
 
 class TaskDeadlineReminderNotification extends Notification
 {
@@ -13,12 +14,16 @@ class TaskDeadlineReminderNotification extends Notification
 
     protected $task;
 
+    protected Carbon $deadline;
+
     /**
      * Create a new notification instance.
      */
     public function __construct(Task $task)
     {
         $this->task = $task;
+        $this->deadline = $task->activeDeadline()
+            ?? throw new \InvalidArgumentException('An active task deadline is required for a deadline reminder.');
     }
 
     /**
@@ -36,7 +41,7 @@ class TaskDeadlineReminderNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $dueDate = $this->task->due_date->format('M d, Y');
+        $dueDate = $this->deadline->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
 
@@ -56,12 +61,13 @@ class TaskDeadlineReminderNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        $dueDate = $this->task->due_date->format('M d, Y');
+        $dueDate = $this->deadline->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
 
         return [
             'task_id' => $this->task->id,
+            'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
             'due_date' => $dueDate,
             'priority' => $priority,

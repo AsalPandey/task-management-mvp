@@ -31,10 +31,10 @@ class SendTaskDeadlineReminders extends Command
         $tomorrow = now()->addDay()->toDateString();
         $tasks = Task::query()
             ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-            ->whereDate('due_date', $tomorrow)
             ->whereNull('deadline_reminder_sent_at')
             ->with('assignee')
-            ->get();
+            ->get()
+            ->filter(fn (Task $task): bool => $task->activeDeadline()?->toDateString() === $tomorrow);
 
         $notificationCount = 0;
         foreach ($tasks as $task) {

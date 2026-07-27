@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TaskState;
 use App\Models\User;
 use App\Services\TaskReadService;
 use Illuminate\Http\Request;
@@ -26,19 +25,24 @@ class AnalyticsController extends Controller
 
         return response()->streamDownload(function () use ($data) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Metric', 'Value']);
-            fputcsv($out, ['Active Tasks', $data['totalActiveTasks']]);
-            fputcsv($out, ['Completed Tasks', $data['totalCompletedTasks']]);
-            fputcsv($out, ['Active Execution', $data['executionTasks']->count()]);
-            fputcsv($out, ['Review Queue', $data['reviewQueueTasks']->count()]);
-            fputcsv($out, ['Cancelled Tasks', $data['cancelledTasks']]);
-            fputcsv($out, ['In Progress Tasks', $data['inProgressTasks']]);
-            fputcsv($out, ['Overdue Tasks', $data['overdueTasks']]);
-            fputcsv($out, ['Completion Rate', $data['completionRate'].'%']);
-            fputcsv($out, []);
-            fputcsv($out, ['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate']);
+            $writeRow = fn (array $row) => fputcsv(
+                $out,
+                array_map($this->safeCsvCell(...), $row),
+            );
+
+            $writeRow(['Metric', 'Value']);
+            $writeRow(['Active Tasks', $data['totalActiveTasks']]);
+            $writeRow(['Completed Tasks', $data['totalCompletedTasks']]);
+            $writeRow(['Active Execution', $data['executionTasks']->count()]);
+            $writeRow(['Review Queue', $data['reviewQueueTasks']->count()]);
+            $writeRow(['Cancelled Tasks', $data['cancelledTasks']]);
+            $writeRow(['In Progress Tasks', $data['inProgressTasks']]);
+            $writeRow(['Overdue Tasks', $data['overdueTasks']]);
+            $writeRow(['Completion Rate', $data['completionRate'].'%']);
+            $writeRow([]);
+            $writeRow(['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate']);
             foreach ($data['teamPerformance'] as $member) {
-                fputcsv($out, [
+                $writeRow([
                     $member['name'],
                     $member['total'],
                     $member['completed'],
@@ -58,6 +62,17 @@ class AnalyticsController extends Controller
         $data = $this->analyticsData($request);
 
         return response()->view('analytics-export', $data);
+    }
+
+    private function safeCsvCell(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        return preg_match('/^[=+\-@\t\r]/u', $value) === 1
+            ? "'".$value
+            : $value;
     }
 
     private function analyticsData(Request $request): array
@@ -84,7 +99,9 @@ class AnalyticsController extends Controller
         $totalCompletedTasks = $completedTasks->count();
         $totalTasksForRate = $totalActiveTasks + $totalCompletedTasks;
         $inProgressTasks = $activeTasks->where('status', 'In Progress')->count();
-        $overdueTasks = $executionTasks->where('due_date', '<', now())->count();
+        $overdueTasks = $activeTasks
+            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+            ->count();
         $completionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
         $avgProgress = $activeTasks->count() ? round($activeTasks->avg('progress')) : 0;
         $priorityCounts = $activeTasks->groupBy('priority')->map->count();
@@ -95,7 +112,9 @@ class AnalyticsController extends Controller
             $date->format('M d') => (clone $completedTasksQuery)->whereDate('completed_at', $date)->count(),
         ]);
         $overdueTrend = $days->mapWithKeys(fn ($date) => [
-            $date->format('M d') => (clone $activeTasksQuery)->where('due_date', '<', $date)->where('status', '!=', TaskState::Completed->value)->count(),
+            $date->format('M d') => $activeTasks
+                ->filter(fn ($task) => $task->activeDeadline()?->lt($date) ?? false)
+                ->count(),
         ]);
 
         $users = $this->visibleUsers()->with(['role', 'tasks'])->get();
@@ -120,7 +139,9 @@ class AnalyticsController extends Controller
                 'avatar' => strtoupper(substr($user->name, 0, 2)),
                 'total' => $total,
                 'completed' => $completedCount,
-                'overdue' => $active->where('due_date', '<', now())->where('status', '!=', 'Completed')->count(),
+                'overdue' => $active
+                    ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+                    ->count(),
                 'completionRate' => $total ? round($completedCount / $total * 100) : 0,
             ];
         })->filter()->values();

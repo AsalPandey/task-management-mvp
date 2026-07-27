@@ -66,6 +66,21 @@ Configure exactly one server cron in Forge:
 
 The scheduler sends deadline reminders, overdue notifications, backup health checks, and cleanup tasks. Reminder commands use sent-at columns to avoid repeated notification spam.
 
+## Logging
+
+Use the rotating daily log channel in production:
+
+```env
+LOG_CHANNEL=stack
+LOG_STACK=daily
+LOG_DAILY_DAYS=14
+LOG_LEVEL=warning
+```
+
+Confirm the production service account can write to `storage/logs` and that
+infrastructure monitoring alerts on repeated application errors. Sentry does
+not replace local retention.
+
 ## Forge Deployment Script
 
 Use this as the Forge deploy script for each client site:
@@ -100,6 +115,22 @@ On Windows:
 ```
 
 Set `FORGE_DEPLOY_HOOK_CLIENT_SLUG` or `FORGE_DEPLOY_HOOK` in your local environment.
+
+## Deployment Rollback
+
+Record the deployed commit and verify the pre-migration database backup before
+running the deploy hook.
+
+If a release fails before migrations run, redeploy the previously approved
+commit, reinstall its locked dependencies, rebuild its assets, run
+`php artisan optimize`, restart the queue, and verify `/up`.
+
+If migrations have run, do not blindly call `migrate:rollback`. First confirm
+the previous application release is compatible with the expanded schema. If
+data must be reversed, enter maintenance mode, validate the pre-deployment
+backup by restoring it to staging, obtain business approval, and then follow
+the full restore procedure below. Record the failed release, database backup,
+and recovery outcome before bringing the application back up.
 
 ## Backups
 

@@ -37,13 +37,17 @@ class TeamDashboardController extends Controller
         // Today's metrics
         $todayTotalTasks = $todayTasks->count();
         $todayInProgressTasks = $todayTasks->where('status', 'In Progress')->count();
-        $todayOverdueTasks = $todayTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        $todayOverdueTasks = $todayTasks
+            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+            ->count();
         $todayAvgProgress = $todayTotalTasks ? round($todayTasks->avg('progress')) : 0;
 
         // Current workload metrics
         $currentTotalTasks = $currentTasks->count();
         $currentInProgressTasks = $currentTasks->where('status', 'In Progress')->count();
-        $currentOverdueTasks = $currentTasks->where('due_date', '<', now())->where('status', '!=', 'Completed')->count();
+        $currentOverdueTasks = $currentTasks
+            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+            ->count();
 
         // Completion rate (today's completed vs today's total)
         $todayCompletionRate = $todayTotalTasks ? round($todayCompletedTasks / $todayTotalTasks * 100) : 0;
@@ -67,7 +71,8 @@ class TeamDashboardController extends Controller
         ];
 
         // Today's overdue list
-        $todayOverdueList = $todayTasks->where('due_date', '<', now())->where('status', '!=', 'Completed');
+        $todayOverdueList = $todayTasks
+            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false);
 
         // Today's productivity (last 7 days for context)
         $days = collect(range(0, 6))->map(function ($i) {
@@ -93,7 +98,7 @@ class TeamDashboardController extends Controller
         foreach ($todayTasks->sortByDesc('created_at')->take(5) as $task) {
             if ($task->status === 'Completed') {
                 $notifications->push(['type' => 'completed', 'text' => "Task '{$task->title}' was completed."]);
-            } elseif ($task->due_date && $task->due_date < now() && $task->status !== 'Completed') {
+            } elseif ($task->activeDeadline()?->isPast()) {
                 $notifications->push(['type' => 'overdue', 'text' => "Task '{$task->title}' is overdue."]);
             } else {
                 $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."]);

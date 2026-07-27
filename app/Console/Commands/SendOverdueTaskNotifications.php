@@ -29,11 +29,11 @@ class SendOverdueTaskNotifications extends Command
     public function handle(): int
     {
         $overdueTasks = Task::query()
-            ->where('status', '!=', TaskState::Completed->value)
-            ->where('due_date', '<', now())
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
             ->whereNull('overdue_notification_sent_at')
             ->with('assignee')
-            ->get();
+            ->get()
+            ->filter(fn (Task $task): bool => $task->activeDeadline()?->isPast() ?? false);
 
         $notificationCount = 0;
         foreach ($overdueTasks as $task) {

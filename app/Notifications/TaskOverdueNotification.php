@@ -6,6 +6,7 @@ use App\Models\Task;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Carbon;
 
 class TaskOverdueNotification extends Notification
 {
@@ -15,13 +16,17 @@ class TaskOverdueNotification extends Notification
 
     protected $daysOverdue;
 
+    protected Carbon $deadline;
+
     /**
      * Create a new notification instance.
      */
     public function __construct(Task $task, $daysOverdue = null)
     {
         $this->task = $task;
-        $this->daysOverdue = $daysOverdue ?? now()->diffInDays($task->due_date);
+        $this->deadline = $task->activeDeadline()
+            ?? throw new \InvalidArgumentException('An active task deadline is required for an overdue notification.');
+        $this->daysOverdue = $daysOverdue ?? $this->deadline->diffInDays(now());
     }
 
     /**
@@ -39,7 +44,7 @@ class TaskOverdueNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $dueDate = $this->task->due_date->format('M d, Y');
+        $dueDate = $this->deadline->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
 
@@ -60,7 +65,7 @@ class TaskOverdueNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        $dueDate = $this->task->due_date->format('M d, Y');
+        $dueDate = $this->deadline->format('M d, Y');
         $priority = $this->task->priority;
         $progress = $this->task->progress;
 

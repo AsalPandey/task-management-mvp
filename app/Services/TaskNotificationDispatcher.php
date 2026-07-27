@@ -34,7 +34,7 @@ class TaskNotificationDispatcher
                 $committedTask->assignee->notify(new TaskUpdatedNotification($committedTask, $changes, $actor));
             }
 
-            if ($committedTask->due_date && $committedTask->due_date->isPast() && ! $committedTask->overdue_notification_sent_at) {
+            if ($committedTask->activeDeadline()?->isPast() && ! $committedTask->overdue_notification_sent_at) {
                 $committedTask->assignee?->notify(new TaskOverdueNotification($committedTask));
 
                 Task::on($committedTask->getConnectionName())

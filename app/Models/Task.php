@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 class Task extends Model
 {
@@ -77,6 +78,26 @@ class Task extends Model
     public function machineState(): TaskState
     {
         return TaskState::from($this->getAttributes()['status']);
+    }
+
+    public function activeDeadline(): ?Carbon
+    {
+        $state = $this->machineState();
+
+        if ($state->isFinal()) {
+            return null;
+        }
+
+        if ($this->active_revision_cycle_id && $this->revision_due_date) {
+            return $this->revision_due_date;
+        }
+
+        return match ($state) {
+            TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold => $this->execution_due_date ?? $this->due_date,
+            TaskState::Submitted, TaskState::InReview => $this->review_due_date,
+            TaskState::RevisionRequested => $this->revision_due_date,
+            TaskState::Completed, TaskState::Cancelled => null,
+        };
     }
 
     public function statusLabel(): string
