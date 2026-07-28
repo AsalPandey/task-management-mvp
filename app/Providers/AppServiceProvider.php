@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Contracts\BrowserPushTransport;
+use App\Models\User;
+use App\Services\MinishlinkBrowserPushTransport;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +14,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(BrowserPushTransport::class, MinishlinkBrowserPushTransport::class);
     }
 
     /**
@@ -19,6 +22,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        User::updated(function (User $user): void {
+            if ($user->wasChanged('active') && ! $user->active) {
+                $user->browserPushSubscriptions()->enabled()->update([
+                    'disabled_at' => now(),
+                    'revoked_at' => now(),
+                ]);
+            }
+        });
+
+        User::deleted(function (User $user): void {
+            $user->browserPushSubscriptions()->enabled()->update([
+                'disabled_at' => now(),
+                'revoked_at' => now(),
+            ]);
+        });
     }
 }

@@ -2,13 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 
-class TaskOverdueNotification extends Notification
+class TaskOverdueNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -36,7 +40,7 @@ class TaskOverdueNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     /**
@@ -80,5 +84,10 @@ class TaskOverdueNotification extends Notification
             'message' => "Task '{$this->task->title}' is overdue by {$this->daysOverdue} day(s). Priority: {$priority}, Progress: {$progress}%",
             'type' => 'task_overdue',
         ];
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 }

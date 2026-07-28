@@ -183,6 +183,42 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h2>Notification Preferences</h2>
                     <p>Choose what notifications you want to receive</p>
                 </div>
+                <section class="push-settings-card" aria-labelledby="browserPushHeading">
+                    <div class="push-settings-heading">
+                        <div>
+                            <h3 id="browserPushHeading">Browser notifications</h3>
+                            <p>Receive task updates on this browser and device. Each device is enabled separately.</p>
+                        </div>
+                        <span class="push-status" data-push-status aria-live="polite">Checking support…</span>
+                    </div>
+                    <p class="push-message" data-push-message role="status" aria-live="polite" hidden></p>
+                    <p class="push-help" data-push-blocked-help hidden>
+                        Permission is blocked by your browser or operating system. Open this site's notification
+                        permissions in browser settings, allow notifications, then retry.
+                    </p>
+                    <div class="push-actions">
+                        <button type="button" class="btn-primary" data-push-enable>Enable Notifications</button>
+                        <button type="button" class="btn-secondary" data-push-test hidden>Send Test Notification</button>
+                        <button type="button" class="btn-secondary push-disable" data-push-disable hidden>Disable This Device</button>
+                    </div>
+                    <p class="push-privacy-note">
+                        Notification permission is controlled by your browser. Disabling this device does not
+                        disable your other devices.
+                    </p>
+                </section>
+                <section class="pwa-install-card" data-pwa-card aria-labelledby="installAppHeading">
+                    <div>
+                        <h3 id="installAppHeading">Install Task Management</h3>
+                        <p>Add the app to your home screen for faster access and an app-like display.</p>
+                    </div>
+                    <div class="push-actions">
+                        <button type="button" class="btn-primary" data-pwa-install hidden>Install App</button>
+                        <button type="button" class="btn-secondary" data-pwa-dismiss>Dismiss</button>
+                    </div>
+                    <p class="push-privacy-note">
+                        On iPhone or iPad, use Safari's Share menu and choose “Add to Home Screen.”
+                    </p>
+                </section>
                 <div class="notification-settings">
                     <div class="notification-item">
                         <div class="notification-info">

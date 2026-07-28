@@ -1,0 +1,129 @@
+.push-settings-card,
+.pwa-install-card {
+    border: 1px solid #dbe4f0;
+    border-radius: 14px;
+    background: #fff;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.push-settings-card [hidden],
+.pwa-install-card [hidden] {
+    display: none !important;
+}
+
+.push-settings-heading {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.push-settings-card h3,
+.pwa-install-card h3 {
+    color: #172033;
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0 0 .25rem;
+}
+
+.push-settings-card p,
+.pwa-install-card p {
+    color: #5f6b7c;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.push-status {
+    background: #eef2f7;
+    border-radius: 999px;
+    color: #3c4858;
+    flex: 0 0 auto;
+    font-size: .78rem;
+    font-weight: 700;
+    padding: .35rem .65rem;
+}
+
+.push-status[data-state="enabled"] {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.push-status[data-state="blocked"],
+.push-status[data-state="stale"] {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.push-status[data-state="unsupported"],
+.push-status[data-state="unavailable"] {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.push-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    margin-top: 1rem;
+}
+
+.push-actions button {
+    min-height: 44px;
+    padding: .65rem 1rem;
+}
+
+.push-actions .btn-secondary {
+    background: #fff;
+    border: 1px solid #bfcaD9;
+    border-radius: 8px;
+    color: #243047;
+    cursor: pointer;
+    font-weight: 650;
+}
+
+.push-actions .push-disable {
+    color: #b42318;
+}
+
+.push-message,
+.push-help {
+    border-radius: 8px;
+    margin-top: .75rem !important;
+    padding: .7rem .8rem;
+}
+
+.push-message[data-state="success"] {
+    background: #ecfdf3;
+    color: #166534;
+}
+
+.push-message[data-state="error"],
+.push-help {
+    background: #fff7ed;
+    color: #9a3412 !important;
+}
+
+.push-privacy-note {
+    font-size: .82rem;
+    margin-top: .85rem !important;
+}
+
+@media (max-width: 600px) {
+    .push-settings-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .push-status {
+        align-self: flex-start;
+    }
+
+    .push-actions {
+        flex-direction: column;
+    }
+
+    .push-actions button {
+        width: 100%;
+    }
+}

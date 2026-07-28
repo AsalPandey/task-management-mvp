@@ -2,12 +2,16 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TaskUpdatedNotification extends Notification
+class TaskUpdatedNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -34,7 +38,7 @@ class TaskUpdatedNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     /**
@@ -72,6 +76,11 @@ class TaskUpdatedNotification extends Notification
             'message' => "Task '{$this->task->title}' was updated by {$updatedByName}. {$changeSummary}",
             'type' => 'task_updated',
         ];
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 
     /**

@@ -2,13 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 
-class TaskDeadlineReminderNotification extends Notification
+class TaskDeadlineReminderNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -33,7 +37,7 @@ class TaskDeadlineReminderNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     /**
@@ -75,5 +79,10 @@ class TaskDeadlineReminderNotification extends Notification
             'message' => "Task '{$this->task->title}' is due tomorrow ({$dueDate}). Priority: {$priority}, Progress: {$progress}%",
             'type' => 'task_deadline_reminder',
         ];
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 }

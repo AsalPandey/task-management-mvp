@@ -194,3 +194,111 @@ npm run build
 ```
 
 Also run browser smoke tests for setup, login, dashboards, projects, tasks, history, analytics, settings, team management, and notifications.
+
+## Progressive Web App and Browser Push
+
+Browser push is optional and supplements database notifications. It requires
+HTTPS outside `localhost`, a running queue worker, and user permission on each
+browser/device. It is best-effort delivery: browser settings, operating-system
+settings, network availability, and battery optimization can delay or suppress
+notifications.
+
+Generate a VAPID key pair once per environment without committing the private
+key:
+
+```bash
+php -r "require 'vendor/autoload.php'; print_r(Minishlink\\WebPush\\VAPID::createVapidKeys());"
+```
+
+On XAMPP/Windows, if OpenSSL reports that it cannot create the EC key, point
+PHP at XAMPP's OpenSSL configuration for that shell and retry:
+
+```powershell
+$env:OPENSSL_CONF = 'C:\xampp\apache\conf\openssl.cnf'
+```
+
+Set:
+
+```env
+WEBPUSH_VAPID_SUBJECT=mailto:operations@example.com
+WEBPUSH_VAPID_PUBLIC_KEY=
+WEBPUSH_VAPID_PRIVATE_KEY=
+WEBPUSH_QUEUE=notifications
+WEBPUSH_TTL=3600
+WEBPUSH_STALE_AFTER_FAILURES=5
+```
+
+The subject must be a valid `mailto:` address or HTTPS URL. The public key is
+returned only to authenticated users; the private key must remain in the server
+environment. After changing these values, run `php artisan config:clear` during
+verification and rebuild the production configuration cache.
+
+Run a queue worker for the configured push queue:
+
+```bash
+php artisan queue:work --queue=notifications,default --tries=1
+```
+
+The existing scheduler remains required for deadline and overdue notifications;
+browser push adds no new scheduled command.
+
+Deployment checklist:
+
+1. Back up the database and run the two browser-push migrations.
+2. Serve `manifest.webmanifest`, `service-worker.js`, `/icons`, `/css`, and `/js`
+   over HTTPS without redirecting them to login.
+3. Confirm the service worker is served from the application root with a
+   JavaScript content type and is not cached indefinitely by the web server/CDN.
+4. Restart queue workers after deployment.
+5. Sign in on a staging device, explicitly enable notifications in Settings,
+   send a self-test, follow its link, disable that device, and verify database
+   notifications remain available throughout.
+
+Cache and update guidance:
+
+- The service worker caches only versioned public static assets. It never caches
+  authenticated documents or authorization-dependent JSON.
+- Increment `CACHE_VERSION` in `public/service-worker.js` when changing its
+  static cache contract.
+- Do not remove the old service-worker URL during rollback. Roll back the
+  application and assets together so installed clients can fetch a compatible
+  worker.
+
+Key rotation invalidates existing browser subscriptions because subscriptions
+are bound to the application server key. Rotate only through a planned release:
+replace both keys together, deploy, communicate that users must enable browser
+notifications again, and disable stale subscription rows after verification.
+
+Troubleshooting:
+
+- `Configuration unavailable`: verify all three VAPID values and clear cached
+  configuration.
+- `Permission blocked`: the user must allow notifications in browser or
+  operating-system settings; the application cannot override denial.
+- No delivery: verify the queue worker, logs using subscription/notification
+  IDs, HTTPS, service-worker registration, device focus/DND, and battery
+  optimization. Never log endpoint URLs or encryption keys.
+- HTTP 404/410 permanently disables an expired subscription. Temporary failures
+  are counted and the subscription is marked stale only after the configured
+  threshold.
+
+Expected support:
+
+- Android Chrome and Chromium browsers normally support install and Web Push.
+- Desktop Chrome, Edge, Firefox, and supported Safari versions can receive Web
+  Push subject to browser and OS permissions.
+- On iPhone and iPad, Web Push may require installing the site to the Home
+  Screen before enabling notifications.
+- Private browsing, embedded browsers, managed devices, or restricted browsers
+  may not expose the required APIs.
+
+Real-device release gate: validate one Android device, one iPhone/iPad installed
+web app where available, and one desktop browser. Confirm install, enable,
+self-test, deep-link authorization, logout cleanup, account switching, and
+disable-current-device. Do not promise guaranteed real-time delivery.
+
+Rollback removes the PWA UI and Web Push channel with the application release.
+Preserve the subscription tables during rollback; they contain operational
+state and are harmless while no push jobs are dispatched. Stop/restart queue
+workers on the rolled-back release, keep the service-worker URL available, and
+verify database notifications.

@@ -2,13 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class TaskReviewWorkflowNotification extends Notification
+class TaskReviewWorkflowNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -21,7 +25,7 @@ class TaskReviewWorkflowNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     public function toArray(object $notifiable): array
@@ -94,5 +98,10 @@ class TaskReviewWorkflowNotification extends Notification
         }
 
         return $payload;
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 }

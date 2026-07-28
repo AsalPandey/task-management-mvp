@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\BrowserPushController;
 use App\Http\Controllers\CompletedTasksController;
 use App\Http\Controllers\ManagerDashboardController;
 use App\Http\Controllers\NotificationController;
@@ -106,6 +107,13 @@ Route::middleware(['auth', 'active', 'verified'])->group(function () {
     Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::get('/notifications/all', [NotificationController::class, 'all'])->name('notifications.all');
+
+    Route::get('/push/status', [BrowserPushController::class, 'status'])->name('push.status');
+    Route::post('/push/subscriptions', [BrowserPushController::class, 'store'])->name('push.subscriptions.store');
+    Route::delete('/push/subscriptions', [BrowserPushController::class, 'destroy'])->name('push.subscriptions.destroy');
+    Route::post('/push/test', [BrowserPushController::class, 'test'])
+        ->middleware('throttle:3,10')
+        ->name('push.test');
 });
 
 require __DIR__.'/auth.php';

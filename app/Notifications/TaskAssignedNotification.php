@@ -2,13 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TaskAssignedNotification extends Notification
+class TaskAssignedNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -32,7 +36,7 @@ class TaskAssignedNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     /**
@@ -73,6 +77,11 @@ class TaskAssignedNotification extends Notification
             'message' => "New task '{$this->task->title}' assigned by {$assignorName}. Priority: {$this->task->priority}, {$dueDate}",
             'type' => 'task_assigned',
         ];
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 
     /**

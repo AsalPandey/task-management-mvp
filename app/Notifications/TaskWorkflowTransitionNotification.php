@@ -2,12 +2,16 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
 use App\Models\User;
+use App\Notifications\Channels\BrowserPushChannel;
+use App\Support\BrowserPushMessageFactory;
+use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
-class TaskWorkflowTransitionNotification extends Notification
+class TaskWorkflowTransitionNotification extends Notification implements SendsBrowserPush
 {
     use Queueable;
 
@@ -20,7 +24,7 @@ class TaskWorkflowTransitionNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', BrowserPushChannel::class];
     }
 
     /**
@@ -44,5 +48,10 @@ class TaskWorkflowTransitionNotification extends Notification
             'type' => 'task_'.$this->transition,
             'message' => "{$this->actor->name} changed '{$this->task->title}' to {$state->label()}.",
         ];
+    }
+
+    public function toBrowserPush(object $notifiable): BrowserPushMessage
+    {
+        return BrowserPushMessageFactory::fromNotificationPayload($this->toArray($notifiable));
     }
 }
