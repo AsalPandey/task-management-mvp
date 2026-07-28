@@ -125,6 +125,7 @@ class TasksController extends Controller
             ->get(['id', 'name']);
 
         $projects = collect();
+        $assignmentCandidates = collect();
         $reviewerCandidates = collect();
 
         if ($user->can('create', Task::class)) {
@@ -138,6 +139,14 @@ class TasksController extends Controller
                 ->orderBy('name')
                 ->get();
 
+            $assignmentCandidates = User::query()
+                ->where('active', true)
+                ->whereHas(
+                    'projects',
+                    fn ($query) => $query->whereIn('projects.id', $projects->modelKeys()),
+                )
+                ->orderBy('name')
+                ->get(['id', 'name']);
 
             $reviewerCandidates = User::query()
                 ->where('active', true)
@@ -150,6 +159,7 @@ class TasksController extends Controller
         return view('tasks', [
             'tasks' => $tasks,
             'assignees' => $assignees,
+            'assignmentCandidates' => $assignmentCandidates,
             'reviewerCandidates' => $reviewerCandidates,
             'projects' => $projects,
             'filterProjects' => $filterProjects,
