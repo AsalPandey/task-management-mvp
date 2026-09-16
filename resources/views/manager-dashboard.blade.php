@@ -2,7 +2,7 @@
 
 @push('styles')
 <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
-<link rel="stylesheet" href="{{ asset('css/common.css') }}">
+<link rel="stylesheet" href="{{ asset('css/common.css') }}?v={{ filemtime(public_path('css/common.css')) }}">
 <style>
 body { background: #f7f8fa; }
 .app-container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
@@ -42,14 +42,18 @@ body { background: #f7f8fa; }
     });
     $projectMembershipForScript = $projects->mapWithKeys(fn ($project) => [
         $project->id => [
+            'name' => $project->name,
             'project_manager_id' => $project->project_manager_id,
+            'addMemberUrl' => route('projects.members.add', $project),
         ],
     ]);
 @endphp
 <script>
 window.projectMembers = {{ Illuminate\Support\Js::from($projectMembersForScript) }};
+window.assignmentCandidates = {{ Illuminate\Support\Js::from($assignmentCandidates) }};
 window.reviewerCandidates = {{ Illuminate\Support\Js::from($reviewerCandidates) }};
 window.projectMembership = {{ Illuminate\Support\Js::from($projectMembershipForScript) }};
+window.taskStoreUrl = {{ Illuminate\Support\Js::from(route('tasks.store')) }};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Tab switching logic
@@ -81,22 +85,58 @@ document.addEventListener('DOMContentLoaded', function() {
     const taskAssigneeSelect = document.getElementById('taskAssignee');
     const taskReviewerSelect = document.getElementById('taskReviewer');
     const projectMembers = window.projectMembers || {};
+    const assignmentCandidates = window.assignmentCandidates || [];
     const reviewerCandidates = window.reviewerCandidates || [];
     const projectMembership = window.projectMembership || {};
 
     function populateAssignees(projectId, selectedId = '') {
         if (!taskAssigneeSelect) return;
 
-        taskAssigneeSelect.innerHTML = '<option value="">Select Team Member</option>';
-        (projectMembers[projectId] || []).forEach(member => {
+        taskAssigneeSelect.replaceChildren(new Option('Select Team Member', ''));
+
+        const members = projectMembers[projectId] || [];
+        const memberIds = new Set(members.map(member => String(member.id)));
+        const memberGroup = document.createElement('optgroup');
+        memberGroup.label = 'Project members';
+
+        members.forEach(member => {
             const option = document.createElement('option');
             option.value = member.id;
             option.textContent = member.name;
             if (String(member.id) === String(selectedId)) {
                 option.selected = true;
             }
-            taskAssigneeSelect.appendChild(option);
+            memberGroup.appendChild(option);
         });
+
+        if (memberGroup.children.length > 0) {
+            taskAssigneeSelect.appendChild(memberGroup);
+        }
+
+        const availableGroup = document.createElement('optgroup');
+        availableGroup.label = 'Available staff — add to project';
+        assignmentCandidates
+            .filter(candidate => !memberIds.has(String(candidate.id)))
+            .forEach(candidate => {
+                const option = document.createElement('option');
+                option.value = candidate.id;
+                option.textContent = `${candidate.name} (add to project)`;
+                option.dataset.requiresMembership = 'true';
+                if (String(candidate.id) === String(selectedId)) {
+                    option.selected = true;
+                }
+                availableGroup.appendChild(option);
+            });
+
+        if (projectId && availableGroup.children.length > 0) {
+            taskAssigneeSelect.appendChild(availableGroup);
+        }
+    }
+
+    function firstErrorMessage(data, fallback) {
+        const validationMessages = Object.values(data.errors || {}).flat();
+
+        return data.message || validationMessages[0] || fallback;
     }
 
     function populateReviewers(projectId, selectedId = '') {
@@ -112,6 +152,54 @@ document.addEventListener('DOMContentLoaded', function() {
                 option.selected = String(candidate.id) === String(selectedId);
                 taskReviewerSelect.appendChild(option);
             });
+    }
+
+    async function ensureSelectedAssigneeMembership(payload) {
+        const selectedOption = taskAssigneeSelect?.selectedOptions[0];
+        if (!selectedOption || selectedOption.dataset.requiresMembership !== 'true') {
+            return true;
+        }
+
+        const project = projectMembership[payload.project_id];
+        if (!project) {
+            throw new Error('The selected project is not available.');
+        }
+
+        const staffMember = assignmentCandidates.find(candidate => String(candidate.id) === String(payload.assignee_id));
+        const confirmation = await Swal.fire({
+            icon: 'question',
+            title: 'Add staff to project?',
+            text: `Add ${staffMember?.name || 'this staff member'} to ${project.name} and assign this task?`,
+            showCancelButton: true,
+            confirmButtonText: 'Add and assign',
+            cancelButtonText: 'Cancel',
+        });
+
+        if (!confirmation.isConfirmed) {
+            return false;
+        }
+
+        const response = await fetch(project.addMemberUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ user_id: payload.assignee_id }),
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+            throw new Error(firstErrorMessage(data, 'The staff member could not be added to the project.'));
+        }
+
+        projectMembers[payload.project_id] = (data.members || [])
+            .filter(member => ![false, 0, '0'].includes(member.active))
+            .map(member => ({ id: member.id, name: member.name }));
+        populateAssignees(payload.project_id, payload.assignee_id);
+
+        return true;
     }
 
     function showMessage(msg, success = true) {
@@ -180,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     // Add submit handler for feedback (AJAX example, adapt as needed)
     if (taskForm) {
-        taskForm.addEventListener('submit', function(e) {
+        taskForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             setLoading(true);
             const formData = new FormData(taskForm);
@@ -195,7 +283,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 due_date: formData.get('taskDueDate'),
                 comments: formData.get('taskComments'),
             };
-            fetch('/tasks', {
+
+            try {
+                if (!await ensureSelectedAssigneeMembership(payload)) {
+                    setLoading(false);
+
+                    return;
+                }
+            } catch (error) {
+                setLoading(false);
+                showMessage(error.message || 'The staff member could not be added to the project.', false);
+
+                return;
+            }
+
+            fetch(window.taskStoreUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -609,6 +711,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <select id="taskAssignee" name="taskAssignee" required>
                             <option value="">Select Team Member</option>
                         </select>
+                        <small class="form-help">
+                            Active staff who are not yet members can be explicitly added to the selected project when you assign the task.
+                        </small>
                     </div>
                     <div class="form-group">
                         <label for="taskReviewer">Reviewer *</label>

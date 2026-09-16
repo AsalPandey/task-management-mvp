@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\TaskTransitionCommand;
 use App\Enums\TaskState;
+use App\Exceptions\TaskNotificationDispatchException;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\ApproveTaskRequest;
 use App\Http\Requests\CancelTaskRequest;
@@ -24,6 +26,8 @@ use App\Http\Requests\TaskUpdateRequest;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\TaskAssignmentCandidateService;
+use App\Services\TaskEventRecorder;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskReadService;
 use App\Services\TaskTimelineService;
@@ -49,6 +53,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class TasksController extends Controller
 {
@@ -139,13 +144,8 @@ class TasksController extends Controller
                 ->orderBy('name')
                 ->get();
 
-            $assignmentCandidates = User::query()
-                ->where('active', true)
-                ->whereHas(
-                    'projects',
-                    fn ($query) => $query->whereIn('projects.id', $projects->modelKeys()),
-                )
-                ->orderBy('name')
+            $assignmentCandidates = app(TaskAssignmentCandidateService::class)
+                ->forProjects($projects)
                 ->get(['id', 'name']);
 
             $reviewerCandidates = User::query()
@@ -172,39 +172,120 @@ class TasksController extends Controller
 
     public function store(TaskStoreRequest $request, TaskLifecycleService $tasks)
     {
-        $task = $tasks->create(
-            $request->validated(),
-            $request->user(),
-            TaskOperationContext::web(
-                $request->user(),
-                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
-            ),
-        );
+        $correlationId = $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE);
 
-        return response()->json([
-            'success' => true,
-            'moved' => false,
-            'task' => $this->formatTask($task, $request->user()),
-        ]);
+        if ($correlationId) {
+            $existingEvent = DB::table('task_events')
+                ->where('event_type', TaskEventRecorder::CREATED)
+                ->where('correlation_id', $correlationId)
+                ->first();
+
+            if ($existingEvent) {
+                if ((int) $existingEvent->actor_id !== (int) $request->user()->id) {
+                    return response()->json([
+                        'message' => 'The provided correlation ID is already associated with another request.',
+                    ], 409);
+                }
+
+                $existingTask = Task::find($existingEvent->task_id);
+                if ($existingTask) {
+                    $incomingData = $request->validated();
+                    $incomingHash = $this->taskCreationPayloadHash($incomingData);
+                    $metadata = is_string($existingEvent->metadata)
+                        ? json_decode($existingEvent->metadata, true)
+                        : (array) ($existingEvent->metadata ?? []);
+                    $storedHash = is_array($metadata) ? ($metadata['payload_hash'] ?? null) : null;
+                    $matches = $storedHash !== null
+                        ? hash_equals($storedHash, $incomingHash)
+                        : $this->isPayloadMatchingTask($existingTask, $incomingData);
+
+                    if (! $matches) {
+                        return response()->json([
+                            'message' => 'Idempotency key collision with mismatched payload.',
+                        ], 409);
+                    }
+
+                    return response()->json([
+                        'success' => true,
+                        'moved' => false,
+                        'task' => $this->formatTask($existingTask, $request->user()),
+                        'idempotent_replay' => true,
+                    ]);
+                }
+
+                return response()->json([
+                    'message' => 'The provided correlation ID is already associated with a completed operation.',
+                ], 409);
+            }
+        }
+
+        try {
+            $task = $tasks->create(
+                $request->validated(),
+                $request->user(),
+                TaskOperationContext::web(
+                    $request->user(),
+                    $correlationId,
+                ),
+            );
+
+            return response()->json([
+                'success' => true,
+                'moved' => false,
+                'task' => $this->formatTask($task, $request->user()),
+            ]);
+        } catch (TaskNotificationDispatchException $exception) {
+            Log::warning('Task operation succeeded but notification dispatch failed.', [
+                'operation' => $exception->operation,
+                'task_id' => $exception->taskId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $task = Task::findOrFail($exception->taskId);
+
+            return response()->json([
+                'success' => true,
+                'moved' => false,
+                'task' => $this->formatTask($task, $request->user()),
+                'notification_status' => 'delivery_failed',
+            ]);
+        }
     }
 
     public function update(TaskUpdateRequest $request, Task $task, TaskLifecycleService $tasks)
     {
-        $updated = $tasks->update(
-            $task,
-            $request->validated(),
-            $request->user(),
-            TaskOperationContext::web(
+        try {
+            $updated = $tasks->update(
+                $task,
+                $request->validated(),
                 $request->user(),
-                $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
-            ),
-        );
+                TaskOperationContext::web(
+                    $request->user(),
+                    $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+                ),
+            );
 
-        return response()->json([
-            'success' => true,
-            'moved' => $updated->machineState() === TaskState::Completed,
-            'task' => $this->formatTask($updated),
-        ]);
+            return response()->json([
+                'success' => true,
+                'moved' => $updated->machineState() === TaskState::Completed,
+                'task' => $this->formatTask($updated),
+            ]);
+        } catch (TaskNotificationDispatchException $exception) {
+            Log::warning('Task operation succeeded but notification dispatch failed.', [
+                'operation' => $exception->operation,
+                'task_id' => $exception->taskId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $freshTask = Task::findOrFail($task->id);
+
+            return response()->json([
+                'success' => true,
+                'moved' => $freshTask->machineState() === TaskState::Completed,
+                'task' => $this->formatTask($freshTask),
+                'notification_status' => 'delivery_failed',
+            ]);
+        }
     }
 
     public function destroy(Task $task, TaskLifecycleService $tasks)
@@ -253,9 +334,15 @@ class TasksController extends Controller
             'reopenReason' => $request->validated()['reopen_reason'],
             'revisionDueDate' => $request->validated()['revision_due_date'],
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task reopened for revision.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task reopened for revision.',
+        );
     }
 
     public function cancel(
@@ -267,9 +354,15 @@ class TasksController extends Controller
             'cancellationReason' => $request->validated()['cancellation_reason'],
             'expectedState' => $task->machineState()->value,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task cancelled.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task cancelled.',
+        );
     }
 
     public function reassignReviewer(
@@ -281,9 +374,15 @@ class TasksController extends Controller
             'reviewerId' => (int) $request->validated()['reviewer_id'],
             'reason' => $request->validated()['reason'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Reviewer reassigned.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Reviewer reassigned.',
+        );
     }
 
     public function changeDeadline(
@@ -296,9 +395,15 @@ class TasksController extends Controller
             'dueDate' => $request->validated()['due_date'],
             'reason' => $request->validated()['reason'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task deadline changed.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task deadline changed.',
+        );
     }
 
     public function start(
@@ -307,9 +412,14 @@ class TasksController extends Controller
         TaskTransitionExecutor $executor,
         StartTask $command,
     ) {
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
-
-        return $this->transitionResponse($result, 'Work started.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Work started.',
+        );
     }
 
     public function hold(
@@ -320,9 +430,15 @@ class TasksController extends Controller
         $command = app()->make(HoldTask::class, [
             'reason' => $request->validated()['reason'],
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task placed on hold.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task placed on hold.',
+        );
     }
 
     public function resume(
@@ -331,9 +447,14 @@ class TasksController extends Controller
         TaskTransitionExecutor $executor,
         ResumeTask $command,
     ) {
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
-
-        return $this->transitionResponse($result, 'Work resumed.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Work resumed.',
+        );
     }
 
     public function submit(
@@ -344,9 +465,15 @@ class TasksController extends Controller
         $command = app()->make(SubmitTask::class, [
             'submissionNote' => $request->validated()['submission_note'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task submitted for review.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task submitted for review.',
+        );
     }
 
     public function startReview(
@@ -355,9 +482,14 @@ class TasksController extends Controller
         TaskTransitionExecutor $executor,
         StartTaskReview $command,
     ) {
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
-
-        return $this->transitionResponse($result, 'Task review started.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task review started.',
+        );
     }
 
     public function requestRevision(
@@ -369,9 +501,15 @@ class TasksController extends Controller
             'formalFeedback' => $request->validated()['formal_feedback'],
             'revisionDueDate' => $request->validated()['revision_due_date'],
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Revision requested.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Revision requested.',
+        );
     }
 
     public function startRevision(
@@ -380,9 +518,14 @@ class TasksController extends Controller
         TaskTransitionExecutor $executor,
         StartTaskRevision $command,
     ) {
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
-
-        return $this->transitionResponse($result, 'Revision started.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Revision started.',
+        );
     }
 
     public function resubmit(
@@ -393,9 +536,15 @@ class TasksController extends Controller
         $command = app()->make(ResubmitTask::class, [
             'submissionNote' => $request->validated()['submission_note'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task resubmitted for review.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task resubmitted for review.',
+        );
     }
 
     public function approve(
@@ -406,9 +555,15 @@ class TasksController extends Controller
         $command = app()->make(ApproveTask::class, [
             'approvalComment' => $request->validated()['approval_comment'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task approved and completed.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task approved and completed.',
+        );
     }
 
     public function overrideApprove(
@@ -420,9 +575,15 @@ class TasksController extends Controller
             'overrideReason' => $request->validated()['override_reason'],
             'approvalComment' => $request->validated()['approval_comment'] ?? null,
         ]);
-        $result = $executor->execute($task, $request->user(), $command, $this->operationContext($request));
 
-        return $this->transitionResponse($result, 'Task approved and completed by Manager override.');
+        return $this->executeTransition(
+            $executor,
+            $task,
+            $request->user(),
+            $command,
+            $this->operationContext($request),
+            'Task approved and completed by Manager override.',
+        );
     }
 
     public function edit(Task $task)
@@ -505,6 +666,36 @@ class TasksController extends Controller
         );
     }
 
+    private function executeTransition(
+        TaskTransitionExecutor $executor,
+        Task $task,
+        User $actor,
+        TaskTransitionCommand $command,
+        TaskOperationContext $context,
+        string $message,
+    ) {
+        try {
+            $result = $executor->execute($task, $actor, $command, $context);
+
+            return $this->transitionResponse($result, $message);
+        } catch (TaskNotificationDispatchException $exception) {
+            Log::warning('Task operation succeeded but notification dispatch failed.', [
+                'operation' => $exception->operation,
+                'task_id' => $exception->taskId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $freshTask = Task::findOrFail($exception->taskId);
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'task' => $this->formatTask($freshTask, $actor),
+                'notification_status' => 'delivery_failed',
+            ]);
+        }
+    }
+
     private function transitionResponse(TaskTransitionResult $result, string $message)
     {
         return response()->json([
@@ -512,5 +703,46 @@ class TasksController extends Controller
             'message' => $message,
             'task' => $this->formatTask($result->task),
         ]);
+    }
+
+    private function taskCreationPayloadHash(array $data): string
+    {
+        return hash('sha256', json_encode([
+            'assignee_id' => isset($data['assignee_id']) ? (int) $data['assignee_id'] : null,
+            'comments' => ! empty($data['comments']) ? (string) $data['comments'] : null,
+            'description' => ! empty($data['description']) ? (string) $data['description'] : null,
+            'due_date' => ! empty($data['due_date']) ? (string) $data['due_date'] : null,
+            'priority' => isset($data['priority']) ? (string) ($data['priority'] instanceof \BackedEnum ? $data['priority']->value : $data['priority']) : null,
+            'project_id' => isset($data['project_id']) ? (int) $data['project_id'] : null,
+            'reviewer_id' => isset($data['reviewer_id']) ? (int) $data['reviewer_id'] : null,
+            'start_date' => ! empty($data['start_date']) ? (string) $data['start_date'] : null,
+            'title' => isset($data['title']) ? (string) $data['title'] : null,
+        ]));
+    }
+
+    private function isPayloadMatchingTask(Task $task, array $data): bool
+    {
+        if ((int) $task->project_id !== (int) ($data['project_id'] ?? 0)) {
+            return false;
+        }
+
+        if ((string) $task->title !== (string) ($data['title'] ?? '')) {
+            return false;
+        }
+
+        if ((int) $task->assignee_id !== (int) ($data['assignee_id'] ?? 0)) {
+            return false;
+        }
+
+        if (array_key_exists('reviewer_id', $data) && (int) $task->reviewer_id !== (int) $data['reviewer_id']) {
+            return false;
+        }
+
+        $priorityValue = $task->priority instanceof \BackedEnum ? $task->priority->value : (string) $task->priority;
+        if (array_key_exists('priority', $data) && $priorityValue !== (string) $data['priority']) {
+            return false;
+        }
+
+        return true;
     }
 }

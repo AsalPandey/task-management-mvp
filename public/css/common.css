@@ -104,8 +104,21 @@ body {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    z-index: 1050;
     backdrop-filter: blur(4px);
+}
+
+.form-help {
+    display: block;
+    margin-top: 0.4rem;
+    color: #667085;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.form-help a {
+    color: #2563eb;
+    font-weight: 600;
 }
 
 .modal.active {

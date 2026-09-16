@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TaskState;
-use App\Exceptions\TaskNotificationDispatchException;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -335,20 +334,15 @@ class TaskExecutionTransitionsTest extends TestCase
         Notification::shouldReceive('send')
             ->once()
             ->andThrow(new RuntimeException('Injected transition notification failure.'));
-        $this->withoutExceptionHandling();
 
-        try {
-            $this->actingAs($fixtures['assignee'])
-                ->postJson(route('tasks.start', $fixtures['task']));
-            $this->fail('Expected the after-commit notification failure.');
-        } catch (TaskNotificationDispatchException $exception) {
-            $this->assertSame('task.started', $exception->operation);
-            $this->assertSame($fixtures['task']->id, $exception->taskId);
-            $this->assertSame(
-                'Injected transition notification failure.',
-                $exception->getPrevious()?->getMessage(),
-            );
-        }
+        $response = $this->actingAs($fixtures['assignee'])
+            ->postJson(route('tasks.start', $fixtures['task']));
+
+        $response->assertOk();
+        $response->assertJson([
+            'success' => true,
+            'notification_status' => 'delivery_failed',
+        ]);
 
         $this->assertSame(TaskState::InProgress, $fixtures['task']->fresh()->machineState());
         $this->assertSame(1, $this->eventCount($fixtures['task'], TaskEventRecorder::STARTED));

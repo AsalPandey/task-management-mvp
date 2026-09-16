@@ -9,4 +9,5 @@ return [
     'queue' => env('WEBPUSH_QUEUE', 'notifications'),
     'ttl' => (int) env('WEBPUSH_TTL', 3600),
     'stale_after_failures' => (int) env('WEBPUSH_STALE_AFTER_FAILURES', 5),
+    'allowed_test_hosts' => explode(',', env('WEBPUSH_ALLOWED_TEST_HOSTS', 'push.example.test')),
 ];

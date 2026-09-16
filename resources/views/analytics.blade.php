@@ -42,7 +42,7 @@ body { background: #f7f8fa; }
     <div id="noDataMsg" style="display:none; color:#888; text-align:center; margin:2rem 0; font-size:1.1rem;">No data for selected range.</div>
     <!-- Header -->
     <div class="analytics-header">
-        <div class="header-content">
+        <div class="analytics-header-content">
             <h1>Team Analytics</h1>
             <p>Comprehensive team performance insights</p>
         </div>

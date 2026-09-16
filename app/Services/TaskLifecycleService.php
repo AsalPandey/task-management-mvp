@@ -108,6 +108,19 @@ class TaskLifecycleService
                 TaskEventRecorder::CREATED,
                 $context,
                 $this->createdEventChanges($task),
+                [
+                    'payload_hash' => hash('sha256', json_encode([
+                        'assignee_id' => (int) $task->assignee_id,
+                        'comments' => $task->comments ?: null,
+                        'description' => $task->description ?: null,
+                        'due_date' => $task->due_date ? ($task->due_date instanceof DateTimeInterface ? $task->due_date->format('Y-m-d') : (string) $task->due_date) : null,
+                        'priority' => (string) ($task->priority instanceof \BackedEnum ? $task->priority->value : $task->priority),
+                        'project_id' => (int) $task->project_id,
+                        'reviewer_id' => $task->reviewer_id ? (int) $task->reviewer_id : null,
+                        'start_date' => $task->start_date ? ($task->start_date instanceof DateTimeInterface ? $task->start_date->format('Y-m-d') : (string) $task->start_date) : null,
+                        'title' => (string) $task->title,
+                    ])),
+                ],
             );
 
             $this->notificationDispatcher->taskCreated($task, $actor);
@@ -249,9 +262,18 @@ class TaskLifecycleService
             return;
         }
 
+        // Lock assignee row for update to prevent concurrent deactivation race
+        $assignee = User::query()->whereKey($assigneeId)->lockForUpdate()->first();
+
+        if (! $assignee || ! $assignee->isActive()) {
+            throw ValidationException::withMessages([
+                'assignee_id' => 'The selected assignee is not an active member of this project.',
+            ]);
+        }
+
         $isMember = Project::query()
             ->whereKey($projectId)
-            ->whereHas('members', fn ($query) => $query->whereKey($assigneeId)->where('active', true))
+            ->whereHas('members', fn ($query) => $query->whereKey($assigneeId))
             ->exists();
 
         if (! $isMember) {

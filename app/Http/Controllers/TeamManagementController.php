@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TaskState;
+use App\Exceptions\AccountLifecycleException;
 use App\Models\Role;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\AccountStatusChangedNotification;
+use App\Services\AccountLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -77,9 +80,16 @@ class TeamManagementController extends Controller
             unset($data['password']);
         }
 
-        $user->update($data);
+        DB::transaction(function () use ($user, $data, $authUser) {
+            Role::query()->where('name', 'manager')->lockForUpdate()->first();
+            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if (isset($data['role_id']) && (int) $data['role_id'] !== (int) $lockedUser->role_id) {
+                app(AccountLifecycleService::class)->assertCanChangeRole($lockedUser, (int) $data['role_id'], $authUser);
+            }
+            $lockedUser->update($data);
+        });
 
-        return response()->json($user->load('role'));
+        return response()->json($user->refresh()->load('role'));
     }
 
     public function destroy(User $user)
@@ -87,15 +97,19 @@ class TeamManagementController extends Controller
         $authUser = auth()->user();
         $this->assertCanManageGlobalAccount($authUser, $user);
 
-        $assignedTasks = Task::query()->where('assignee_id', $user->id)->exists();
-        if ($assignedTasks) {
+        try {
+            DB::transaction(function () use ($user, $authUser) {
+                Role::query()->where('name', 'manager')->lockForUpdate()->first();
+                $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                app(AccountLifecycleService::class)->assertCanDelete($lockedUser, $authUser);
+                $lockedUser->delete();
+            });
+        } catch (AccountLifecycleException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot delete a user with assigned tasks. Deactivate the user or reassign their tasks first.',
-            ], 409);
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
         }
-
-        $user->delete();
 
         return response()->json(['success' => true]);
     }
@@ -114,10 +128,22 @@ class TeamManagementController extends Controller
     {
         $authUser = auth()->user();
         $this->assertCanManageGlobalAccount($authUser, $user);
-        abort_if($user->is($authUser), 422, 'You cannot deactivate your own account.');
 
-        $user->forceFill(['active' => false])->save();
-        $user->notify(new AccountStatusChangedNotification(false, $authUser));
+        try {
+            DB::transaction(function () use ($user, $authUser) {
+                Role::query()->where('name', 'manager')->lockForUpdate()->first();
+                $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                app(AccountLifecycleService::class)->assertCanDeactivate($lockedUser, $authUser);
+                $lockedUser->forceFill(['active' => false])->save();
+            });
+        } catch (AccountLifecycleException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        }
+
+        $user->refresh()->notify(new AccountStatusChangedNotification(false, $authUser));
 
         return response()->json(['success' => true]);
     }

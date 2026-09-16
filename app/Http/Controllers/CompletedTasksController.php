@@ -21,7 +21,6 @@ class CompletedTasksController extends Controller
         );
         $query = $this->taskReads->completedVisibleTo($request->user())
             ->with(['project', 'assignee', 'completedBy'])
-            ->where('completed_at', '>=', now()->subDays(7))
             ->when($filters['priority'] ?? null, fn (Builder $query, string $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn (Builder $query, int $project) => $query->where('project_id', $project))
             ->when($filters['assignee'] ?? null, fn (Builder $query, int $assignee) => $query->where('assignee_id', $assignee));

@@ -8,8 +8,10 @@ use App\Models\ProjectHistory;
 use App\Models\User;
 use App\Notifications\ProjectMemberAdded;
 use App\Notifications\ProjectMemberRemoved;
+use App\Services\ProjectManagerReplacementService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ProjectsController extends Controller
@@ -64,7 +66,7 @@ class ProjectsController extends Controller
         ]);
     }
 
-    public function update(Request $request, Project $project)
+    public function update(Request $request, Project $project, ProjectManagerReplacementService $pmReplacementService)
     {
         $this->authorize('update', $project);
 
@@ -72,20 +74,38 @@ class ProjectsController extends Controller
         if (auth()->user()->hasRole('project_manager') && ! auth()->user()->hasRole('manager')) {
             $data['project_manager_id'] = auth()->id();
         }
-        $old = $project->toArray();
-        $project->update($data);
 
-        if ($project->project_manager_id) {
-            $project->members()->syncWithoutDetaching([
-                $project->project_manager_id => ['added_by' => auth()->id()],
-            ]);
-        }
+        DB::transaction(function () use ($project, $data, $pmReplacementService) {
+            $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+            $oldPmId = $lockedProject->project_manager_id ? (int) $lockedProject->project_manager_id : null;
+            $newPmId = array_key_exists('project_manager_id', $data) && $data['project_manager_id'] !== null
+                ? (int) $data['project_manager_id']
+                : null;
 
-        $this->recordHistory($project, 'updated', ['old' => $old, 'new' => $data]);
+            if (array_key_exists('project_manager_id', $data) && $oldPmId !== $newPmId) {
+                $pmReplacementService->reconcile(
+                    project: $lockedProject,
+                    oldPmId: $oldPmId,
+                    newPmId: $newPmId,
+                    actor: auth()->user(),
+                );
+            }
+
+            $old = $lockedProject->toArray();
+            $lockedProject->update($data);
+
+            if ($lockedProject->project_manager_id) {
+                $lockedProject->members()->syncWithoutDetaching([
+                    $lockedProject->project_manager_id => ['added_by' => auth()->id()],
+                ]);
+            }
+
+            $this->recordHistory($lockedProject, 'updated', ['old' => $old, 'new' => $data]);
+        });
 
         return response()->json([
             'success' => true,
-            'project' => $project->load(['projectManager', 'members']),
+            'project' => $project->fresh()->load(['projectManager', 'members']),
         ]);
     }
 

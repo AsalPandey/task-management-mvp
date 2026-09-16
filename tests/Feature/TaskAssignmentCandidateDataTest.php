@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Project;
 use App\Models\Role;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -80,6 +81,51 @@ class TaskAssignmentCandidateDataTest extends TestCase
         $this->assertTrue(
             $this->assignmentCandidates($response->viewData('assignmentCandidates'))->isEmpty(),
         );
+    }
+
+    public function test_direct_crafted_task_creation_with_outside_candidate_is_rejected(): void
+    {
+        $projectManager = $this->userWithRole('project_manager');
+        $managedProject = Project::factory()->create(['project_manager_id' => $projectManager->id]);
+        $outsideMember = $this->userWithRole('team_member', ['name' => 'Outside Member']);
+
+        $response = $this->actingAs($projectManager)->postJson(route('tasks.store'), [
+            'title' => 'Crafted Assignment Task',
+            'project_id' => $managedProject->id,
+            'assignee_id' => $outsideMember->id,
+            'reviewer_id' => $projectManager->id,
+            'priority' => 'Medium',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['assignee_id']);
+        $this->assertDatabaseMissing('tasks', ['title' => 'Crafted Assignment Task']);
+    }
+
+    public function test_direct_crafted_task_update_with_outside_candidate_is_rejected(): void
+    {
+        $projectManager = $this->userWithRole('project_manager');
+        $managedMember = $this->userWithRole('team_member', ['name' => 'Managed Member']);
+        $outsideMember = $this->userWithRole('team_member', ['name' => 'Outside Member']);
+        $managedProject = Project::factory()->create(['project_manager_id' => $projectManager->id]);
+        $managedProject->members()->attach($managedMember);
+
+        $task = Task::query()->create([
+            'title' => 'Existing Task',
+            'project_id' => $managedProject->id,
+            'assignee_id' => $managedMember->id,
+            'reviewer_id' => $projectManager->id,
+            'status' => 'Not Started',
+            'priority' => 'Medium',
+        ]);
+
+        $response = $this->actingAs($projectManager)->putJson(route('tasks.update', $task), [
+            'assignee_id' => $outsideMember->id,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['assignee_id']);
+        $this->assertSame($managedMember->id, $task->fresh()->assignee_id);
     }
 
     private function assignmentCandidates(mixed $value): Collection

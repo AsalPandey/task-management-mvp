@@ -82,6 +82,67 @@ class ProjectMembershipTest extends TestCase
         $this->assertFalse($project->tasks()->where('assignee_id', $member->id)->exists());
     }
 
+    public function test_task_forms_offer_active_non_members_through_explicit_membership_flow(): void
+    {
+        $manager = $this->manager;
+        $member = User::factory()->create(['role_id' => Role::where('name', 'team_member')->first()->id]);
+        $nonMember = User::factory()->create([
+            'name' => 'Not Yet A Project Member',
+            'role_id' => Role::where('name', 'team_member')->first()->id,
+        ]);
+        $inactiveMember = User::factory()->create([
+            'name' => 'Inactive Assignment Candidate',
+            'role_id' => Role::where('name', 'team_member')->first()->id,
+            'active' => false,
+        ]);
+        $project = Project::factory()->create(['project_manager_id' => $manager->id]);
+        $project->members()->attach($member->id);
+
+        $tasksPage = $this->actingAs($manager)->get(route('tasks'))->assertOk();
+        $dashboard = $this->actingAs($manager)->get(route('manager.dashboard'))->assertOk();
+
+        foreach ([$tasksPage, $dashboard] as $response) {
+            $response
+                ->assertSee($member->name)
+                ->assertDontSee($nonMember->name)
+                ->assertDontSee($inactiveMember->name);
+        }
+
+        $tasksPage
+            ->assertSee('task-management.tasks.view', false)
+            ->assertSee('localStorage.setItem', false);
+    }
+
+    public function test_explicitly_adding_a_new_staff_member_allows_task_assignment(): void
+    {
+        Notification::fake();
+        $member = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
+        $project = Project::factory()->create(['project_manager_id' => $this->manager->id]);
+
+        $this->actingAs($this->manager)
+            ->postJson(route('projects.members.add', $project), ['user_id' => $member->id])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->postJson(route('tasks.store'), [
+            'title' => 'Assigned after explicit membership',
+            'project_id' => $project->id,
+            'assignee_id' => $member->id,
+            'reviewer_id' => $this->manager->id,
+            'priority' => 'Medium',
+        ])->assertOk();
+
+        $this->assertTrue($project->fresh()->members->contains($member->id));
+        $this->assertDatabaseHas('tasks', [
+            'title' => 'Assigned after explicit membership',
+            'project_id' => $project->id,
+            'assignee_id' => $member->id,
+        ]);
+        Notification::assertSentTo($member, ProjectMemberAdded::class);
+    }
+
     public function test_cannot_add_or_assign_inactive_project_member()
     {
         $manager = $this->manager;

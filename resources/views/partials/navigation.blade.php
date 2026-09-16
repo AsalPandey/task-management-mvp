@@ -294,7 +294,7 @@
 </header>
 <style>
 .header { position: sticky; top: 0; z-index: 100; background: #fff; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); border-bottom: 1px solid #e5e7eb; }
-.header-content { display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 0.7rem 1.5rem; }
+.header > .header-content { display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 0.7rem 1.5rem; }
 .logo-section { display: flex; align-items: center; gap: 0.7rem; }
 .logo-icon { background: #f4f8ff; border-radius: 8px; padding: 0.3rem; display: flex; align-items: center; }
 .logo-text h1 { font-size: 1.2rem; font-weight: 700; color: #4f8cff; margin: 0; letter-spacing: 0.5px; }
@@ -555,10 +555,45 @@
     margin: 0;
 }
 
-@media (max-width: 900px) { .header-content { flex-direction: column; align-items: flex-start; padding: 0.7rem 0.7rem; } .nav-tabs { margin-left: 0; gap: 0.7rem; } }
+@media (min-width: 769px) and (max-width: 1200px) {
+    .header > .header-content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: center;
+        width: 100%;
+        height: auto;
+        min-height: 72px;
+        box-sizing: border-box;
+        padding: 0.7rem;
+        gap: 0.65rem 1rem;
+    }
+
+    .header > .header-content > .logo-section {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .header > .header-content > .header-actions {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .header > .header-content > .nav-tabs {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+        margin-left: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+}
 
 @media (max-width: 768px) {
-    .header-content {
+    .header > .header-content {
         position: relative;
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto auto;

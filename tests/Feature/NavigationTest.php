@@ -93,13 +93,17 @@ class NavigationTest extends TestCase
     public function test_responsive_css_keeps_desktop_and_mobile_display_rules_in_safe_order(): void
     {
         $source = $this->navigationSource();
-        $tabletRulePosition = strpos($source, '@media (max-width: 900px)');
+        $tabletRulePosition = strpos($source, '@media (min-width: 769px) and (max-width: 1200px)');
         $mobileRulePosition = strpos($source, '@media (max-width: 768px)');
 
         $this->assertIsInt($tabletRulePosition);
         $this->assertIsInt($mobileRulePosition);
         $this->assertLessThan($mobileRulePosition, $tabletRulePosition);
         $this->assertMatchesRegularExpression('/\.nav-tabs\s*\{[^}]*display:\s*flex;/s', substr($source, 0, $mobileRulePosition));
+
+        $tabletCss = substr($source, $tabletRulePosition, $mobileRulePosition - $tabletRulePosition);
+        $this->assertMatchesRegularExpression('/\.header\s*>\s*\.header-content\s*\{[^}]*display:\s*grid;[^}]*height:\s*auto;/s', $tabletCss);
+        $this->assertMatchesRegularExpression('/\.header\s*>\s*\.header-content\s*>\s*\.nav-tabs\s*\{[^}]*grid-row:\s*2;[^}]*flex-wrap:\s*wrap;/s', $tabletCss);
 
         preg_match_all('/\.mobile-menu-btn\s*\{[^}]*display:\s*none;[^}]*\}/s', $source, $hiddenButtonRules, PREG_OFFSET_CAPTURE);
 
@@ -124,6 +128,23 @@ class NavigationTest extends TestCase
         $this->assertStringContainsString('setMobileMenuState(false, true)', $source);
         $this->assertStringContainsString('mobileMenuBtn.focus()', $source);
         $this->assertStringContainsString("mobileViewport.addEventListener('change'", $source);
+    }
+
+    public function test_page_headings_do_not_reuse_the_navigation_header_content_class(): void
+    {
+        $pageHeadings = [
+            resource_path('views/team-management.blade.php') => 'class="team-header-content"',
+            resource_path('views/analytics.blade.php') => 'class="analytics-header-content"',
+            resource_path('views/notifications/all.blade.php') => 'class="notifications-page-heading"',
+        ];
+
+        foreach ($pageHeadings as $path => $expectedClass) {
+            $source = file_get_contents($path);
+
+            $this->assertIsString($source);
+            $this->assertStringContainsString($expectedClass, $source);
+            $this->assertStringNotContainsString('<div class="header-content">', $source);
+        }
     }
 
     /**

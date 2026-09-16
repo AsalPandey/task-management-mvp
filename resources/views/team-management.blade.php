@@ -2,13 +2,13 @@
 @push('styles')
 <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
 <link rel="stylesheet" href="{{ asset('css/team.css') }}">
-<link rel="stylesheet" href="{{ asset('css/common.css') }}">
+<link rel="stylesheet" href="{{ asset('css/common.css') }}?v={{ filemtime(public_path('css/common.css')) }}">
 <style>
 body { background: #f7f8fa; }
 .team-container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
 .team-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-.header-content h1 { font-size: 2rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
-.header-content p { color: #888; font-size: 1.1rem; }
+.team-header-content h1 { font-size: 2rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
+.team-header-content p { color: #888; font-size: 1.1rem; }
 #addMemberBtn { background: #4f8cff; color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.5rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
 #addMemberBtn:hover { background: #2563eb; }
 #teamSearch { border: 1px solid #e5e7eb; border-radius: 8px; font-size: 1rem; padding: 0.6rem 1rem; margin-bottom: 1.5rem; }
@@ -116,6 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const roleValue = card.querySelector('.detail-value').textContent.trim();
             const editRoleSelect = editMemberForm.querySelector('#editMemberRole');
             if (editRoleSelect) {
+                editRoleSelect.setAttribute('data-current-role', roleValue.toLowerCase());
                 for (let i = 0; i < editRoleSelect.options.length; i++) {
                     if (editRoleSelect.options[i].textContent.trim().toLowerCase() === roleValue.toLowerCase()) {
                         editRoleSelect.selectedIndex = i;
@@ -161,7 +162,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         card.remove();
                         Swal.fire('Deleted!', 'Member removed.', 'success');
                     } else {
-                        Swal.fire('Error', 'Error removing member.', 'error');
+                        Swal.fire('Error', data.message || 'Error removing member.', 'error');
                     }
                 });
             });
@@ -370,7 +371,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
 @section('content')
 <div class="team-container">
     <div class="team-header">
-        <div class="header-content">
+        <div class="team-header-content">
             <h1>Team Management</h1>
             <p>Manage your team members and their access</p>
         </div>

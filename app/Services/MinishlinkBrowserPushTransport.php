@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\BrowserPushTransport;
 use App\Contracts\BrowserPushTransportResult;
 use App\Models\BrowserPushSubscription;
+use GuzzleHttp\Client;
 use Minishlink\WebPush\Subscription;
 use Minishlink\WebPush\WebPush;
 use Throwable;
@@ -13,6 +14,43 @@ class MinishlinkBrowserPushTransport implements BrowserPushTransport
 {
     public function send(BrowserPushSubscription $subscription, array $payload): BrowserPushTransportResult
     {
+        $destination = app(WebPushDestinationValidator::class)->resolveSafeDestination($subscription->endpoint);
+        if ($destination === null) {
+            return new BrowserPushTransportResult(
+                false,
+                permanentFailure: true,
+                failureCode: 'unsafe_destination',
+            );
+        }
+
+        $formattedIps = [];
+        foreach ($destination['ips'] as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+                $formattedIps[] = str_starts_with($ip, '[') && str_ends_with($ip, ']') ? $ip : "[{$ip}]";
+            } else {
+                $formattedIps[] = $ip;
+            }
+        }
+
+        $resolveEntries = [];
+        if ($formattedIps !== []) {
+            $resolveEntries[] = "{$destination['host']}:{$destination['port']}:".implode(',', $formattedIps);
+        }
+
+        $clientOptions = [
+            'allow_redirects' => false,
+            'timeout' => 10,
+            'connect_timeout' => 5,
+        ];
+
+        if (defined('CURLOPT_RESOLVE') && $resolveEntries !== []) {
+            $clientOptions['curl'] = [
+                CURLOPT_RESOLVE => $resolveEntries,
+            ];
+        }
+
+        $client = $this->createHttpClient($clientOptions);
+
         $webPush = new WebPush([
             'VAPID' => [
                 'subject' => config('webpush.vapid.subject'),
@@ -22,7 +60,7 @@ class MinishlinkBrowserPushTransport implements BrowserPushTransport
         ], [
             'TTL' => config('webpush.ttl'),
             'urgency' => 'normal',
-        ]);
+        ], $client);
         $webPush->setReuseVAPIDHeaders(true);
 
         try {
@@ -62,5 +100,10 @@ class MinishlinkBrowserPushTransport implements BrowserPushTransport
                 failureCode: 'transport_'.class_basename($exception),
             );
         }
+    }
+
+    protected function createHttpClient(array $options): Client
+    {
+        return new Client($options);
     }
 }

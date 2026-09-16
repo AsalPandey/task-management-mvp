@@ -113,7 +113,7 @@ class ReviewerEligibilityAndTaskPolicyTest extends TestCase
             'manager' => 'Manager',
             'project_manager' => 'Project Manager',
             'team_member' => 'Team Member',
-        ])->map(fn (string $label, string $name) => Role::query()->create(compact('name', 'label')));
+        ])->map(fn (string $label, string $name) => Role::query()->firstOrCreate(['name' => $name], compact('name', 'label')));
 
         $manager = User::factory()->create(['role_id' => $roles['manager']->id]);
         $projectManager = User::factory()->create(['role_id' => $roles['project_manager']->id]);

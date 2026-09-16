@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\BrowserPushTransport;
 use App\Models\User;
 use App\Services\MinishlinkBrowserPushTransport;
+use App\Services\WebPushDestinationValidator;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -15,6 +16,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(BrowserPushTransport::class, MinishlinkBrowserPushTransport::class);
+        $this->app->singleton(WebPushDestinationValidator::class);
     }
 
     /**

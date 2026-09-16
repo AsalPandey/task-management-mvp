@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Services\TaskAssignmentCandidateService;
 use App\Services\TaskReadService;
 
 class ManagerDashboardController extends Controller
@@ -75,7 +76,7 @@ class ManagerDashboardController extends Controller
             ->with(['members' => fn ($query) => $query->where('active', true)->orderBy('name')])
             ->orderBy('name')
             ->get();
-        $assignees = $this->visibleAssignees()->get();
+        $assignmentCandidates = $this->assignmentCandidates($projects)->get(['id', 'name']);
         $reviewerCandidates = User::query()
             ->where('active', true)
             ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
@@ -101,7 +102,7 @@ class ManagerDashboardController extends Controller
             'improvements',
             'notifications',
             'projects',
-            'assignees',
+            'assignmentCandidates',
             'reviewerCandidates',
         ));
     }
@@ -117,20 +118,8 @@ class ManagerDashboardController extends Controller
         return Project::query()->where('project_manager_id', $user->id);
     }
 
-    private function visibleAssignees()
+    private function assignmentCandidates($projects)
     {
-        $user = auth()->user();
-
-        $query = User::query()
-            ->with('role')
-            ->where('active', true)
-            ->whereHas('role', fn ($roleQuery) => $roleQuery->whereIn('name', ['project_manager', 'team_member']))
-            ->orderBy('name');
-
-        if ($user->hasRole('manager')) {
-            return $query;
-        }
-
-        return $query->whereHas('projects', fn ($projectQuery) => $projectQuery->where('project_manager_id', $user->id));
+        return app(TaskAssignmentCandidateService::class)->forProjects($projects);
     }
 }

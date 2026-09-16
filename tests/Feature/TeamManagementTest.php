@@ -160,6 +160,38 @@ class TeamManagementTest extends TestCase
             ->assertStatus(200);
     }
 
+    public function test_manager_cannot_delete_the_owner_of_an_active_project()
+    {
+        $manager = User::factory()->create(['role_id' => Role::where('name', 'manager')->first()->id]);
+        $projectManager = User::factory()->create(['role_id' => Role::where('name', 'project_manager')->first()->id]);
+        Project::factory()->create([
+            'project_manager_id' => $projectManager->id,
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($manager)
+            ->deleteJson("/team-management/{$projectManager->id}")
+            ->assertConflict()
+            ->assertJson([
+                'success' => false,
+                'message' => 'Cannot delete a user who manages an active project. Assign another project manager or close the project first.',
+            ]);
+
+        $this->assertNotSoftDeleted($projectManager);
+    }
+
+    public function test_team_management_records_the_original_role_for_change_confirmation()
+    {
+        $manager = User::factory()->create(['role_id' => Role::where('name', 'manager')->first()->id]);
+        User::factory()->create(['role_id' => Role::where('name', 'team_member')->first()->id]);
+
+        $this->actingAs($manager)
+            ->get('/team-management')
+            ->assertOk()
+            ->assertSee("setAttribute('data-current-role'", false)
+            ->assertSee("getAttribute('data-current-role')", false);
+    }
+
     public function test_only_self_or_manager_can_view_analytics()
     {
         $manager = User::factory()->create(['role_id' => Role::where('name', 'manager')->first()->id]);

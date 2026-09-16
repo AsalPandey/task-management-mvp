@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\BrowserPushTransport;
 use App\Models\BrowserPushDelivery;
 use App\Models\BrowserPushSubscription;
+use App\Services\WebPushDestinationValidator;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -43,6 +44,26 @@ class SendBrowserPushNotification implements ShouldQueue
             ]);
 
             if (! $delivery->wasRecentlyCreated || $delivery->status === 'sent') {
+                continue;
+            }
+
+            if (! app(WebPushDestinationValidator::class)->validateUrl($subscription->endpoint)) {
+                $delivery->update([
+                    'status' => 'failed',
+                    'failure_code' => 'unsafe_destination',
+                ]);
+                $subscription->forceFill([
+                    'last_failure_at' => now(),
+                    'disabled_at' => now(),
+                    'revoked_at' => now(),
+                ])->save();
+
+                Log::warning('Revoked browser push subscription with unsafe destination.', [
+                    'subscription_id' => $subscription->id,
+                    'notification_id' => $this->notificationId,
+                    'endpoint' => $subscription->endpoint,
+                ]);
+
                 continue;
             }
 

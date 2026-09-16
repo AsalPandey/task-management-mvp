@@ -49,6 +49,38 @@ class CanonicalTaskReadPathTest extends TestCase
         $this->assertTrue(Route::has('completed-tasks.revert'));
     }
 
+    public function test_completed_page_includes_tasks_completed_more_than_seven_days_ago(): void
+    {
+        [$manager, $project, $assignee] = $this->managedProject();
+        $olderCompletion = $this->completedTask($project, $assignee, $manager, [
+            'title' => 'Older canonical completion',
+            'completed_at' => now()->subMonths(3),
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get(route('completed-tasks'))
+            ->assertOk()
+            ->assertSee('Older canonical completion');
+
+        $this->assertTrue($response->viewData('completed')->contains(
+            fn (Task $task): bool => $task->is($olderCompletion),
+        ));
+    }
+
+    public function test_completed_page_contains_its_wide_table_on_mobile_viewports(): void
+    {
+        [$manager] = $this->managedProject();
+
+        $this->actingAs($manager)
+            ->get(route('completed-tasks'))
+            ->assertOk()
+            ->assertSee('class="completed-table-wrapper"', false)
+            ->assertSee('role="region" aria-label="Completed task history" tabindex="0"', false)
+            ->assertSee('max-width: 100%', false)
+            ->assertSee('overflow-x: auto', false)
+            ->assertSee('class="empty-state-cell"', false);
+    }
+
     public function test_new_completion_appears_and_reopen_immediately_disappears(): void
     {
         [$manager, $project, $assignee] = $this->managedProject();
