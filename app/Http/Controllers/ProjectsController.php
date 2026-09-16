@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Notifications\ProjectMemberAdded;
 use App\Notifications\ProjectMemberRemoved;
 use App\Services\ProjectManagerReplacementService;
+use App\Support\UserPayload;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +63,7 @@ class ProjectsController extends Controller
 
         return response()->json([
             'success' => true,
-            'project' => $project->load(['projectManager', 'members']),
+            'project' => $this->projectPayload($project),
         ]);
     }
 
@@ -105,7 +106,7 @@ class ProjectsController extends Controller
 
         return response()->json([
             'success' => true,
-            'project' => $project->fresh()->load(['projectManager', 'members']),
+            'project' => $this->projectPayload($project->fresh()),
         ]);
     }
 
@@ -132,7 +133,7 @@ class ProjectsController extends Controller
 
         return response()->json([
             'success' => true,
-            'members' => $project->members()->with('role')->orderBy('name')->get(),
+            'members' => $this->memberPayloads($project),
         ]);
     }
 
@@ -165,7 +166,7 @@ class ProjectsController extends Controller
 
         return response()->json([
             'success' => true,
-            'members' => $project->members()->with('role')->orderBy('name')->get(),
+            'members' => $this->memberPayloads($project),
         ]);
     }
 
@@ -197,7 +198,7 @@ class ProjectsController extends Controller
 
         return response()->json([
             'success' => true,
-            'members' => $project->members()->with('role')->orderBy('name')->get(),
+            'members' => $this->memberPayloads($project),
         ]);
     }
 
@@ -214,6 +215,20 @@ class ProjectsController extends Controller
         }
 
         return Project::query()->whereHas('members', fn ($query) => $query->whereKey($user->id));
+    }
+
+    private function memberPayloads(Project $project)
+    {
+        return $project->members()->with('role')->orderBy('name')->get()
+            ->map(fn (User $user) => UserPayload::roster($user));
+    }
+
+    private function projectPayload(Project $project): array
+    {
+        return $project->only(['id', 'name', 'description', 'project_manager_id', 'color', 'status', 'start_date', 'end_date']) + [
+            'project_manager' => $project->projectManager ? UserPayload::roster($project->projectManager) : null,
+            'members' => $this->memberPayloads($project),
+        ];
     }
 
     private function validatedProjectData(Request $request, ?Project $project = null): array

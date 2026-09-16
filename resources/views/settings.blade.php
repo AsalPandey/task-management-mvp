@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    const csrf = document.querySelector('meta[name=csrf-token]').content;
+    const csrfMeta = document.querySelector('meta[name=csrf-token]');
     const profileForm = document.getElementById('profileForm');
     const passwordForm = document.getElementById('passwordForm');
     const preferencesButton = document.getElementById('savePreferencesBtn');
@@ -53,13 +53,19 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrf,
+                'X-CSRF-TOKEN': csrfMeta.content,
             },
             body: JSON.stringify(payload),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
             throw new Error(data.message || Object.values(data.errors || {})[0]?.[0] || 'Request failed.');
+        }
+        if (typeof data.csrf_token === 'string') {
+            csrfMeta.content = data.csrf_token;
+            document.querySelectorAll('input[name="_token"]').forEach(input => {
+                input.value = data.csrf_token;
+            });
         }
         return data;
     }

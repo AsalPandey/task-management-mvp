@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\UserPayload;
 use Illuminate\Http\Request;
 
 class SettingsController extends Controller
@@ -24,6 +25,6 @@ class SettingsController extends Controller
         $user->email = $data['profileEmail'];
         $user->save();
 
-        return response()->json(['success' => true, 'message' => 'Profile updated successfully.', 'user' => $user]);
+        return response()->json(['success' => true, 'message' => 'Profile updated successfully.', 'user' => UserPayload::self($user)]);
     }
 }

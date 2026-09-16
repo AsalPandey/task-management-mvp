@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Notifications\AccountStatusChangedNotification;
 use App\Services\AccountLifecycleService;
+use App\Support\UserPayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -58,7 +59,7 @@ class TeamManagementController extends Controller
         $data['active'] = true;
         $user = User::query()->create($data);
 
-        return response()->json($user->load('role'));
+        return response()->json(UserPayload::account($user->load('role')));
     }
 
     public function update(Request $request, User $user)
@@ -89,7 +90,7 @@ class TeamManagementController extends Controller
             $lockedUser->update($data);
         });
 
-        return response()->json($user->refresh()->load('role'));
+        return response()->json(UserPayload::account($user->refresh()->load('role')));
     }
 
     public function destroy(User $user)

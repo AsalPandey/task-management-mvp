@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Middleware\EnsureCurrentAccountSession;
 use App\Http\Middleware\EnsureUserIsActive;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetSentryContext;
 use App\Models\CompanySetting;
 use Illuminate\Foundation\Application;
@@ -16,8 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            EnsureCurrentAccountSession::class,
             SetSentryContext::class,
         ]);
+        $middleware->append(SecurityHeaders::class);
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
         ]);

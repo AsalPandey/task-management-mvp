@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Services\AccountLifecycleService;
+use App\Services\AccountSessionSecurity;
+use App\Support\UserPayload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +39,9 @@ class ProfileController extends Controller
         }
 
         $request->user()->save();
+        if ($request->user()->wasChanged('email')) {
+            app(AccountSessionSecurity::class)->preserveCurrent($request, $request->user());
+        }
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
@@ -63,8 +68,15 @@ class ProfileController extends Controller
         }
 
         $user->save();
+        if ($user->wasChanged(['password', 'email'])) {
+            app(AccountSessionSecurity::class)->preserveCurrent($request, $user);
+        }
 
-        return response()->json(['success' => true, 'user' => $user->fresh('role')]);
+        return response()->json([
+            'success' => true,
+            'user' => UserPayload::self($user->fresh('role')),
+            'csrf_token' => $request->session()->token(),
+        ]);
     }
 
     public function updatePreferences(Request $request)

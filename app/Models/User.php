@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+// Internal accounts are provisioned by managers. Email verification is optional metadata.
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -38,6 +38,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'security_stamp',
     ];
 
     /**
@@ -58,6 +59,11 @@ class User extends Authenticatable
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function notifications()
+    {
+        return $this->morphMany(AuthorizedDatabaseNotification::class, 'notifiable')->latest();
     }
 
     public function hasRole($roleName)

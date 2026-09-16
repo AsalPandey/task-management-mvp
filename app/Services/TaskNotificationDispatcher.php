@@ -232,7 +232,8 @@ class TaskNotificationDispatcher
     ): void {
         try {
             $task->loadMissing(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'approval', 'project.projectManager']);
-            $recipients = $recipients->filter()->unique(fn (User $user) => (int) $user->id)->values();
+            $recipients = $recipients->filter(fn (?User $user) => app(NotificationAccess::class)->allows($user?->fresh(), ['task_id' => $task->id]))
+                ->unique(fn (User $user) => (int) $user->id)->values();
 
             if ($recipients->isNotEmpty()) {
                 Notification::send(
@@ -258,7 +259,7 @@ class TaskNotificationDispatcher
         try {
             $task->loadMissing(['assignee', 'creator', 'reviewer', 'project.projectManager']);
             $uniqueRecipients = $recipients
-                ->filter()
+                ->filter(fn (?User $user) => app(NotificationAccess::class)->allows($user?->fresh(), ['task_id' => $task->id]))
                 ->unique(fn (User $user) => (int) $user->id)
                 ->values();
 

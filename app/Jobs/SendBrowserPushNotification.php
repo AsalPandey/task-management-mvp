@@ -5,6 +5,8 @@ namespace App\Jobs;
 use App\Contracts\BrowserPushTransport;
 use App\Models\BrowserPushDelivery;
 use App\Models\BrowserPushSubscription;
+use App\Models\User;
+use App\Services\NotificationAccess;
 use App\Services\WebPushDestinationValidator;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -30,6 +32,12 @@ class SendBrowserPushNotification implements ShouldQueue
 
     public function handle(BrowserPushTransport $transport): void
     {
+        if (! app(NotificationAccess::class)->allows(
+            User::find($this->userId), $this->payload['data'] ?? [],
+        )) {
+            return;
+        }
+
         $subscriptions = BrowserPushSubscription::query()
             ->enabled()
             ->where('user_id', $this->userId)

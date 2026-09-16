@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
     const userId = document.body.dataset.userId || '';
     const manifestUrl = new URL(
         document.querySelector('link[rel="manifest"]')?.href || '/manifest.webmanifest',
@@ -63,7 +63,7 @@
             headers: {
                 Accept: 'application/json',
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrf,
+                'X-CSRF-TOKEN': csrf(),
             },
             body: payload ? JSON.stringify(payload) : null,
             credentials: 'same-origin',

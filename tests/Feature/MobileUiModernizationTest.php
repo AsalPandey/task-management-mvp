@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Role;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -61,6 +62,16 @@ class MobileUiModernizationTest extends TestCase
     public function test_notification_center_groups_recent_items_and_links_task_notifications(): void
     {
         $user = $this->userWithRole('team_member');
+        // The notification links to an existing task the recipient may currently view.
+        $task = new Task;
+        $task->forceFill([
+            'id' => 42,
+            'title' => 'Accessible mobile task',
+            'assignee_id' => $user->id,
+            'priority' => 'Medium',
+            'status' => 'in_progress',
+            'due_date' => now()->addDay(),
+        ])->save();
         $user->notifications()->create([
             'id' => (string) Str::uuid(),
             'type' => 'ui-test',
