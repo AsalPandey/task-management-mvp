@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
 {
-    public function __construct(private readonly TaskReadService $taskReads) {}
+    public function __construct(
+        private readonly TaskReadService $taskReads,
+        private readonly TaskAnalyticsService $analytics,
+    ) {}
 
     public function index(Request $request)
     {
@@ -39,6 +43,10 @@ class AnalyticsController extends Controller
             $writeRow(['In Progress Tasks', $data['inProgressTasks']]);
             $writeRow(['Overdue Tasks', $data['overdueTasks']]);
             $writeRow(['Completion Rate', $data['completionRate'].'%']);
+            $writeRow(['Tasks Created', $data['tasksCreated']]);
+            $writeRow(['Completion Events', $data['completionEvents']]);
+            $writeRow(['Cancellation Events', $data['cancellationEvents']]);
+            $writeRow(['Reopen Events', $data['reopenEvents']]);
             $writeRow([]);
             $writeRow(['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate']);
             foreach ($data['teamPerformance'] as $member) {
@@ -77,105 +85,60 @@ class AnalyticsController extends Controller
 
     private function analyticsData(Request $request): array
     {
-        $dateFrom = $request->input('dateFrom') ?: now()->subDays(7)->format('Y-m-d');
-        $dateTo = $request->input('dateTo') ?: now()->format('Y-m-d');
-        $assigneeId = $request->input('assignee');
-
-        $activeTasksQuery = $this->taskReads->activeVisibleTo($request->user())
-            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
-            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']));
-        $completedTasksQuery = $this->taskReads->completedVisibleTo($request->user())
-            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
-            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']));
-
-        $activeTasks = $activeTasksQuery->with('assignee')->get();
-        $completedTasks = $completedTasksQuery->with('assignee')->get();
-        $executionTasks = $activeTasks->filter(fn ($task) => $task->machineState()->isExecutionState());
-        $reviewQueueTasks = $activeTasks->filter(fn ($task) => $task->machineState()->isReviewState());
-        $cancelledTasks = $this->taskReads->cancelledVisibleTo($request->user())
-            ->when($assigneeId, fn ($query) => $query->where('assignee_id', $assigneeId))
-            ->count();
-        $totalActiveTasks = $activeTasks->count();
-        $totalCompletedTasks = $completedTasks->count();
-        $totalTasksForRate = $totalActiveTasks + $totalCompletedTasks;
-        $inProgressTasks = $activeTasks->where('status', 'In Progress')->count();
-        $overdueTasks = $activeTasks
-            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
-            ->count();
-        $completionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
-        $avgProgress = $activeTasks->count() ? round($activeTasks->avg('progress')) : 0;
-        $priorityCounts = $activeTasks->groupBy('priority')->map->count();
-        $statusCounts = $activeTasks->groupBy('status')->map->count();
-
-        $days = collect(range(0, 29))->map(fn ($i) => now()->subDays(29 - $i));
-        $productivity = $days->mapWithKeys(fn ($date) => [
-            $date->format('M d') => (clone $completedTasksQuery)->whereDate('completed_at', $date)->count(),
+        $validated = $request->validate([
+            'dateFrom' => ['nullable', 'date_format:Y-m-d'],
+            'dateTo' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:dateFrom'],
+            'assignee' => ['nullable', 'integer'],
+            'project' => ['nullable', 'integer'],
         ]);
+        $dateFrom = $validated['dateFrom'] ?? now(config('app.timezone'))->subDays(7)->toDateString();
+        $dateTo = $validated['dateTo'] ?? now(config('app.timezone'))->toDateString();
+        $report = $this->analytics->report(
+            $request->user(),
+            $dateFrom,
+            $dateTo,
+            isset($validated['assignee']) ? (int) $validated['assignee'] : null,
+            isset($validated['project']) ? (int) $validated['project'] : null,
+        );
+        $days = collect(range(0, 29))->map(fn ($i) => now(config('app.timezone'))->subDays(29 - $i));
         $overdueTrend = $days->mapWithKeys(fn ($date) => [
-            $date->format('M d') => $activeTasks
-                ->filter(fn ($task) => $task->activeDeadline()?->lt($date) ?? false)
-                ->count(),
+            $date->format('M d') => $report['activeTasks']
+                ->filter(fn ($task) => $task->activeDeadline()?->lt($date) ?? false)->count(),
         ]);
+        $users = $this->visibleUsers()->with('role')->get();
+        $selectedAssignee = isset($validated['assignee']) ? (int) $validated['assignee'] : null;
+        $performanceByUser = $report['teamPerformance']->keyBy('id');
+        $teamPerformance = $users
+            ->when($selectedAssignee, fn ($members) => $members->where('id', $selectedAssignee))
+            ->map(function (User $user) use ($performanceByUser): array {
+                return $performanceByUser->get($user->id, [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'avatar' => strtoupper(substr($user->name, 0, 2)),
+                    'total' => 0,
+                    'completed' => 0,
+                    'overdue' => 0,
+                    'completionRate' => 0.0,
+                ]);
+            })->values();
 
-        $users = $this->visibleUsers()->with(['role', 'tasks'])->get();
-        $teamPerformance = $users->map(function ($user) use ($dateFrom, $dateTo, $assigneeId) {
-            if ($assigneeId && (int) $user->id !== (int) $assigneeId) {
-                return null;
-            }
-
-            $active = $this->taskReads->activeVisibleTo(auth()->user())
-                ->where('assignee_id', $user->id)
-                ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('created_at', [$dateFrom, $dateTo.' 23:59:59']))
-                ->get();
-            $completed = $this->taskReads->completedVisibleTo(auth()->user())
-                ->where('assignee_id', $user->id)
-                ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('completed_at', [$dateFrom, $dateTo.' 23:59:59']))
-                ->get();
-            $total = $active->count() + $completed->count();
-            $completedCount = $completed->count();
-
-            return [
-                'name' => $user->name,
-                'avatar' => strtoupper(substr($user->name, 0, 2)),
-                'total' => $total,
-                'completed' => $completedCount,
-                'overdue' => $active
-                    ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
-                    ->count(),
-                'completionRate' => $total ? round($completedCount / $total * 100) : 0,
-            ];
-        })->filter()->values();
-
-        return [
-            'activeTasks' => $activeTasks,
-            'completedTasks' => $completedTasks,
-            'executionTasks' => $executionTasks,
-            'reviewQueueTasks' => $reviewQueueTasks,
-            'cancelledTasks' => $cancelledTasks,
-            'totalActiveTasks' => $totalActiveTasks,
-            'totalCompletedTasks' => $totalCompletedTasks,
-            'inProgressTasks' => $inProgressTasks,
-            'overdueTasks' => $overdueTasks,
-            'completionRate' => $completionRate,
-            'avgProgress' => $avgProgress,
-            'priorityCounts' => $priorityCounts,
-            'statusCounts' => $statusCounts,
-            'productivity' => $productivity,
+        return array_merge($report, [
+            'productivity' => $report['completionTrend'],
             'overdueTrend' => $overdueTrend,
             'teamPerformance' => $teamPerformance,
             'achievements' => [
-                'Team completed '.$totalCompletedTasks.' tasks in selected period',
-                'Maintaining '.$avgProgress.'% average progress rate',
-                'Overall completion rate: '.$completionRate.'%',
+                'Created '.$report['tasksCreated'].' tasks in selected period',
+                'Recorded '.$report['completionEvents'].' completion event(s)',
+                'Cohort completion rate: '.$report['completionRate'].'%',
             ],
             'improvements' => [
-                'Address '.$overdueTasks.' overdue task(s)',
+                'Address '.$report['overdueTasks'].' overdue task(s)',
                 'Balance high-priority task distribution',
                 'Monitor team productivity trends',
             ],
             'lastUpdated' => $this->taskReads->activeVisibleTo($request->user())->latest('updated_at')->value('updated_at'),
             'users' => $users,
-        ];
+        ]);
     }
 
     private function visibleUsers()

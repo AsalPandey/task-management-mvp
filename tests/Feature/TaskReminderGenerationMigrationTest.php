@@ -41,7 +41,7 @@ class TaskReminderGenerationMigrationTest extends TestCase
             ]));
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 2,
+                '--step' => 3,
                 '--force' => true,
             ]));
 
@@ -74,7 +74,7 @@ class TaskReminderGenerationMigrationTest extends TestCase
 
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 2,
+                '--step' => 3,
                 '--force' => true,
             ]));
             $this->assertFalse(Schema::connection('r2b1_upgrade')->hasColumn('tasks', 'deadline_reminder_generation'));

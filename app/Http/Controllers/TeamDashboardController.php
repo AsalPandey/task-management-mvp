@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
 
 class TeamDashboardController extends Controller
 {
-    public function __construct(private readonly TaskReadService $taskReads) {}
+    public function __construct(
+        private readonly TaskReadService $taskReads,
+        private readonly TaskAnalyticsService $analytics,
+    ) {}
 
     public function index()
     {
@@ -50,7 +54,7 @@ class TeamDashboardController extends Controller
             ->count();
 
         // Completion rate (today's completed vs today's total)
-        $todayCompletionRate = $todayTotalTasks ? round($todayCompletedTasks / $todayTotalTasks * 100) : 0;
+        $todayCompletionRate = $this->analytics->boundedCompletionRate($todayCompletedTasks, $todayTotalTasks);
 
         // Today's priority breakdown
         $todayPriorityCounts = [

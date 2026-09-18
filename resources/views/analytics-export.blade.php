@@ -23,6 +23,10 @@
         <tr><td>In Progress</td><td>{{ $inProgressTasks }}</td></tr>
         <tr><td>Overdue</td><td>{{ $overdueTasks }}</td></tr>
         <tr><td>Completion Rate</td><td>{{ $completionRate }}%</td></tr>
+        <tr><td>Tasks Created</td><td>{{ $tasksCreated }}</td></tr>
+        <tr><td>Completion Events</td><td>{{ $completionEvents }}</td></tr>
+        <tr><td>Cancellation Events</td><td>{{ $cancellationEvents }}</td></tr>
+        <tr><td>Reopen Events</td><td>{{ $reopenEvents }}</td></tr>
     </table>
     <h2>Team Performance</h2>
     <table>

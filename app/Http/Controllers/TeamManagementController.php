@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TaskState;
 use App\Exceptions\AccountLifecycleException;
 use App\Models\Role;
-use App\Models\Task;
 use App\Models\User;
 use App\Notifications\AccountStatusChangedNotification;
 use App\Services\AccountLifecycleService;
+use App\Services\TaskAnalyticsService;
 use App\Support\UserPayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,7 +148,7 @@ class TeamManagementController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function analytics(User $user)
+    public function analytics(User $user, TaskAnalyticsService $analytics)
     {
         $authUser = auth()->user();
         if (! $authUser->hasRole('manager') && ! $authUser->hasRole('project_manager') && ! $authUser->is($user)) {
@@ -162,28 +161,16 @@ class TeamManagementController extends Controller
             abort_unless($allowed || $authUser->is($user), 403);
         }
 
-        $allTasksQuery = Task::query()
-            ->where('assignee_id', $user->id)
-            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value]);
-        $allCompletedTasksQuery = Task::query()
-            ->where('assignee_id', $user->id)
-            ->where('status', TaskState::Completed->value);
-
-        if ($authUser->hasRole('project_manager') && ! $authUser->is($user)) {
-            $allTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));
-            $allCompletedTasksQuery->whereHas('project', fn ($query) => $query->where('project_manager_id', $authUser->id));
-        }
-
-        $allTasks = $allTasksQuery->get();
-        $allCompletedTasks = $allCompletedTasksQuery->get();
-        $totalTasks = $allTasks->count();
-        $totalCompletedTasks = $allCompletedTasks->count();
-        $totalTasksForRate = $totalTasks + $totalCompletedTasks;
-        $overallCompletionRate = $totalTasksForRate ? round($totalCompletedTasks / $totalTasksForRate * 100) : 0;
-        $currentActiveTasks = $allTasks->where('status', '!=', 'Completed');
-        $currentInProgressTasks = $currentActiveTasks->where('status', 'In Progress')->count();
-        $currentOverdueTasks = $currentActiveTasks->where('due_date', '<', now())->count();
-        $currentAvgProgress = $currentActiveTasks->count() ? round($currentActiveTasks->avg('progress')) : 0;
+        $report = $analytics->report($authUser, assigneeId: $user->id);
+        $allTasks = $report['activeTasks'];
+        $allCompletedTasks = $report['completedTasks'];
+        $totalTasks = $report['totalActiveTasks'];
+        $totalCompletedTasks = $report['totalCompletedTasks'];
+        $overallCompletionRate = $report['completionRate'];
+        $currentActiveTasks = $allTasks;
+        $currentInProgressTasks = $report['inProgressTasks'];
+        $currentOverdueTasks = $report['overdueTasks'];
+        $currentAvgProgress = $report['avgProgress'];
         $priorityCounts = [
             'High' => $allTasks->where('priority', 'High')->count(),
             'Medium' => $allTasks->where('priority', 'Medium')->count(),
@@ -194,34 +181,20 @@ class TeamManagementController extends Controller
             'In Progress' => $allTasks->where('status', 'In Progress')->count(),
             'Completed' => $allCompletedTasks->count(),
         ];
-        $dailyCompletionTrend = collect(range(0, 29))->mapWithKeys(function ($i) use ($allCompletedTasksQuery) {
-            $date = now()->subDays(29 - $i);
-
-            return [$date->format('M d') => (clone $allCompletedTasksQuery)
-                ->whereDate('completed_at', $date)
-                ->count()];
-        });
-        $dailyTaskCreationTrend = collect(range(0, 29))->mapWithKeys(function ($i) use ($allTasksQuery) {
-            $date = now()->subDays(29 - $i);
-
-            return [$date->format('M d') => (clone $allTasksQuery)
-                ->whereDate('created_at', $date)
-                ->count()];
-        });
-        $monthlyPerformance = collect(range(0, 5))->mapWithKeys(function ($i) use ($allTasksQuery, $allCompletedTasksQuery) {
+        $dailyCompletionTrend = $report['completionTrend'];
+        $dailyTaskCreationTrend = $report['creationTrend'];
+        $monthlyPerformance = collect(range(0, 5))->mapWithKeys(function ($i) use ($analytics, $authUser, $user) {
             $start = now()->subMonths(5 - $i)->startOfMonth();
             $end = $start->copy()->endOfMonth();
-            $created = (clone $allTasksQuery)->whereBetween('created_at', [$start, $end])->count();
-            $completed = (clone $allCompletedTasksQuery)->whereBetween('completed_at', [$start, $end])->count();
+            $month = $analytics->report($authUser, $start->toDateString(), $end->toDateString(), $user->id);
 
             return [$start->format('M Y') => [
-                'created' => $created,
-                'completed' => $completed,
-                'rate' => ($created + $completed) ? round($completed / ($created + $completed) * 100) : 0,
+                'created' => $month['tasksCreated'],
+                'completed' => $month['completionEvents'],
+                'rate' => $month['completionRate'],
             ]];
         });
-        $recentActivity = $allTasks->sortByDesc('created_at')->take(5)
-            ->concat($allCompletedTasks->sortByDesc('completed_at')->take(5))
+        $recentActivity = $report['cohortTasks']->sortByDesc('updated_at')->take(10)
             ->sortByDesc(fn ($task) => $task->completed_at ?? $task->created_at)
             ->take(10);
         $achievements = [

@@ -4,12 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Services\TaskAnalyticsService;
 use App\Services\TaskAssignmentCandidateService;
 use App\Services\TaskReadService;
 
 class ManagerDashboardController extends Controller
 {
-    public function __construct(private readonly TaskReadService $taskReads) {}
+    public function __construct(
+        private readonly TaskReadService $taskReads,
+        private readonly TaskAnalyticsService $analytics,
+    ) {}
 
     public function __invoke()
     {
@@ -37,7 +41,7 @@ class ManagerDashboardController extends Controller
         $todayTotalTasks = $todayActiveTasks->count();
         $todayCompletedCount = $todayCompletedTasks->count();
         $currentActiveCount = $currentActiveTasks->count();
-        $todayProgress = $todayTotalTasks ? round($todayCompletedCount / $todayTotalTasks * 100) : 0;
+        $todayProgress = $this->analytics->boundedCompletionRate($todayCompletedCount, $todayTotalTasks);
 
         $recentTasks = $todayActiveTasks->sortByDesc('created_at')->take(3)
             ->concat($todayCompletedTasks->sortByDesc('completed_at')->take(2))

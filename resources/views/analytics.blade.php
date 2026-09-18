@@ -71,7 +71,7 @@ body { background: #f7f8fa; }
             </div>
             <div class="metric-value">{{ $completionRate }}%</div>
             <div class="metric-label">Completion Rate</div>
-            <div class="metric-subtitle">{{ $totalCompletedTasks }} of {{ $totalActiveTasks + $totalCompletedTasks }} completed</div>
+            <div class="metric-subtitle">{{ $totalCompletedTasks }} of {{ $totalActiveTasks + $totalCompletedTasks }} non-cancelled cohort tasks completed</div>
         </div>
         <div class="metric-card purple">
             <div class="metric-header">
