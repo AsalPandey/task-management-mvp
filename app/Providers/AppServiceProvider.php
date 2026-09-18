@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\AccountSessionSecurity;
 use App\Services\MinishlinkBrowserPushTransport;
 use App\Services\NotificationAccess;
+use App\Services\NotificationPreferencePolicy;
 use App\Services\WebPushDestinationValidator;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Notifications\Events\NotificationSending;
@@ -31,9 +32,20 @@ class AppServiceProvider extends ServiceProvider
     {
         Event::listen(NotificationSending::class, function ($event) {
             if ($event->notifiable instanceof User && method_exists($event->notification, 'toArray')) {
+                $user = $event->notifiable->fresh();
+                if (! $user) {
+                    return false;
+                }
+
                 $data = $event->notification->toArray($event->notifiable);
                 if ((isset($data['task_id']) || isset($data['project_id']))
-                    && ! app(NotificationAccess::class)->allows($event->notifiable->fresh(), $data)) {
+                    && ! app(NotificationAccess::class)->allows($user, $data)) {
+                    return false;
+                }
+
+                if (! app(NotificationPreferencePolicy::class)
+                    ->decideForType($user, (string) ($data['type'] ?? ''), $event->channel)
+                    ->allowed) {
                     return false;
                 }
             }

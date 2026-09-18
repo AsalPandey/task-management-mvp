@@ -18,7 +18,7 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
     private const ALLOWED_STATES = [
         'execution' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold],
         'review' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold, TaskState::Submitted, TaskState::InReview],
-        'revision' => [TaskState::RevisionRequested, TaskState::InProgress, TaskState::Submitted, TaskState::InReview],
+        'revision' => [TaskState::RevisionRequested, TaskState::InProgress],
     ];
 
     public function __construct(

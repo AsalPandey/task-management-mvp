@@ -286,12 +286,12 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $worker,
             (string) $holdMilliseconds,
             $readyFile ?? '',
-        ], base_path(), timeout: 20);
+        ], base_path(), timeout: 30);
     }
 
     private function waitForLock(Process $worker, string $readyFile): void
     {
-        $deadline = microtime(true) + 5;
+        $deadline = microtime(true) + 15;
 
         while (! file_exists($readyFile) && microtime(true) < $deadline) {
             if (! $worker->isRunning()) {

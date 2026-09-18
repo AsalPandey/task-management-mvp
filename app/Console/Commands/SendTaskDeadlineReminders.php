@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\TaskState;
 use App\Models\Task;
-use App\Notifications\TaskDeadlineReminderNotification;
+use App\Services\TaskDeadlineNotificationDelivery;
 use Illuminate\Console\Command;
 
 class SendTaskDeadlineReminders extends Command
@@ -26,26 +26,31 @@ class SendTaskDeadlineReminders extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(TaskDeadlineNotificationDelivery $deliveries): int
     {
-        $tomorrow = now()->addDay()->toDateString();
-        $tasks = Task::query()
-            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-            ->whereNull('deadline_reminder_sent_at')
-            ->with('assignee')
-            ->get()
-            ->filter(fn (Task $task): bool => $task->activeDeadline()?->toDateString() === $tomorrow);
-
+        $tomorrow = today(config('app.timezone'))->addDay()->toDateString();
         $notificationCount = 0;
-        foreach ($tasks as $task) {
-            if ($task->assignee) {
-                $task->assignee->notify(new TaskDeadlineReminderNotification($task));
-                $task->forceFill(['deadline_reminder_sent_at' => now()])->save();
-                $notificationCount++;
-            }
-        }
+        $suppressedCount = 0;
+
+        Task::query()
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
+            ->where(function ($query) use ($tomorrow): void {
+                $query->whereDate('execution_due_date', $tomorrow)
+                    ->orWhereDate('due_date', $tomorrow)
+                    ->orWhereDate('review_due_date', $tomorrow)
+                    ->orWhereDate('revision_due_date', $tomorrow);
+            })
+            ->chunkById(200, function ($tasks) use ($deliveries, &$notificationCount, &$suppressedCount): void {
+                foreach ($tasks as $task) {
+                    $result = $deliveries->deliver($task->id, TaskDeadlineNotificationDelivery::DEADLINE_REMINDER);
+                    $result->delivered() ? $notificationCount++ : $suppressedCount++;
+                }
+            });
 
         $this->info("Sent {$notificationCount} deadline reminder notifications.");
+        if ($suppressedCount > 0) {
+            $this->warn("Suppressed {$suppressedCount} stale or ownerless deadline reminders.");
+        }
 
         return self::SUCCESS;
     }

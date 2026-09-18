@@ -82,15 +82,17 @@ class ProfileController extends Controller
     public function updatePreferences(Request $request)
     {
         $data = $request->validate([
-            'task_assigned' => ['required', 'boolean'],
             'task_completed' => ['required', 'boolean'],
-            'deadline_reminder' => ['required', 'boolean'],
             'team_updates' => ['required', 'boolean'],
         ]);
 
-        $request->user()->forceFill(['notification_preferences' => $data])->save();
+        $preferences = is_array($request->user()->notification_preferences)
+            ? $request->user()->notification_preferences
+            : [];
+        $preferences = array_replace($preferences, $data);
+        $request->user()->forceFill(['notification_preferences' => $preferences])->save();
 
-        return response()->json(['success' => true, 'preferences' => $data]);
+        return response()->json(['success' => true, 'preferences' => $preferences]);
     }
 
     /**

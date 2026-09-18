@@ -6,7 +6,6 @@ use App\Exceptions\TaskNotificationDispatchException;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskAssignedNotification;
-use App\Notifications\TaskOverdueNotification;
 use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Notifications\TaskWorkflowTransitionNotification;
@@ -17,6 +16,8 @@ use Throwable;
 
 class TaskNotificationDispatcher
 {
+    public function __construct(private readonly TaskDeadlineNotificationDelivery $deadlineDeliveries) {}
+
     public function taskCreated(Task $task, User $actor): void
     {
         $this->afterCommit($task, 'task.created', function (Task $committedTask) use ($actor): void {
@@ -34,13 +35,11 @@ class TaskNotificationDispatcher
                 $committedTask->assignee->notify(new TaskUpdatedNotification($committedTask, $changes, $actor));
             }
 
-            if ($committedTask->activeDeadline()?->isPast() && ! $committedTask->overdue_notification_sent_at) {
-                $committedTask->assignee?->notify(new TaskOverdueNotification($committedTask));
-
-                Task::on($committedTask->getConnectionName())
-                    ->whereKey($committedTask->getKey())
-                    ->whereNull('overdue_notification_sent_at')
-                    ->update(['overdue_notification_sent_at' => now()]);
+            if ($committedTask->activeDeadlineGeneration()?->isOverdue() === true) {
+                $this->deadlineDeliveries->deliver(
+                    $committedTask->id,
+                    TaskDeadlineNotificationDelivery::OVERDUE,
+                );
             }
         });
     }

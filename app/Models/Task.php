@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\TaskState;
 use App\Support\TaskStateCompatibility;
 use App\Support\UlidGenerator;
+use App\ValueObjects\TaskDeadlineGeneration;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -82,22 +83,86 @@ class Task extends Model
 
     public function activeDeadline(): ?Carbon
     {
-        $state = $this->machineState();
+        return $this->activeDeadlineGeneration()?->deadline;
+    }
 
+    public function activeDeadlineGeneration(): ?TaskDeadlineGeneration
+    {
+        $state = $this->machineState();
         if ($state->isFinal()) {
             return null;
         }
 
-        if ($this->active_revision_cycle_id && $this->revision_due_date) {
-            return $this->revision_due_date;
+        if (in_array($state, [TaskState::Submitted, TaskState::InReview], true)) {
+            $kind = 'review';
+            $deadline = $this->review_due_date;
+            $responsibleUserId = $this->reviewer_id;
+            $workflowCycleId = $this->active_revision_cycle_id;
+        } elseif ($state === TaskState::RevisionRequested
+            || ($state === TaskState::InProgress && $this->active_revision_cycle_id && $this->revision_due_date)) {
+            $kind = 'revision';
+            $deadline = $this->revision_due_date;
+            $responsibleUserId = $this->assignee_id;
+            $workflowCycleId = $this->active_revision_cycle_id;
+        } else {
+            $kind = 'execution';
+            $deadline = $this->execution_due_date ?? $this->due_date;
+            $responsibleUserId = $this->assignee_id;
+            $workflowCycleId = null;
         }
 
-        return match ($state) {
-            TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold => $this->execution_due_date ?? $this->due_date,
-            TaskState::Submitted, TaskState::InReview => $this->review_due_date,
-            TaskState::RevisionRequested => $this->revision_due_date,
-            TaskState::Completed, TaskState::Cancelled => null,
-        };
+        if (! $deadline) {
+            return null;
+        }
+
+        return new TaskDeadlineGeneration(
+            kind: $kind,
+            deadline: $deadline->copy(),
+            responsibleUserId: $responsibleUserId === null ? null : (int) $responsibleUserId,
+            workflowCycleId: $workflowCycleId === null ? null : (int) $workflowCycleId,
+        );
+    }
+
+    public function deadlineReminderWasSentForActiveGeneration(): bool
+    {
+        $generation = $this->activeDeadlineGeneration();
+
+        return $generation !== null
+            && hash_equals((string) $this->deadline_reminder_generation, $generation->fingerprint());
+    }
+
+    public function overdueNotificationWasSentForActiveGeneration(): bool
+    {
+        $generation = $this->activeDeadlineGeneration();
+
+        return $generation !== null
+            && hash_equals((string) $this->overdue_notification_generation, $generation->fingerprint());
+    }
+
+    public function markDeadlineReminderSentForActiveGeneration(): void
+    {
+        $generation = $this->activeDeadlineGeneration();
+        if (! $generation) {
+            return;
+        }
+
+        $this->forceFill([
+            'deadline_reminder_sent_at' => now(),
+            'deadline_reminder_generation' => $generation->fingerprint(),
+        ])->save();
+    }
+
+    public function markOverdueNotificationSentForActiveGeneration(): void
+    {
+        $generation = $this->activeDeadlineGeneration();
+        if (! $generation) {
+            return;
+        }
+
+        $this->forceFill([
+            'overdue_notification_sent_at' => now(),
+            'overdue_notification_generation' => $generation->fingerprint(),
+        ])->save();
     }
 
     public function statusLabel(): string

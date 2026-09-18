@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\TaskState;
 use App\Models\Task;
-use App\Notifications\TaskOverdueNotification;
+use App\Services\TaskDeadlineNotificationDelivery;
 use Illuminate\Console\Command;
 
 class SendOverdueTaskNotifications extends Command
@@ -26,25 +26,31 @@ class SendOverdueTaskNotifications extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(TaskDeadlineNotificationDelivery $deliveries): int
     {
-        $overdueTasks = Task::query()
-            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-            ->whereNull('overdue_notification_sent_at')
-            ->with('assignee')
-            ->get()
-            ->filter(fn (Task $task): bool => $task->activeDeadline()?->isPast() ?? false);
-
+        $today = today(config('app.timezone'))->toDateString();
         $notificationCount = 0;
-        foreach ($overdueTasks as $task) {
-            if ($task->assignee) {
-                $task->assignee->notify(new TaskOverdueNotification($task));
-                $task->forceFill(['overdue_notification_sent_at' => now()])->save();
-                $notificationCount++;
-            }
-        }
+        $suppressedCount = 0;
+
+        Task::query()
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
+            ->where(function ($query) use ($today): void {
+                $query->whereDate('execution_due_date', '<', $today)
+                    ->orWhereDate('due_date', '<', $today)
+                    ->orWhereDate('review_due_date', '<', $today)
+                    ->orWhereDate('revision_due_date', '<', $today);
+            })
+            ->chunkById(200, function ($tasks) use ($deliveries, &$notificationCount, &$suppressedCount): void {
+                foreach ($tasks as $task) {
+                    $result = $deliveries->deliver($task->id, TaskDeadlineNotificationDelivery::OVERDUE);
+                    $result->delivered() ? $notificationCount++ : $suppressedCount++;
+                }
+            });
 
         $this->info("Sent {$notificationCount} overdue task notifications.");
+        if ($suppressedCount > 0) {
+            $this->warn("Suppressed {$suppressedCount} stale or ownerless overdue notifications.");
+        }
 
         return self::SUCCESS;
     }

@@ -161,10 +161,39 @@ class R2aSecurityTest extends TestCase
 
     public function test_password_confirmation_is_rate_limited(): void
     {
-        $this->actingAs($this->user());
+        $this->freezeTime();
+        $user = $this->user();
+        $otherUser = $this->user();
+
+        $this->actingAs($user);
         for ($i = 0; $i < 10; $i++) {
             $this->postJson('/confirm-password', ['password' => 'wrong'])->assertUnprocessable();
         }
+        $this->postJson('/confirm-password', ['password' => 'wrong'])->assertTooManyRequests();
+
+        $this->actingAs($otherUser)
+            ->postJson('/confirm-password', ['password' => 'wrong'])
+            ->assertUnprocessable();
+
+        $this->travel(61)->seconds();
+        $this->actingAs($user)
+            ->postJson('/confirm-password', ['password' => 'wrong'])
+            ->assertUnprocessable();
+    }
+
+    public function test_successful_password_confirmation_counts_toward_the_same_limit(): void
+    {
+        $this->freezeTime();
+        $this->actingAs($this->user());
+
+        $this->post('/confirm-password', ['password' => 'password'])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        for ($i = 0; $i < 9; $i++) {
+            $this->postJson('/confirm-password', ['password' => 'wrong'])->assertUnprocessable();
+        }
+
         $this->postJson('/confirm-password', ['password' => 'wrong'])->assertTooManyRequests();
     }
 

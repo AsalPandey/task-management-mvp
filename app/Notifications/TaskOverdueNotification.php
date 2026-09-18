@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Notifications\Channels\BrowserPushChannel;
 use App\Support\BrowserPushMessageFactory;
 use App\ValueObjects\BrowserPushMessage;
+use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -30,7 +31,10 @@ class TaskOverdueNotification extends Notification implements SendsBrowserPush
         $this->task = $task;
         $this->deadline = $task->activeDeadline()
             ?? throw new \InvalidArgumentException('An active task deadline is required for an overdue notification.');
-        $this->daysOverdue = $daysOverdue ?? $this->deadline->diffInDays(now());
+        $this->daysOverdue = $daysOverdue ?? CarbonImmutable::parse(
+            $this->deadline->toDateString(),
+            config('app.timezone'),
+        )->startOfDay()->diffInDays(CarbonImmutable::now(config('app.timezone'))->startOfDay());
     }
 
     /**

@@ -5,17 +5,21 @@ namespace App\Notifications\Channels;
 use App\Contracts\SendsBrowserPush;
 use App\Jobs\SendBrowserPushNotification;
 use App\Models\User;
+use App\Services\NotificationPreferencePolicy;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 
 class BrowserPushChannel
 {
+    public function __construct(private readonly NotificationPreferencePolicy $preferences) {}
+
     public function send(object $notifiable, Notification $notification): void
     {
         if (
             ! $notification instanceof SendsBrowserPush
             || ! $notifiable instanceof User
             || ! $notifiable->active
+            || ! $this->preferences->decideForNotification($notifiable, $notification, self::class)->allowed
             || ! $notifiable->browserPushSubscriptions()->enabled()->exists()
             || ! $this->configured()
         ) {

@@ -30,7 +30,15 @@ document.addEventListener('DOMContentLoaded', function() {
             tabs.forEach(tab => tab.classList.remove('active'));
             this.classList.add('active');
             const tab = this.getAttribute('data-tab');
-            document.getElementById(tab).classList.add('active');
+            const targetTab = document.getElementById(tab);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            // Clear stale messages when switching tabs
+            document.querySelectorAll('.message-container').forEach(el => {
+                el.style.display = 'none';
+                el.textContent = '';
+            });
         });
     });
 
@@ -43,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const el = document.getElementById(id);
         if (!el) return;
         el.style.display = 'block';
-        el.className = `message-container ${type}`;
+        el.className = `message-container message-${type}`;
         el.textContent = message;
     }
 
@@ -53,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfMeta.content,
+                'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '',
             },
             body: JSON.stringify(payload),
         });
@@ -61,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!response.ok) {
             throw new Error(data.message || Object.values(data.errors || {})[0]?.[0] || 'Request failed.');
         }
-        if (typeof data.csrf_token === 'string') {
+        if (typeof data.csrf_token === 'string' && csrfMeta) {
             csrfMeta.content = data.csrf_token;
             document.querySelectorAll('input[name="_token"]').forEach(input => {
                 input.value = data.csrf_token;
@@ -108,17 +116,45 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (preferencesButton) {
+        const taskCompletedInput = document.getElementById('taskCompleted');
+        const teamUpdatesInput = document.getElementById('teamUpdates');
+
+        if (taskCompletedInput) {
+            taskCompletedInput.addEventListener('change', function() {
+                this.setAttribute('aria-checked', this.checked ? 'true' : 'false');
+            });
+        }
+        if (teamUpdatesInput) {
+            teamUpdatesInput.addEventListener('change', function() {
+                this.setAttribute('aria-checked', this.checked ? 'true' : 'false');
+            });
+        }
+
         preferencesButton.addEventListener('click', async function() {
+            const originalText = preferencesButton.textContent;
+            preferencesButton.disabled = true;
+            preferencesButton.textContent = 'Saving…';
             try {
-                await postJson('{{ route('settings.preferences') }}', {
-                    task_assigned: document.getElementById('taskAssigned').checked,
-                    task_completed: document.getElementById('taskCompleted').checked,
-                    deadline_reminder: document.getElementById('deadlineReminder').checked,
-                    team_updates: document.getElementById('teamUpdates').checked,
+                const res = await postJson('{{ route('settings.preferences') }}', {
+                    task_completed: taskCompletedInput ? taskCompletedInput.checked : true,
+                    team_updates: teamUpdatesInput ? teamUpdatesInput.checked : true,
                 });
-                showMessage('profileMessage', 'Preferences saved.');
+                if (res && res.preferences) {
+                    if (taskCompletedInput && typeof res.preferences.task_completed === 'boolean') {
+                        taskCompletedInput.checked = res.preferences.task_completed;
+                        taskCompletedInput.setAttribute('aria-checked', res.preferences.task_completed ? 'true' : 'false');
+                    }
+                    if (teamUpdatesInput && typeof res.preferences.team_updates === 'boolean') {
+                        teamUpdatesInput.checked = res.preferences.team_updates;
+                        teamUpdatesInput.setAttribute('aria-checked', res.preferences.team_updates ? 'true' : 'false');
+                    }
+                }
+                showMessage('notificationsMessage', 'Notification preferences saved.');
             } catch (error) {
-                showMessage('profileMessage', error.message, 'error');
+                showMessage('notificationsMessage', error.message, 'error');
+            } finally {
+                preferencesButton.disabled = false;
+                preferencesButton.textContent = originalText;
             }
         });
     }
@@ -184,16 +220,135 @@ document.addEventListener('DOMContentLoaded', function() {
                 </form>
             </div>
             <!-- Notifications Tab -->
+            @php
+                $policy = app(\App\Services\NotificationPreferencePolicy::class);
+                $taskCompletedActive = isset($taskCompletedEnabled)
+                    ? (bool) $taskCompletedEnabled
+                    : $policy->decideForType($user, 'task_approved_completed', 'database')->allowed;
+                $teamUpdatesActive = isset($teamUpdatesEnabled)
+                    ? (bool) $teamUpdatesEnabled
+                    : $policy->decideForType($user, 'task_updated', 'database')->allowed;
+            @endphp
             <div id="notifications" class="settings-tab">
                 <div class="tab-header">
-                    <h2>Notification Preferences</h2>
-                    <p>Choose what notifications you want to receive</p>
+                    <h2>Notification Settings</h2>
+                    <p>Manage required notifications, optional preferences, and browser alerts</p>
                 </div>
-                <section class="push-settings-card" aria-labelledby="browserPushHeading">
+                <div id="notificationsMessage" class="message-container" role="status" aria-live="polite" style="display: none;"></div>
+
+                <!-- Section A: Required Notifications -->
+                <section class="notification-card-section" aria-labelledby="requiredNotificationsHeading">
+                    <div class="section-subhead">
+                        <div class="subhead-title-row">
+                            <span class="section-icon" aria-hidden="true">🔒</span>
+                            <h3 id="requiredNotificationsHeading">Required Notifications</h3>
+                        </div>
+                        <p>These notifications are required for tasks you are responsible for. They ensure workflow accountability and cannot be turned off.</p>
+                    </div>
+                    <div class="notification-items-group" role="list" aria-label="Required notifications list">
+                        <div class="notification-item required-item" role="listitem">
+                            <div class="notification-info">
+                                <h4 class="item-title">Task Assignments</h4>
+                                <p>Required in-app notification when tasks or responsibilities are assigned to you</p>
+                            </div>
+                            <span class="notification-required" aria-label="Required notification: cannot be disabled">
+                                <svg class="badge-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <span>Required</span>
+                            </span>
+                        </div>
+                        <div class="notification-item required-item" role="listitem">
+                            <div class="notification-info">
+                                <h4 class="item-title">Deadlines &amp; Overdue Work</h4>
+                                <p>Required in-app notification for upcoming deadlines and urgent alerts when assigned work becomes overdue</p>
+                            </div>
+                            <span class="notification-required" aria-label="Required notification: cannot be disabled">
+                                <svg class="badge-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <span>Required</span>
+                            </span>
+                        </div>
+                        <div class="notification-item required-item" role="listitem">
+                            <div class="notification-info">
+                                <h4 class="item-title">Review &amp; Revision Actions</h4>
+                                <p>Required in-app notification when work is submitted for review, revisions are requested, or reviewers are reassigned</p>
+                            </div>
+                            <span class="notification-required" aria-label="Required notification: cannot be disabled">
+                                <svg class="badge-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <span>Required</span>
+                            </span>
+                        </div>
+                        <div class="notification-item required-item" role="listitem">
+                            <div class="notification-info">
+                                <h4 class="item-title">Workflow Status Changes</h4>
+                                <p>Required in-app notification when tasks you are responsible for are placed on hold, resumed, cancelled, reopened, or have deadlines changed</p>
+                            </div>
+                            <span class="notification-required" aria-label="Required notification: cannot be disabled">
+                                <svg class="badge-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                <span>Required</span>
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section B: Optional Notifications -->
+                <section class="notification-card-section" aria-labelledby="optionalNotificationsHeading">
+                    <div class="section-subhead">
+                        <div class="subhead-title-row">
+                            <span class="section-icon" aria-hidden="true">⚙️</span>
+                            <h3 id="optionalNotificationsHeading">Optional Preferences</h3>
+                        </div>
+                        <p>Choose which optional updates you want to receive. These preferences apply to in-app notifications and enabled push devices.</p>
+                    </div>
+                    <div class="notification-items-group">
+                        <div class="notification-item optional-item">
+                            <div class="notification-info">
+                                <label for="taskCompleted" id="taskCompletedLabel" class="option-title">Task Completion</label>
+                                <p id="taskCompletedDesc">Get notified when tasks are approved and completed</p>
+                            </div>
+                            <label class="toggle-switch" for="taskCompleted" aria-label="Task completion notifications">
+                                <input
+                                    type="checkbox"
+                                    id="taskCompleted"
+                                    name="task_completed"
+                                    role="switch"
+                                    aria-labelledby="taskCompletedLabel"
+                                    aria-describedby="taskCompletedDesc"
+                                    aria-checked="{{ $taskCompletedActive ? 'true' : 'false' }}"
+                                    {{ $taskCompletedActive ? 'checked' : '' }}
+                                >
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div class="notification-item optional-item" id="teamUpdatesItem">
+                            <div class="notification-info">
+                                <label for="teamUpdates" id="teamUpdatesLabel" class="option-title">Team &amp; General Updates</label>
+                                <p id="teamUpdatesDesc">Get notified about general task progress, phase changes, and project team membership</p>
+                            </div>
+                            <label class="toggle-switch" for="teamUpdates" aria-label="Team and general updates notifications">
+                                <input
+                                    type="checkbox"
+                                    id="teamUpdates"
+                                    name="team_updates"
+                                    role="switch"
+                                    aria-labelledby="teamUpdatesLabel"
+                                    aria-describedby="teamUpdatesDesc"
+                                    aria-checked="{{ $teamUpdatesActive ? 'true' : 'false' }}"
+                                    {{ $teamUpdatesActive ? 'checked' : '' }}
+                                >
+                                <span class="toggle-slider" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-actions preferences-actions">
+                        <button type="button" class="btn-primary" id="savePreferencesBtn">💾 Save Preferences</button>
+                    </div>
+                </section>
+
+                <!-- Section C: Browser Notifications on This Device -->
+                <section class="push-settings-card notification-card-section" aria-labelledby="browserPushHeading">
                     <div class="push-settings-heading">
                         <div>
-                            <h3 id="browserPushHeading">Browser notifications</h3>
-                            <p>Receive task updates on this browser and device. Each device is enabled separately.</p>
+                            <h3 id="browserPushHeading">Browser notifications on this device</h3>
+                            <p>Receive real-time notifications on this device. Browser notifications are enabled separately on each device.</p>
                         </div>
                         <span class="push-status" data-push-status aria-live="polite">Checking support…</span>
                     </div>
@@ -205,14 +360,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="push-actions">
                         <button type="button" class="btn-primary" data-push-enable>Enable Notifications</button>
                         <button type="button" class="btn-secondary" data-push-test hidden>Send Test Notification</button>
-                        <button type="button" class="btn-secondary push-disable" data-push-disable hidden>Disable This Device</button>
+                        <button type="button" class="btn-secondary push-disable" data-push-disable hidden>Disable on This Device<span class="sr-only"> (Disable This Device)</span></button>
                     </div>
                     <p class="push-privacy-note">
-                        Notification permission is controlled by your browser. Disabling this device does not
+                        Browser notifications are enabled separately on each device. Disabling this device does not
                         disable your other devices.
                     </p>
                 </section>
-                <section class="pwa-install-card" data-pwa-card aria-labelledby="installAppHeading">
+
+                <!-- Section D: PWA Install Card -->
+                <section class="pwa-install-card notification-card-section" data-pwa-card aria-labelledby="installAppHeading">
                     <div>
                         <h3 id="installAppHeading">Install Task Management</h3>
                         <p>Add the app to your home screen for faster access and an app-like display.</p>
@@ -225,50 +382,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         On iPhone or iPad, use Safari's Share menu and choose “Add to Home Screen.”
                     </p>
                 </section>
-                <div class="notification-settings">
-                    <div class="notification-item">
-                        <div class="notification-info">
-                            <h3>Task Assignments</h3>
-                            <p>Get notified when tasks are assigned to you</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="taskAssigned" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="notification-item">
-                        <div class="notification-info">
-                            <h3>Task Completion</h3>
-                            <p>Get notified when tasks are completed</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="taskCompleted" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="notification-item">
-                        <div class="notification-info">
-                            <h3>Deadline Reminders</h3>
-                            <p>Get reminded about upcoming deadlines</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="deadlineReminder" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="notification-item" id="teamUpdatesItem">
-                        <div class="notification-info">
-                            <h3>Team Updates</h3>
-                            <p>Get notified about team activity and updates</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="teamUpdates" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn-primary" id="savePreferencesBtn">💾 Save Preferences</button>
+
+                <!-- Section E: System & Security Notifications Notice -->
+                <div class="system-notification-note">
+                    <span class="system-note-icon" aria-hidden="true">🛡️</span>
+                    <p>Account security and critical administrative notices are always sent to protect your account and are managed by system policy.</p>
                 </div>
             </div>
             <!-- Security Tab -->

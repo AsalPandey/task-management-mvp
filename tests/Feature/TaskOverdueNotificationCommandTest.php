@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Enums\TaskState;
+use App\Models\Project;
+use App\Models\Role;
 use App\Models\Task;
 use App\Models\TaskRevisionCycle;
 use App\Models\User;
@@ -15,10 +17,18 @@ class TaskOverdueNotificationCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed();
+    }
+
     public function test_only_eligible_active_tasks_are_notified_once(): void
     {
         Notification::fake();
-        $assignee = User::factory()->create();
+        $assignee = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
 
         $active = $this->task($assignee, TaskState::InProgress, [
             'execution_due_date' => now()->subDay()->toDateString(),
@@ -50,7 +60,9 @@ class TaskOverdueNotificationCommandTest extends TestCase
     public function test_reopened_task_uses_its_revision_deadline(): void
     {
         Notification::fake();
-        $assignee = User::factory()->create();
+        $assignee = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'team_member')->value('id'),
+        ]);
         $task = $this->task($assignee, TaskState::RevisionRequested, [
             'due_date' => now()->addMonth()->toDateString(),
             'execution_due_date' => now()->addMonth()->toDateString(),
@@ -79,7 +91,13 @@ class TaskOverdueNotificationCommandTest extends TestCase
 
     private function task(User $assignee, TaskState $state, array $attributes = []): Task
     {
+        $projectManager = User::factory()->create([
+            'role_id' => Role::query()->where('name', 'project_manager')->value('id'),
+        ]);
+        $project = Project::factory()->create(['project_manager_id' => $projectManager->id]);
+        $project->members()->attach($assignee->id);
         $task = Task::query()->create([
+            'project_id' => $project->id,
             'title' => "Overdue {$state->value}",
             'assignee_id' => $assignee->id,
             'status' => $state,

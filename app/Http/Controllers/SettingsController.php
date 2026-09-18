@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\NotificationPreferencePolicy;
 use App\Support\UserPayload;
 use Illuminate\Http\Request;
 
 class SettingsController extends Controller
 {
-    public function index()
+    public function index(NotificationPreferencePolicy $policy)
     {
         $user = auth()->user();
+        $taskCompletedEnabled = $policy->decideForType($user, 'task_approved_completed', 'database')->allowed;
+        $teamUpdatesEnabled = $policy->decideForType($user, 'task_updated', 'database')->allowed;
 
-        return view('settings', compact('user'));
+        return view('settings', compact('user', 'taskCompletedEnabled', 'teamUpdatesEnabled'));
     }
 
     public function updateProfile(Request $request)

@@ -5,20 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BrowserPushDelivery extends Model
+class TaskNotificationDelivery extends Model
 {
     protected $guarded = ['id'];
 
     protected $casts = [
         'attempt_count' => 'integer',
         'claimed_at' => 'datetime',
-        'lease_expires_at' => 'datetime',
-        'next_attempt_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];
 
-    public function subscription(): BelongsTo
+    public function task(): BelongsTo
     {
-        return $this->belongsTo(BrowserPushSubscription::class, 'browser_push_subscription_id');
+        return $this->belongsTo(Task::class);
     }
 }
