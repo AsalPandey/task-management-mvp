@@ -1,304 +1,345 @@
-# Production Runbook
+# Production Release and Operations Runbook
 
-## Baseline Stack
+This runbook describes the supported production baseline for one company on one
+Laravel installation. It is an operations contract, not authorization to deploy.
 
-- Ubuntu VPS provisioned through Laravel Forge
-- PHP 8.4, MySQL, queue worker, and one scheduler cron
-- Sentry through `SENTRY_LARAVEL_DSN`
-- Off-site backups through `spatie/laravel-backup` to an S3-compatible private bucket
+## 1. Hosting verdict
 
-## First Boot
+**Supported only if specific shared-hosting features are available.** A VPS is not
+intrinsically required. Conventional shared hosting is acceptable when every
+mandatory item below is available.
 
-Run the production-safe migrations and reference-data seeders:
+### Mandatory
+
+- Linux hosting with PHP 8.2, 8.3, or 8.4 and the extensions listed below.
+- MariaDB 10.4.32 or newer, or MySQL 8.0 or newer, with InnoDB, transactions,
+  foreign keys, row locks, and `utf8mb4`.
+- The domain document root points to Laravel's `public` directory, or
+  `public_html` is a symlink/bind target for that directory. Application source,
+  `.env`, `vendor`, `storage`, audit files, and backups must not be web-accessible.
+- A valid HTTPS certificate and HTTPS-only application URL.
+- One cron invocation of `php artisan schedule:run` every minute.
+- Either a persistent queue worker or a non-overlapping, bounded queue worker
+  invoked every minute. PHP must be allowed to run long enough to drain normal
+  notification volume.
+- A persistent MariaDB/MySQL database, outbound HTTPS on TCP 443 for Web Push,
+  and SMTP or another configured mail transport for operational alerts.
+- Writable `storage` and `bootstrap/cache`; ability to create the public storage
+  link if public uploads are introduced.
+- A private off-site backup destination and access to `mysqldump`/`mariadb-dump`.
+
+### Recommended
+
+- SSH access, Composer 2.8+, a deployment atomic-release mechanism, cron failure
+  alerts, log aggregation, and a persistent process supervisor.
+- MariaDB 10.6 LTS or newer / MySQL 8.0 current maintenance release.
+- A staging environment on the same database family and PHP minor version.
+- Optional Sentry error monitoring with personally identifiable data disabled.
+
+### Optional
+
+- Redis for cache/queues, a CDN for versioned local build assets, and S3-compatible
+  object storage for future user uploads. No paid monitoring provider is required.
+
+If the host cannot meet the document-root, one-minute cron, bounded queue,
+outbound HTTPS, database-locking, or off-site-backup requirements, that shared
+plan is unsupported; choose another plan or a VPS. Never compensate by copying
+the Laravel source tree into `public_html`.
+
+## 2. Platform requirements
+
+| Component | Release requirement |
+|---|---|
+| PHP | 8.2–8.4, 64-bit recommended |
+| PHP extensions | ctype, curl, DOM/XML/SimpleXML, fileinfo, filter, hash, iconv, JSON, libxml, mbstring (or Composer polyfill), OpenSSL, PCRE, PDO, pdo_mysql, session, tokenizer, Zip |
+| Database | MariaDB >= 10.4.32 (qualified baseline) or MySQL >= 8.0; InnoDB and `utf8mb4` |
+| Composer | Composer 2 at build/deploy time; install from the committed lock file |
+| Node/npm | Node 20+ and npm 10+ at build time only; not required at runtime when `public/build` is deployed |
+| Web server | Apache/Nginx-compatible rewrites; document root exactly `public` |
+| Scheduler | Cron every minute with one active scheduler invocation |
+| Queue | Database queue; persistent worker or non-overlapping bounded cron worker |
+| Network | HTTPS ingress; outbound HTTPS/443 for push; SMTP and backup endpoint as configured |
+| Filesystem | writable `storage/**` and `bootstrap/cache`; private backups and private local disk |
+
+`pcntl`/`posix` are recommended for supervised long-running workers but are not
+required by the bounded shared-hosting queue strategy. Node is never required to
+serve requests.
+
+## 3. Production environment contract
+
+Copy `.env.example` to a server-only `.env`; do not commit it. Replace every
+example value. Run `php artisan config:cache` only after the final environment is
+present.
+
+| Variable | Requirement |
+|---|---|
+| `APP_ENV` | `production` |
+| `APP_DEBUG` | `false` |
+| `APP_URL` | canonical `https://` origin, including any intentional path prefix |
+| `APP_KEY` | unique `base64:` key generated once for this installation; preserve across releases |
+| `APP_TIMEZONE` | company operating timezone; currently `Asia/Kathmandu` |
+| `APP_SETUP_TOKEN` | empty after first setup unless the installer is deliberately enabled |
+| `DB_*` | least-privilege application account; never database root |
+| `SESSION_DRIVER` | `database` |
+| `SESSION_SECURE_COOKIE` | `true` |
+| `SESSION_HTTP_ONLY` | `true` |
+| `SESSION_SAME_SITE` | `lax` |
+| `CACHE_STORE` | `database` for a single shared-host instance |
+| `QUEUE_CONNECTION` | `database`, never `sync` in production |
+| `QUEUE_FAILED_DRIVER` | `database-uuids` |
+| `DB_QUEUE_RETRY_AFTER` | `90`; must remain greater than the worker timeout |
+| `FILESYSTEM_DISK` | `local` (private) unless an explicitly configured private object store is used |
+| `LOG_CHANNEL` / `LOG_STACK` | `stack` / `daily` |
+| `LOG_LEVEL` | `warning` or stricter after staging observation |
+| `MAIL_*` | working production transport; backup alerts must not use the `log` mailer |
+| `BROADCAST_CONNECTION` | `log`; realtime broadcasting is not required |
+| `WEBPUSH_VAPID_*` | one valid subject/public/private key set per environment |
+| `WEBPUSH_QUEUE` | `notifications` |
+| `BACKUP_DISKS` | private off-site disk, normally `s3` |
+| `BACKUP_ARCHIVE_PASSWORD` | strong server-only secret when encrypted archives are supported |
+| `BACKUP_NOTIFICATION_EMAIL` | monitored operations mailbox |
+| `SENTRY_LARAVEL_DSN` | optional; blank disables the paid integration |
+| `SENTRY_RELEASE` | deployed Git SHA or immutable release identifier when Sentry is enabled |
+
+The VAPID private key, application key, database password, SMTP password, object
+storage secret, setup token, and backup password are secrets. Do not place any
+of them in command history, Git, build logs, or client-side JavaScript.
+
+If TLS terminates at a reverse proxy, the host must pass trustworthy forwarded
+scheme/host headers and Laravel proxy trust must be configured to the provider's
+documented fixed proxy ranges. Do not trust every proxy (`*`) on a directly
+reachable origin. Direct HTTPS termination needs no Laravel proxy exception.
+
+## 4. Database, session, cache, and queue tables
+
+Fresh migrations create `sessions`, `cache`, `cache_locks`, `jobs`,
+`job_batches`, and `failed_jobs`, plus notification, task-delivery, and Browser
+Push tables. These tables are mandatory when the production defaults above are
+used. Never point a qualification command at the configured production database.
+
+Use a database account with only the privileges required for the application and
+approved migrations. Back up before schema change. The R3B migration gate must
+test both `migrate:fresh` and an additive upgrade from the deployed schema on a
+disposable database of the production family.
+
+## 5. Queue architecture
+
+Database notifications are written during the request/command transaction.
+Browser Push is the only current `ShouldQueue` workload and is placed on the
+`notifications` queue after commit. The job has three attempts and backoff of 60
+then 300 seconds. Delivery rows and database claims are authoritative for
+idempotency; queue overlap controls are defense in depth. Failed jobs are kept in
+`failed_jobs` and must be monitored.
+
+### Preferred supervised worker
 
 ```bash
-php artisan migrate --seed --force
+php artisan queue:work database \
+  --queue=notifications,default \
+  --sleep=3 --tries=3 --timeout=60 --max-time=3600
 ```
 
-This default seed path creates only roles and permissions. It never creates users. Create the first manager through the interactive setup command so the password is entered at a hidden prompt:
+Configure the supervisor to restart the process. During deploy, enter maintenance
+mode, stop or quiesce workers, deploy/migrate/cache, run `php artisan queue:restart`,
+and verify the replacement worker is consuming both queues.
 
-Use one of these paths on a fresh database:
+### Shared-hosting bounded worker
 
-```bash
-php artisan app:setup-company \
-  --company="Client Company" \
-  --name="First Manager" \
-  --email="manager@example.com" \
-  --timezone="Asia/Kathmandu" \
-  --app-url="https://client.example.com"
-```
-
-Or set `APP_SETUP_TOKEN` and open `/setup` before any users exist. The web installer is disabled after setup and can only be reset with:
-
-```bash
-php artisan app:reset-installer
-```
-
-## Local Demo Data
-
-Demo users are optional and must never be seeded in production. They require both a `local` or `testing` environment and explicit opt-in. Supply a unique local-only password through the environment without placing it in shell history:
-
-```bash
-export APP_ENV=local
-export ALLOW_DEMO_SEEDING=true
-read -rsp "Unique local demo password: " DEMO_SEED_PASSWORD
-export DEMO_SEED_PASSWORD
-php artisan config:clear
-php artisan db:seed --class='Database\Seeders\DemoSeeder'
-unset DEMO_SEED_PASSWORD ALLOW_DEMO_SEEDING
-```
-
-`UsersTableSeeder` is intentionally disabled. Never enable demo seeding or set a demo password in production environment files.
-
-If any former sample credential may have been reused for another account or service, rotate that credential there as a precaution. This repository cannot determine whether reuse occurred and does not rotate external credentials.
-
-## Deployment Scope
-
-The Laravel application is the only deployable application. Configure the web document root to the repository's `public` directory. `resources/prototypes` is offline reference material, is excluded from `git archive` packages, and must not be copied, synchronized, linked, or served. The separate XAMPP `html-version` directory is quarantined reference material and is not a deployment source.
-
-## Scheduler
-
-Configure exactly one server cron in Forge:
+Use a separate once-per-minute cron with an operating-system lock. Replace paths
+with absolute host paths:
 
 ```cron
-* * * * * cd /path-to-app && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /home/account/apps/tasks/current && /usr/bin/flock -n storage/framework/queue-cron.lock php artisan queue:work database --queue=notifications,default --stop-when-empty --max-time=50 --sleep=1 --tries=3 --timeout=60 >> storage/logs/queue-cron.log 2>&1
 ```
 
-The scheduler sends deadline reminders, overdue notifications, backup health checks, and cleanup tasks. Reminder commands use sent-at columns to avoid repeated notification spam.
+The provider must offer `flock` or an equivalent non-overlap facility. A worker
+may finish its current job after `--max-time`; therefore the lock is mandatory.
+Do not use `queue:listen`, an infinite unmonitored worker, or `QUEUE_CONNECTION=sync`
+to fit a constrained plan. Alert on non-zero cron exit, increasing queue age,
+and any `failed_jobs` row. Review with `php artisan queue:failed`; retry only after
+the cause is corrected and the job's current authorization is understood.
 
-## Logging
+## 6. Scheduler architecture
 
-Use the rotating daily log channel in production:
+Configure exactly one scheduler cron:
 
-```env
-LOG_CHANNEL=stack
-LOG_STACK=daily
-LOG_DAILY_DAYS=14
-LOG_LEVEL=warning
+```cron
+* * * * * cd /home/account/apps/tasks/current && php artisan schedule:run >> storage/logs/scheduler.log 2>&1
 ```
 
-Confirm the production service account can write to `storage/logs` and that
-infrastructure monitoring alerts on repeated application errors. Sentry does
-not replace local retention.
+The application schedules:
 
-## Forge Deployment Script
+- deadline reminders daily at 08:00 in `APP_TIMEZONE`;
+- overdue processing hourly;
+- database backup daily at 01:30 in `APP_TIMEZONE`;
+- backup cleanup daily at 02:30 in `APP_TIMEZONE`;
+- backup health monitoring daily at 03:00 in `APP_TIMEZONE`.
 
-Use this as the Forge deploy script for each client site:
+Every scheduled operation has overlap protection. Database delivery claims and
+generation counters remain the source of truth for R2B idempotency. The host must
+retain cron stdout/stderr or notify on failure; redirecting permanently to
+`/dev/null` is not an acceptable production monitoring strategy. After deploy,
+run `php artisan schedule:list` and observe at least one real scheduled cycle.
 
-Confirm the Forge site's web directory is `/public` before deploying.
+## 7. PWA and Browser Push
+
+- HTTPS is mandatory outside localhost. The service worker is served from the
+  application root and its scope follows the application path.
+- `manifest.webmanifest`, root `service-worker.js`, icons, local CSS/JS, and the
+  Vite build must be anonymously reachable as static assets.
+- The worker caches only same-origin static destinations. It never intercepts or
+  caches authenticated HTML or application JSON, and it removes only cache names
+  owned by this application.
+- Push targets are constrained to same-origin paths and still pass authentication
+  and task authorization. Logout/account switching unsubscribes the local device.
+- The server rechecks account status, authorization, preferences, and endpoint
+  safety before transport. Logs use subscription/notification IDs, never endpoint
+  URLs or encryption keys.
+- Browser Push is best effort. Real-device Android, iOS installed-web-app, and
+  desktop validation remains an R3C gate and is not claimed by server tests.
+
+Generate VAPID keys once per environment and store only in server secrets. Key
+rotation invalidates existing subscriptions and requires a planned re-enrolment.
+
+## 8. Security headers and static dependencies
+
+Core JavaScript, CSS, and fonts are local and locked by `package-lock.json`; the
+application does not require a third-party CDN to operate. Production responses
+set CSP, anti-framing, MIME-sniffing, referrer, and permissions headers. HTTPS
+responses set one-year HSTS including subdomains. Confirm every subdomain is HTTPS
+before release; otherwise remove `includeSubDomains` in a reviewed code change.
+
+The current CSP permits inline scripts/styles because legacy Blade templates
+still contain inline behavior. It blocks third-party script origins, objects,
+foreign frames, and foreign workers. Replacing inline code with nonce/hash-based
+assets is a future hardening task, not a reason to weaken the current policy.
+
+## 9. Storage and permissions
+
+`FILESYSTEM_DISK=local` resolves to `storage/app/private`. Do not expose it. The
+`public` disk resolves to `storage/app/public` and becomes web-visible only after
+`php artisan storage:link`; use it solely for deliberately public files. Backups
+belong on a private off-site disk and must never be written under `public`.
+
+The PHP/web/cron account needs read access to the release and write access only to:
+
+```text
+storage/app
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+storage/logs
+bootstrap/cache
+```
+
+Use host-appropriate ownership with directories normally `0750`/`0770` and files
+`0640`/`0660`; never solve permissions with world-writable `0777`. Verify the
+queue and cron user is the same account or shares the correct group.
+
+## 10. Logging, health, and observability
+
+Use rotating daily logs with 14-day local retention and collect them off-host if
+required by policy. Production debug and Debugbar are disabled. Sentry is optional;
+the application remains functional with an empty DSN.
+
+`GET /up` is a public, detail-free liveness endpoint. HTTP 200 proves Laravel can
+boot and route the request; it does **not** prove database connectivity, queues,
+scheduler delivery, push transport, or backup validity. Monitor `/up` externally,
+database connectivity separately, queue age/failed jobs, scheduler log freshness,
+and backup health. Never expose environment data, credentials, paths, or traces.
+
+## 11. Backups and restore
+
+The scheduler creates a database backup daily, cleans retained backups, and checks
+health. The default retention is 14 daily, 8 weekly, 12 monthly, and 2 yearly,
+subject to a 5 GB cleanup threshold. Production requires a private off-site disk,
+an operations mailbox, and encryption when the storage/provider supports it.
+
+A successful backup command proves archive creation, not recoverability. Before
+each migration record the archive identity, size, checksum, off-site presence, and
+database server/version. R3B must restore a selected archive to staging, run
+integrity counts and application smoke tests, and record recovery time. Include
+private uploaded files in the backup plan if that feature is introduced.
+
+Restore procedure:
+
+1. Keep production online while first restoring the selected archive to isolated staging.
+2. Verify schema, user/project/task/event counts, login, workflow, notifications, analytics, and exports.
+3. Obtain business approval for a full production restore; take a fresh emergency backup.
+4. Enter maintenance mode and stop queue/scheduler execution.
+5. Restore the matching database and matching code/assets; never mix schema generations.
+6. Rebuild caches, restart workers/cron, verify `/up`, then complete authenticated smoke tests.
+7. Record the archive, release SHA, approver, checks, and recovery outcome.
+
+## 12. Pre-deployment checklist
+
+1. Approve and record the immutable release SHA and compare it to the staged tree.
+2. Confirm the release qualification report, dependency audits, lock files, and
+   production build were generated from that SHA.
+3. Verify the complete environment matrix without printing secrets.
+4. Verify PHP/extensions, database server/version, disk quota, cron, queue runtime,
+   outbound HTTPS, SMTP, document root, rewrites, and filesystem permissions.
+5. Take and identify an off-site backup; confirm the most recent restore rehearsal.
+6. Confirm migration order and backward compatibility with the previous code.
+7. Put the site in maintenance mode and stop queue processing immediately before
+   code/schema replacement. Preserve the previous complete release directory.
+
+## 13. Deployment sequence
+
+Run from an immutable release directory. Do not deploy a dirty checkout and do
+not run `git pull` as the release mechanism.
 
 ```bash
-php artisan down --render="errors::503" || true
-php artisan backup:run --only-db
-git pull origin main
-composer install --no-dev --optimize-autoloader
+composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 npm ci
 npm run build
 php artisan migrate --force
+php artisan storage:link
 php artisan optimize
 php artisan queue:restart
-php artisan schedule:interrupt || true
-php artisan up
-curl --fail --silent --show-error "$APP_URL/up"
 ```
 
-Trigger deployments locally instead of manual SSH:
+When assets are built in CI, deploy the verified `public/build` artifact and Node
+is not needed on the host. `storage:link` is idempotent once established. Ensure
+cron points to the new `current` release, start the worker strategy, then leave
+maintenance mode only after the post-deployment checks pass.
 
-```bash
-scripts/deploy-client client-slug
-```
+First installation uses `php artisan migrate --seed --force`; the production
+seeder creates roles/permissions only. Create the first manager with
+`php artisan app:setup-company` using interactive secret input, or a temporary
+server-only setup token. Clear that token immediately after setup. Never enable
+demo seeding in production.
 
-On Windows:
+## 14. Post-deployment checklist
 
-```powershell
-.\scripts\deploy-client.ps1 -Client client-slug
-```
+1. Verify HTTPS redirect/certificate, `/up`, security headers, and no debug output.
+2. Verify login/logout, account/session revocation, manager and member access.
+3. Create and transition a staging/smoke task through assignment, execution,
+   submission, review, approval, reopen/cancel paths as applicable.
+4. Verify a queued push job is consumed, database notification persists, and no
+   push secret or endpoint appears in logs.
+5. Verify `schedule:list`, scheduler log freshness, and one controlled reminder run.
+6. Verify analytics totals, CSV export, print export, and authorization boundaries.
+7. Inspect application, queue, web-server, and cron logs plus `queue:failed`.
+8. Confirm the off-site backup job and monitor configuration; do not claim restore
+   readiness until the R3B rehearsal succeeds.
+9. Complete the R3C physical-device PWA/push matrix before commercial launch.
 
-Set `FORGE_DEPLOY_HOOK_CLIENT_SLUG` or `FORGE_DEPLOY_HOOK` in your local environment.
+## 15. Rollback
 
-## Deployment Rollback
+Do not blindly run `migrate:rollback`.
 
-Record the deployed commit and verify the pre-migration database backup before
-running the deploy hook.
+1. Enter maintenance mode; stop workers and suspend scheduler/queue cron.
+2. Record the failed SHA, logs, schema state, and in-flight/failed job counts.
+3. If migrations did not run, atomically repoint `current` to the previous complete
+   release, rebuild/clear caches, restart workers/cron, and verify health/smoke.
+4. If migrations ran, first determine whether the previous code is compatible with
+   the expanded schema. Prefer code rollback with additive schema left in place.
+5. If data/schema restoration is necessary, use the approved, staging-verified
+   pre-deployment backup and its matching code/assets. Obtain business approval.
+6. Run `php artisan optimize`, restart queue processing, restore scheduler cron,
+   leave maintenance mode, and repeat the post-deployment checks.
 
-If a release fails before migrations run, redeploy the previously approved
-commit, reinstall its locked dependencies, rebuild its assets, run
-`php artisan optimize`, restart the queue, and verify `/up`.
-
-If migrations have run, do not blindly call `migrate:rollback`. First confirm
-the previous application release is compatible with the expanded schema. If
-data must be reversed, enter maintenance mode, validate the pre-deployment
-backup by restoring it to staging, obtain business approval, and then follow
-the full restore procedure below. Record the failed release, database backup,
-and recovery outcome before bringing the application back up.
-
-## Backups
-
-Required production environment values:
-
-```env
-BACKUP_DISKS=s3
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_DEFAULT_REGION=ap-south-1
-AWS_BUCKET=
-AWS_ENDPOINT=
-AWS_USE_PATH_STYLE_ENDPOINT=false
-```
-
-Retention defaults:
-
-- 14 daily backups
-- 8 weekly backups
-- 12 monthly backups
-
-Run a backup before every migration. Forge deploys do this with `php artisan backup:run --only-db`.
-
-## Restore Procedure
-
-1. Restore the selected backup to staging first.
-2. Verify user counts, project counts, task counts, login, projects, tasks, history, analytics, and notifications.
-3. Prefer targeted recovery for accidental deletes when soft-deleted records or audit history are sufficient.
-4. Only perform a full production restore after confirming business approval and taking a fresh production backup.
-5. After restore, run `php artisan optimize`, restart queue workers, and check `/up`.
-
-## Error Tracking
-
-Set:
-
-```env
-SENTRY_LARAVEL_DSN=
-SENTRY_ENVIRONMENT=production
-SENTRY_RELEASE=v1.0.0
-```
-
-Verify with:
-
-```bash
-php artisan app:sentry-smoke-test
-```
-
-Release only after the Sentry test event appears in the correct project and environment.
-
-## Release Gate
-
-Before tagging a release:
-
-```bash
-php -l app/Http/Controllers/TasksController.php
-php artisan test
-vendor/bin/pint --test
-composer audit
-npm audit
-npm run build
-```
-
-Also run browser smoke tests for setup, login, dashboards, projects, tasks, history, analytics, settings, team management, and notifications.
-
-## Progressive Web App and Browser Push
-
-Browser push is optional and supplements database notifications. It requires
-HTTPS outside `localhost`, a running queue worker, and user permission on each
-browser/device. It is best-effort delivery: browser settings, operating-system
-settings, network availability, and battery optimization can delay or suppress
-notifications.
-
-Generate a VAPID key pair once per environment without committing the private
-key:
-
-```bash
-php -r "require 'vendor/autoload.php'; print_r(Minishlink\\WebPush\\VAPID::createVapidKeys());"
-```
-
-On XAMPP/Windows, if OpenSSL reports that it cannot create the EC key, point
-PHP at XAMPP's OpenSSL configuration for that shell and retry:
-
-```powershell
-$env:OPENSSL_CONF = 'C:\xampp\apache\conf\openssl.cnf'
-```
-
-Set:
-
-```env
-WEBPUSH_VAPID_SUBJECT=mailto:operations@example.com
-WEBPUSH_VAPID_PUBLIC_KEY=
-WEBPUSH_VAPID_PRIVATE_KEY=
-WEBPUSH_QUEUE=notifications
-WEBPUSH_TTL=3600
-WEBPUSH_STALE_AFTER_FAILURES=5
-```
-
-The subject must be a valid `mailto:` address or HTTPS URL. The public key is
-returned only to authenticated users; the private key must remain in the server
-environment. After changing these values, run `php artisan config:clear` during
-verification and rebuild the production configuration cache.
-
-Run a queue worker for the configured push queue:
-
-```bash
-php artisan queue:work --queue=notifications,default --tries=1
-```
-
-The existing scheduler remains required for deadline and overdue notifications;
-browser push adds no new scheduled command.
-
-Deployment checklist:
-
-1. Back up the database and run the two browser-push migrations.
-2. Serve `manifest.webmanifest`, `service-worker.js`, `/icons`, `/css`, and `/js`
-   over HTTPS without redirecting them to login.
-3. Confirm the service worker is served from the application root with a
-   JavaScript content type and is not cached indefinitely by the web server/CDN.
-4. Restart queue workers after deployment.
-5. Sign in on a staging device, explicitly enable notifications in Settings,
-   send a self-test, follow its link, disable that device, and verify database
-   notifications remain available throughout.
-
-Cache and update guidance:
-
-- The service worker caches only versioned public static assets. It never caches
-  authenticated documents or authorization-dependent JSON.
-- Increment `CACHE_VERSION` in `public/service-worker.js` when changing its
-  static cache contract.
-- Do not remove the old service-worker URL during rollback. Roll back the
-  application and assets together so installed clients can fetch a compatible
-  worker.
-
-Key rotation invalidates existing browser subscriptions because subscriptions
-are bound to the application server key. Rotate only through a planned release:
-replace both keys together, deploy, communicate that users must enable browser
-notifications again, and disable stale subscription rows after verification.
-
-Troubleshooting:
-
-- `Configuration unavailable`: verify all three VAPID values and clear cached
-  configuration.
-- `Permission blocked`: the user must allow notifications in browser or
-  operating-system settings; the application cannot override denial.
-- No delivery: verify the queue worker, logs using subscription/notification
-  IDs, HTTPS, service-worker registration, device focus/DND, and battery
-  optimization. Never log endpoint URLs or encryption keys.
-- HTTP 404/410 permanently disables an expired subscription. Temporary failures
-  are counted and the subscription is marked stale only after the configured
-  threshold.
-
-Expected support:
-
-- Android Chrome and Chromium browsers normally support install and Web Push.
-- Desktop Chrome, Edge, Firefox, and supported Safari versions can receive Web
-  Push subject to browser and OS permissions.
-- On iPhone and iPad, Web Push may require installing the site to the Home
-  Screen before enabling notifications.
-- Private browsing, embedded browsers, managed devices, or restricted browsers
-  may not expose the required APIs.
-
-Real-device release gate: validate one Android device, one iPhone/iPad installed
-web app where available, and one desktop browser. Confirm install, enable,
-self-test, deep-link authorization, logout cleanup, account switching, and
-disable-current-device. Do not promise guaranteed real-time delivery.
-
-Rollback removes the PWA UI and Web Push channel with the application release.
-Preserve the subscription tables during rollback; they contain operational
-state and are harmless while no push jobs are dispatched. Stop/restart queue
-workers on the rolled-back release, keep the service-worker URL available, and
-verify database notifications.
+Keep the service-worker URL available and roll back application code and static
+assets together. Preserve Browser Push subscription/delivery tables unless an
+approved restore requires the entire matching database.

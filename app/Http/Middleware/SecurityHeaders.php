@@ -14,6 +14,26 @@ final class SecurityHeaders
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        if (app()->environment('production')) {
+            $response->headers->set('Content-Security-Policy', implode('; ', [
+                "default-src 'self'",
+                "base-uri 'self'",
+                "object-src 'none'",
+                "frame-ancestors 'self'",
+                "form-action 'self'",
+                "script-src 'self' 'unsafe-inline'",
+                "style-src 'self' 'unsafe-inline'",
+                "img-src 'self' data: blob:",
+                "font-src 'self' data:",
+                "connect-src 'self'",
+                "manifest-src 'self'",
+                "worker-src 'self'",
+            ]));
+
+            if ($request->isSecure()) {
+                $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+            }
+        }
         if ($request->hasSession() && $request->user()) {
             $response->headers->set('Cache-Control', 'private, no-store');
         }

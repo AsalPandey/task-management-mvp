@@ -170,7 +170,6 @@ body { background: #f7f8fa; }
 </div>
 @endsection
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 const priorityData = @json($priorityCounts);
 const productivityData = @json($productivity);

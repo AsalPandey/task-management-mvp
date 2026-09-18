@@ -20,8 +20,7 @@
         <link rel="stylesheet" href="{{ asset('css/pwa.css') }}?v={{ filemtime(public_path('css/pwa.css')) }}">
         
         <!-- Scripts -->
-        {{-- @vite(['resources/css/app.css', 'resources/js/app.js']) --}}
-        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
         <script src="{{ asset('js/phase3.js') }}?v={{ filemtime(public_path('js/phase3.js')) }}" defer></script>
         <script src="{{ asset('js/pwa.js') }}?v={{ filemtime(public_path('js/pwa.js')) }}" defer></script>
     </head>

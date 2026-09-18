@@ -14,10 +14,6 @@
         <link rel="manifest" href="{{ url('/manifest.webmanifest') }}">
         <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('icons/pwa-192.png') }}">
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <link rel="stylesheet" href="{{ asset('css/phase3.css') }}?v={{ filemtime(public_path('css/phase3.css')) }}">

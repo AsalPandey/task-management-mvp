@@ -14,9 +14,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
-        health: '/up',
+        then: function (): void {
+            require base_path('routes/health.php');
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->preventRequestsDuringMaintenance(except: ['/up']);
         $middleware->web(append: [
             EnsureCurrentAccountSession::class,
             SetSentryContext::class,

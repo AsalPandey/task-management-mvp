@@ -1,4 +1,5 @@
-const CACHE_VERSION = 'task-management-static-v1';
+const CACHE_PREFIX = 'task-management-static-';
+const CACHE_VERSION = `${CACHE_PREFIX}v2`;
 const APP_SCOPE = new URL(self.registration.scope);
 const APP_BASE_PATH = APP_SCOPE.pathname.replace(/\/$/, '');
 const appPath = path => `${APP_BASE_PATH}/${String(path).replace(/^\/+/, '')}`;
@@ -25,7 +26,9 @@ self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys()
             .then(keys => Promise.all(
-                keys.filter(key => key !== CACHE_VERSION).map(key => caches.delete(key)),
+                keys
+                    .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+                    .map(key => caches.delete(key)),
             ))
             .then(() => self.clients.claim()),
     );
