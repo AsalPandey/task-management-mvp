@@ -9,6 +9,7 @@ set -euo pipefail
 
 readonly main_database="task_management_phase28_ci_main"
 readonly r2a_database="task_management_phase28_r2a_ci"
+readonly r2a_migration_database="task_management_phase28_r2a_ci_migration"
 readonly r2b5_database="task_management_phase28_r2b5_ci"
 readonly r2b5q_database="task_management_phase28_r2b5q_ci"
 readonly r3a2_database="task_management_phase28_r3a2_ci"
@@ -26,7 +27,7 @@ mysql_command=(
 
 database_is_approved() {
     case "$1" in
-        "${main_database}"|"${r2a_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}")
+        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}")
             return 0
             ;;
         *)
@@ -64,6 +65,9 @@ run_suite "${main_database}"
 
 run_suite "${r2a_database}" \
     tests/Feature/R2aAccountMariaDbConcurrencyTest.php
+
+recreate_database "${r2a_migration_database}"
+php tests/Support/r2a_migration_check.php
 
 run_suite "${r2b5_database}" \
     tests/Feature/TaskNotificationDeliveryMariaDbConcurrencyTest.php

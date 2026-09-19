@@ -11,6 +11,9 @@ use Spatie\Backup\Tasks\Cleanup\Strategies\DefaultStrategy;
 use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumAgeInDays;
 use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
 
+$backupArchivePassword = env('BACKUP_ARCHIVE_PASSWORD');
+$backupArchiveEncryptionEnabled = is_string($backupArchivePassword) && trim($backupArchivePassword) !== '';
+
 return [
 
     'backup' => [
@@ -173,7 +176,7 @@ return [
          * The password to be used for archive encryption.
          * Set to `null` to disable encryption.
          */
-        'password' => env('BACKUP_ARCHIVE_PASSWORD'),
+        'password' => $backupArchiveEncryptionEnabled ? $backupArchivePassword : null,
 
         /*
          * The encryption algorithm to be used for archive encryption.
@@ -182,7 +185,7 @@ return [
          * When set to 'default', we'll use ZipArchive::EM_AES_256 if it is
          * available on your system.
          */
-        'encryption' => 'default',
+        'encryption' => $backupArchiveEncryptionEnabled ? 'default' : null,
 
         /*
          * The number of attempts, in case the backup command encounters an exception

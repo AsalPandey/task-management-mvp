@@ -96,7 +96,7 @@ present.
 | `WEBPUSH_VAPID_*` | one valid subject/public/private key set per environment |
 | `WEBPUSH_QUEUE` | `notifications` |
 | `BACKUP_DISKS` | private off-site disk, normally `s3` |
-| `BACKUP_ARCHIVE_PASSWORD` | strong server-only secret when encrypted archives are supported |
+| `BACKUP_ARCHIVE_PASSWORD` | strong server-only secret to enable AES archive encryption; blank explicitly disables archive encryption |
 | `BACKUP_NOTIFICATION_EMAIL` | monitored operations mailbox |
 | `SENTRY_LARAVEL_DSN` | optional; blank disables the paid integration |
 | `SENTRY_RELEASE` | deployed Git SHA or immutable release identifier when Sentry is enabled |
@@ -104,6 +104,11 @@ present.
 The VAPID private key, application key, database password, SMTP password, object
 storage secret, setup token, and backup password are secrets. Do not place any
 of them in command history, Git, build logs, or client-side JavaScript.
+
+An empty `BACKUP_ARCHIVE_PASSWORD` is supported for destinations that provide an
+approved equivalent encryption control, but it does not encrypt the ZIP itself.
+Set a nonblank password when archive-level encryption is required, escrow it
+separately from the archive, and include decryption in every restore rehearsal.
 
 If TLS terminates at a reverse proxy, the host must pass trustworthy forwarded
 scheme/host headers and Laravel proxy trust must be configured to the provider's
@@ -254,6 +259,17 @@ The scheduler creates a database backup daily, cleans retained backups, and chec
 health. The default retention is 14 daily, 8 weekly, 12 monthly, and 2 yearly,
 subject to a 5 GB cleanup threshold. Production requires a private off-site disk,
 an operations mailbox, and encryption when the storage/provider supports it.
+`mysqldump` or `mariadb-dump` must be executable by the scheduler account (normally
+through its non-interactive `PATH`); verify this from cron rather than only from an
+SSH shell.
+
+The scheduled `backup:run --only-db` intentionally covers the database only. The
+current release has no user-upload workflow, and its durable application state is
+in MariaDB. If persistent files are added under `storage/app/private` or a private
+object-store prefix, back them up separately on a matching schedule and restore
+the database and file snapshot as one recovery point. Do not put `.env` inside a
+routine application archive: escrow its required values in the approved secrets
+store and retain a redacted configuration manifest with the release record.
 
 A successful backup command proves archive creation, not recoverability. Before
 each migration record the archive identity, size, checksum, off-site presence, and

@@ -23,20 +23,21 @@ $run('migrate:fresh');
 if (! Schema::hasColumn('users', 'security_stamp')) {
     throw new RuntimeException('Fresh migration missing stamp');
 }
-$run('migrate:rollback', ['--step' => 1]);
+$migration = require database_path('migrations/2026_09_16_000001_add_security_stamp_to_users.php');
+$migration->down();
 $id = DB::table('users')->insertGetId(['name' => 'Upgrade fixture', 'email' => 'upgrade@example.test', 'password' => password_hash('fixture-password', PASSWORD_BCRYPT), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
 $before = (array) DB::table('users')->find($id);
-$run('migrate');
+$migration->up();
 $after = (array) DB::table('users')->find($id);
 unset($after['security_stamp']);
 if ($before !== $after) {
     throw new RuntimeException('Upgrade altered pre-existing user data');
 }
-$run('migrate:rollback', ['--step' => 1]);
+$migration->down();
 if (Schema::hasColumn('users', 'security_stamp') || (array) DB::table('users')->find($id) !== $before) {
     throw new RuntimeException('Rollback did not preserve user data');
 }
-$run('migrate');
+$migration->up();
 if (! Schema::hasColumn('users', 'security_stamp') || DB::table('users')->count() !== 1) {
     throw new RuntimeException('Reapplication failed');
 }
