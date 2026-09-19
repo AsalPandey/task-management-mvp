@@ -13,15 +13,25 @@ use Illuminate\Validation\ValidationException;
 
 class CompanySetupService
 {
-    public function setup(array $data, bool $force = false): User
+    public function setup(array $data): User
     {
-        if (! $force && User::query()->exists()) {
-            throw ValidationException::withMessages([
-                'email' => 'The application is already installed.',
-            ]);
-        }
-
         return DB::transaction(function () use ($data) {
+            $usersExist = User::query()->lockForUpdate()->exists();
+            if ($usersExist) {
+                $existing = User::query()
+                    ->where('email', $data['email'])
+                    ->with('role')
+                    ->first();
+
+                if ($existing?->hasRole('manager') && $existing->isActive() && CompanySetting::isInstalled()) {
+                    return $existing;
+                }
+
+                throw ValidationException::withMessages([
+                    'email' => 'The application is already installed. Existing accounts and credentials were not changed.',
+                ]);
+            }
+
             app(RolesTableSeeder::class)->run();
             app(PermissionsTableSeeder::class)->run();
 
@@ -45,23 +55,21 @@ class CompanySetupService
                 ],
             );
 
-            return User::query()->updateOrCreate(
-                ['email' => $data['email']],
-                [
-                    'name' => $data['name'],
-                    'password' => Hash::make($data['password']),
-                    'role_id' => $managerRole->id,
-                    'active' => true,
-                    'timezone' => $data['timezone'] ?? 'Asia/Kathmandu',
-                    'email_verified_at' => now(),
-                    'notification_preferences' => [
-                        'task_assigned' => true,
-                        'task_completed' => true,
-                        'deadline_reminder' => true,
-                        'team_updates' => true,
-                    ],
+            return User::query()->create([
+                'email' => $data['email'],
+                'name' => $data['name'],
+                'password' => Hash::make($data['password']),
+                'role_id' => $managerRole->id,
+                'active' => true,
+                'timezone' => $data['timezone'] ?? 'Asia/Kathmandu',
+                'email_verified_at' => now(),
+                'notification_preferences' => [
+                    'task_assigned' => true,
+                    'task_completed' => true,
+                    'deadline_reminder' => true,
+                    'team_updates' => true,
                 ],
-            );
+            ]);
         });
     }
 }

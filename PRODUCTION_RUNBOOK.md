@@ -3,6 +3,120 @@
 This runbook describes the supported production baseline for one company on one
 Laravel installation. It is an operations contract, not authorization to deploy.
 
+## New Company Installation
+
+This is the canonical, repeatable installation contract. A new company is one
+isolated application plus one isolated empty database. No dump, copied database,
+legacy record, demo seeder, or manual SQL is part of this procedure.
+
+1. Provision the platform described in sections 1–2. Point the web document root
+   at `public`, enable HTTPS, and grant the PHP/cron account write access only to
+   `storage/**` and `bootstrap/cache`.
+2. Deploy an immutable repository release. Create a new, empty `utf8mb4` database
+   and a least-privilege application database account. Confirm it contains zero
+   application tables.
+3. Copy `.env.example` to a private server-only `.env`. Set the mandatory values:
+   `APP_NAME`, `APP_ENV=production`, `APP_DEBUG=false`, canonical HTTPS `APP_URL`,
+   `APP_TIMEZONE`, all `DB_*` values, database session/cache/queue settings, secure
+   cookies, and a unique `APP_KEY` (generate it with `php artisan key:generate`).
+4. Supply the one-time bootstrap secrets `INITIAL_COMPANY_NAME`,
+   `INITIAL_MANAGER_NAME`, `INITIAL_MANAGER_EMAIL`, and a unique strong
+   `INITIAL_MANAGER_PASSWORD`. These have no fallback and must differ between
+   commercial installations. Do not pass the password on the command line.
+5. Install and build from locks:
+
+   ```bash
+   composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+   npm ci
+   npm run build
+   php artisan migrate --seed --force --no-interaction
+   php artisan app:setup-company --no-interaction
+   php artisan storage:link
+   php artisan optimize
+   ```
+
+   `migrate --seed` creates schema plus the three roles and their permissions; it
+   creates no users, projects, tasks, or demo data. `app:setup-company` creates the
+   company record and exactly one highest-authority `manager`. A safe rerun with
+   the same email returns the existing manager without resetting credentials or
+   company data. Any conflicting existing account stops setup.
+6. Remove `INITIAL_MANAGER_PASSWORD` from the active deployment environment after
+   bootstrap if the platform permits one-time secrets, then rebuild the config
+   cache. Retain it only in the approved secret escrow if disaster-recovery policy
+   requires it. Leave `APP_SETUP_TOKEN` empty unless deliberately using the
+   temporary first-boot web installer; clear it immediately after use.
+7. Start a database queue worker for both `default` and `notifications`, for
+   example a supervised `php artisan queue:work --queue=notifications,default`, or
+   use the bounded shared-hosting worker in section 5. Install the one-minute cron
+   entry `* * * * * php /absolute/path/artisan schedule:run` with captured failure
+   output. Run `php artisan schedule:list` to confirm reminders, overdue checks,
+   backup, cleanup, and backup monitoring.
+8. Configure feature-specific services: working `MAIL_*` for mail/operations
+   alerts; the VAPID subject/public/private key trio for Browser Push; and private
+   off-site backup disk credentials plus `BACKUP_ARCHIVE_PASSWORD`. Browser Push
+   is optional, but VAPID must be complete before enabling it. Sentry is optional.
+9. Sign in with the initial manager. Verify `/up`, login/logout, Profile & Security,
+   user creation and role boundaries, project/member creation, task assignment and
+   lifecycle, notifications, analytics/reports, queue consumption, scheduler
+   execution, and a restorable off-site backup. Never retain bootstrap test data in
+   a real company installation.
+
+### Environment classification
+
+- **Mandatory:** `APP_NAME`, `APP_ENV`, `APP_KEY`, `APP_DEBUG`, `APP_URL`,
+  `APP_TIMEZONE`, `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`,
+  `DB_USERNAME`, `DB_PASSWORD`, `SESSION_DRIVER`, `SESSION_SECURE_COOKIE`,
+  `CACHE_STORE`, `QUEUE_CONNECTION`, `QUEUE_FAILED_DRIVER`, `FILESYSTEM_DISK`,
+  and the four `INITIAL_*` values until first bootstrap completes.
+- **Feature-specific:** `MAIL_*`; `WEBPUSH_VAPID_*`, `WEBPUSH_QUEUE`, and push
+  delivery limits; `BACKUP_*` plus the selected disk's credentials; `SENTRY_*`;
+  and `APP_SETUP_TOKEN` only for the temporary web installer.
+- **Optional/defaulted:** locale, bcrypt rounds, maintenance, logging retention,
+  queue retry timing, and task-review SLA values. Review defaults before release.
+  `ALLOW_DEMO_SEEDING` must remain false and `DEMO_SEED_PASSWORD` blank in
+  production.
+
+### Package responsibility
+
+- **Included in repository:** Laravel source, all schema migrations, deterministic
+  role/permission seeders, bootstrap command, frontend/build configuration, PWA
+  manifest/icons/service worker/onboarding, queue jobs, scheduler definitions,
+  health endpoint, tests, CI fresh-install proof, and this runbook.
+- **Deployment-supplied:** `.env`, database/application/mail/object-store
+  credentials, unique `APP_KEY`, canonical URL/timezone, initial manager secrets,
+  VAPID private key, backup encryption secret, and optional monitoring DSN.
+- **Infrastructure-supplied:** compatible PHP/extensions, Composer, build-time
+  Node/npm, MariaDB/MySQL, HTTPS and web server, cron/worker execution, filesystem
+  permissions, dump tooling, monitoring, and private off-site backup storage.
+
+There is no fourth category of manual initialization data.
+
+### Mobile PWA installation acceptance
+
+The application automatically offers installation only after authentication on a
+device identified as mobile by browser/device signals—not viewport width. It does
+not promote installation on desktop. `Not Now` stores a 30-day device/browser
+cooldown; Settings → Notifications → Install Task Management remains available
+throughout. Standalone mode and the `appinstalled` event suppress the offer.
+
+When `beforeinstallprompt` is available, **Install App** invokes it only from the
+user's click. Otherwise the same action reveals Android browser-menu guidance or
+iPhone/iPad Safari Share → Add to Home Screen guidance. Installation never asks
+for notification permission; Browser Push remains a separate Settings action.
+
+After remote CI and HTTPS staging deployment, complete and record—not merely
+simulate—the following physical-device checks:
+
+- Android native: login, see the offer, confirm native install, find the icon,
+  launch standalone, verify session/navigation; then separately enable and test
+  Browser Push and notification deep links.
+- Android fallback: use installation help, choose the browser's Install app/Add
+  to Home screen action, confirm, and launch successfully.
+- iPhone/iPad: login in Safari, follow Add to Home Screen guidance, launch the
+  installed app, verify session/navigation, then separately test supported push.
+- Desktop: login with no automatic install promotion and test normal application
+  use; desktop push may be tested separately.
+
 ## 1. Hosting verdict
 
 **Supported only if specific shared-hosting features are available.** A VPS is not
@@ -79,6 +193,9 @@ present.
 | `APP_KEY` | unique `base64:` key generated once for this installation; preserve across releases |
 | `APP_TIMEZONE` | company operating timezone; currently `Asia/Kathmandu` |
 | `APP_SETUP_TOKEN` | empty after first setup unless the installer is deliberately enabled |
+| `INITIAL_COMPANY_NAME` | required by non-interactive first bootstrap; remove from runtime environment afterward if possible |
+| `INITIAL_MANAGER_NAME` / `INITIAL_MANAGER_EMAIL` | required identity for the first highest-authority manager |
+| `INITIAL_MANAGER_PASSWORD` | required unique deployment secret for first bootstrap; never put it in command arguments or Git |
 | `DB_*` | least-privilege application account; never database root |
 | `SESSION_DRIVER` | `database` |
 | `SESSION_SECURE_COOKIE` | `true` |
@@ -320,11 +437,12 @@ is not needed on the host. `storage:link` is idempotent once established. Ensure
 cron points to the new `current` release, start the worker strategy, then leave
 maintenance mode only after the post-deployment checks pass.
 
-First installation uses `php artisan migrate --seed --force`; the production
-seeder creates roles/permissions only. Create the first manager with
-`php artisan app:setup-company` using interactive secret input, or a temporary
-server-only setup token. Clear that token immediately after setup. Never enable
-demo seeding in production.
+First installation follows **New Company Installation** above. The production
+seeder creates roles/permissions only. Create the first manager non-interactively
+from the `INITIAL_*` deployment secrets with `php artisan app:setup-company
+--no-interaction`. Interactive secret input or the temporary server-only setup
+token are recovery alternatives, not the canonical automated path. Clear setup
+secrets after setup where supported. Never enable demo seeding in production.
 
 ## 14. Post-deployment checklist
 

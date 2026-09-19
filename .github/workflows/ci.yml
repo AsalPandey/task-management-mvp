@@ -107,6 +107,10 @@ jobs:
       MAIL_MAILER: array
       QUEUE_CONNECTION: sync
       SESSION_DRIVER: array
+      INITIAL_COMPANY_NAME: R3C CI Company
+      INITIAL_MANAGER_NAME: R3C CI Manager
+      INITIAL_MANAGER_EMAIL: manager@r3c-ci.example.invalid
+      INITIAL_MANAGER_PASSWORD: A-unique-CI-bootstrap-secret-123!
 
     services:
       mariadb:

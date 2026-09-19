@@ -12,20 +12,18 @@ class SetupCompany extends Command
         {--company= : Company name}
         {--name= : First manager name}
         {--email= : First manager email}
-        {--password= : First manager password}
         {--timezone=Asia/Kathmandu : Company timezone}
-        {--app-url= : Public application URL}
-        {--force : Re-run setup even when users already exist}';
+        {--app-url= : Public application URL}';
 
     protected $description = 'Create the initial company profile, roles, permissions, and first manager account.';
 
     public function handle(CompanySetupService $setup): int
     {
         $data = [
-            'company_name' => $this->option('company') ?: $this->ask('Company name'),
-            'name' => $this->option('name') ?: $this->ask('First manager name'),
-            'email' => $this->option('email') ?: $this->ask('First manager email'),
-            'password' => $this->option('password') ?: $this->secret('First manager password'),
+            'company_name' => $this->option('company') ?: config('company-bootstrap.company_name') ?: $this->prompt('Company name'),
+            'name' => $this->option('name') ?: config('company-bootstrap.manager_name') ?: $this->prompt('First manager name'),
+            'email' => $this->option('email') ?: config('company-bootstrap.manager_email') ?: $this->prompt('First manager email'),
+            'password' => config('company-bootstrap.manager_password') ?: $this->prompt('First manager password', true),
             'timezone' => $this->option('timezone') ?: 'Asia/Kathmandu',
             'app_url' => $this->option('app-url') ?: config('app.url'),
         ];
@@ -47,9 +45,18 @@ class SetupCompany extends Command
             return self::FAILURE;
         }
 
-        $user = $setup->setup($validator->validated(), (bool) $this->option('force'));
+        $user = $setup->setup($validator->validated());
         $this->info("Company setup complete. First manager: {$user->email}");
 
         return self::SUCCESS;
+    }
+
+    private function prompt(string $question, bool $secret = false): ?string
+    {
+        if (! $this->input->isInteractive()) {
+            return null;
+        }
+
+        return $secret ? $this->secret($question) : $this->ask($question);
     }
 }

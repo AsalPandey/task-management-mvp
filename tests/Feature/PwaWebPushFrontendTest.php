@@ -53,7 +53,8 @@ class PwaWebPushFrontendTest extends TestCase
             ->assertSee('rel="manifest"', false)
             ->assertSee('name="theme-color"', false)
             ->assertSee('apple-touch-icon', false)
-            ->assertSee('js/pwa.js', false);
+            ->assertSee('js/pwa.js', false)
+            ->assertDontSee('data-pwa-dialog', false);
 
         $user = User::factory()->create([
             'role_id' => Role::query()->where('name', 'team_member')->value('id'),
@@ -67,7 +68,9 @@ class PwaWebPushFrontendTest extends TestCase
             ->assertSee('Enable Notifications')
             ->assertSee('Send Test Notification')
             ->assertSee('Disable This Device')
-            ->assertSee('data-pwa-install', false)
+            ->assertSee('data-pwa-open', false)
+            ->assertSee('data-pwa-dialog', false)
+            ->assertSee('Having trouble installing?')
             ->assertSee('Disabling this device does not')
             ->assertSee('disable your other devices.');
     }
@@ -104,10 +107,25 @@ class PwaWebPushFrontendTest extends TestCase
             'form[action$="/logout"]',
             'previousUser !== userId',
             'beforeinstallprompt',
-            'task-management.install-dismissed',
+            'task-management.install-dismissed-at',
+            'task-management.installed-at',
+            'navigator.userAgentData?.mobile === true',
+            "window.matchMedia('(display-mode: standalone)')",
+            'installCooldownMs = 30 * 24 * 60 * 60 * 1000',
+            "installButton.textContent = installPrompt ? 'Install App' : 'View Installation Steps'",
+            "window.addEventListener('appinstalled'",
+            'Open this page in Safari',
+            'If this desktop browser supports installation',
+            'Notification.requestPermission()',
         ] as $expected) {
             $this->assertStringContainsString($expected, $script);
         }
+
+        $this->assertStringNotContainsString('window.innerWidth', $script);
+        $this->assertLessThan(
+            strpos($script, "document.addEventListener('DOMContentLoaded'"),
+            strpos($script, "window.addEventListener('beforeinstallprompt'"),
+        );
     }
 
     public function test_pwa_and_push_paths_respect_an_application_subdirectory(): void

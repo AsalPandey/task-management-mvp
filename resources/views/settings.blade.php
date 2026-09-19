@@ -372,14 +372,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 <section class="pwa-install-card notification-card-section" data-pwa-card aria-labelledby="installAppHeading">
                     <div>
                         <h3 id="installAppHeading">Install Task Management</h3>
-                        <p>Add the app to your home screen for faster access and an app-like display.</p>
+                        <p>Open the installation option for this browser and device. This remains available even if you previously selected Not Now.</p>
                     </div>
                     <div class="push-actions">
-                        <button type="button" class="btn-primary" data-pwa-install hidden>Install App</button>
-                        <button type="button" class="btn-secondary" data-pwa-dismiss>Dismiss</button>
+                        <button type="button" class="btn-primary" data-pwa-open>Install App</button>
                     </div>
                     <p class="push-privacy-note">
-                        On iPhone or iPad, use Safari's Share menu and choose “Add to Home Screen.”
+                        Installation is separate from Browser Push. Opening this option never requests notification permission.
                     </p>
                 </section>
 

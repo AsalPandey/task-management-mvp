@@ -51,6 +51,21 @@
 
             @include('partials.mobile-bottom-navigation')
         </div>
+        <div class="pwa-install-dialog" data-pwa-dialog hidden>
+            <div class="pwa-install-dialog__backdrop" data-pwa-dismiss></div>
+            <section class="pwa-install-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="pwaInstallTitle" aria-describedby="pwaInstallDescription">
+                <button type="button" class="pwa-install-dialog__close" data-pwa-dismiss aria-label="Close installation prompt">&times;</button>
+                <div class="pwa-install-dialog__icon" aria-hidden="true">TM</div>
+                <h2 id="pwaInstallTitle">Install Task Management</h2>
+                <p id="pwaInstallDescription">Add Task Management to your phone for faster access and a home-screen app experience.</p>
+                <div class="pwa-install-dialog__actions">
+                    <button type="button" class="btn-primary" data-pwa-install>Install App</button>
+                    <button type="button" class="btn-secondary" data-pwa-dismiss>Not Now</button>
+                </div>
+                <button type="button" class="pwa-install-dialog__help-link" data-pwa-help>Having trouble installing?</button>
+                <div class="pwa-install-dialog__guide" data-pwa-guide hidden></div>
+            </section>
+        </div>
         @stack('scripts')
     </body>
 </html>

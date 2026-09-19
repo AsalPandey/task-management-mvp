@@ -15,6 +15,10 @@
     let registration = null;
     let serverStatus = null;
     let installPrompt = null;
+    let automaticOfferTimer = null;
+    const installDismissedAtKey = 'task-management.install-dismissed-at';
+    const installedAtKey = 'task-management.installed-at';
+    const installCooldownMs = 30 * 24 * 60 * 60 * 1000;
 
     const secureContext = window.isSecureContext
         || ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -185,37 +189,135 @@
         showMessage('A test notification was queued for this device.', 'success');
     }
 
-    function installExperience() {
-        window.addEventListener('beforeinstallprompt', event => {
-            event.preventDefault();
-            installPrompt = event;
-            if (localStorage.getItem('task-management.install-dismissed') !== '1') {
-                document.querySelectorAll('[data-pwa-install]').forEach(button => {
-                    button.hidden = false;
-                });
-            }
+    function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+    }
+
+    function isMobileDevice() {
+        if (navigator.userAgentData?.mobile === true) return true;
+
+        const ipadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+        return ipadDesktopMode || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    }
+
+    function dismissalIsCoolingDown() {
+        const dismissedAt = Number(localStorage.getItem(installDismissedAtKey));
+        if (Number.isFinite(dismissedAt) && dismissedAt > 0) {
+            return Date.now() - dismissedAt < installCooldownMs;
+        }
+
+        if (localStorage.getItem('task-management.install-dismissed') === '1') {
+            localStorage.setItem(installDismissedAtKey, String(Date.now()));
+            localStorage.removeItem('task-management.install-dismissed');
+            return true;
+        }
+
+        return false;
+    }
+
+    function installationGuide() {
+        if (isStandalone() || localStorage.getItem(installedAtKey)) {
+            return '<p><strong>Task Management is already installed on this device.</strong></p>';
+        }
+
+        const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (ios) {
+            return '<p><strong>On iPhone or iPad:</strong></p><ol><li>Open this page in Safari.</li><li>Open the Share controls.</li><li>Choose <strong>Add to Home Screen</strong>, then confirm <strong>Add</strong>.</li></ol>';
+        }
+
+        if (!isMobileDevice()) {
+            return '<p>If this desktop browser supports installation, use its address-bar installation control or browser menu and follow the confirmation steps.</p>';
+        }
+
+        return '<p><strong>Install from your mobile browser:</strong></p><ol><li>Open the browser menu.</li><li>Choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li><li>Confirm the installation.</li></ol><p>Menu wording varies by browser.</p>';
+    }
+
+    function renderInstallDialog() {
+        const guide = document.querySelector('[data-pwa-guide]');
+        const installButton = document.querySelector('[data-pwa-install]');
+        if (guide) guide.innerHTML = installationGuide();
+        if (installButton) {
+            installButton.hidden = isStandalone() || Boolean(localStorage.getItem(installedAtKey));
+            installButton.textContent = installPrompt ? 'Install App' : 'View Installation Steps';
+        }
+    }
+
+    function openInstallDialog({ automatic = false } = {}) {
+        const dialog = document.querySelector('[data-pwa-dialog]');
+        if (!dialog) return;
+        if (automatic && (!userId || !isMobileDevice() || isStandalone() || localStorage.getItem(installedAtKey) || dismissalIsCoolingDown())) return;
+        if (automatic && document.querySelector('.swal2-container, dialog[open], [role="dialog"]:not(.pwa-install-dialog__panel)')) return;
+
+        renderInstallDialog();
+        document.querySelector('[data-pwa-guide]').hidden = Boolean(installPrompt) && !isStandalone();
+        dialog.hidden = false;
+        document.body.classList.add('pwa-install-dialog-open');
+        dialog.querySelector('[data-pwa-install]:not([hidden]), [data-pwa-dismiss]')?.focus();
+    }
+
+    function closeInstallDialog({ remember = false } = {}) {
+        document.querySelector('[data-pwa-dialog]')?.setAttribute('hidden', '');
+        document.body.classList.remove('pwa-install-dialog-open');
+        if (remember) localStorage.setItem(installDismissedAtKey, String(Date.now()));
+    }
+
+    function scheduleAutomaticInstallOffer() {
+        clearTimeout(automaticOfferTimer);
+        automaticOfferTimer = setTimeout(() => openInstallDialog({ automatic: true }), 1500);
+    }
+
+    function bindInstallExperience() {
+        if (isStandalone()) localStorage.setItem(installedAtKey, String(Date.now()));
+        document.querySelectorAll('[data-pwa-open]').forEach(button => {
+            button.addEventListener('click', () => openInstallDialog());
         });
         document.querySelectorAll('[data-pwa-install]').forEach(button => {
             button.addEventListener('click', async () => {
-                if (!installPrompt) return;
-                await installPrompt.prompt();
+                if (!installPrompt) {
+                    document.querySelector('[data-pwa-guide]').hidden = false;
+                    return;
+                }
+
+                const prompt = installPrompt;
                 installPrompt = null;
-                button.hidden = true;
+                await prompt.prompt();
+                const choice = await prompt.userChoice;
+                if (choice.outcome === 'accepted') closeInstallDialog();
+                else renderInstallDialog();
+            });
+        });
+        document.querySelectorAll('[data-pwa-help]').forEach(button => {
+            button.addEventListener('click', () => {
+                document.querySelector('[data-pwa-guide]').hidden = false;
             });
         });
         document.querySelectorAll('[data-pwa-dismiss]').forEach(button => {
-            button.addEventListener('click', () => {
-                localStorage.setItem('task-management.install-dismissed', '1');
-                button.closest('[data-pwa-card]')?.remove();
-            });
+            button.addEventListener('click', () => closeInstallDialog({ remember: true }));
         });
+
+        if (userId && isMobileDevice() && !isStandalone()) scheduleAutomaticInstallOffer();
     }
+
+    window.addEventListener('beforeinstallprompt', event => {
+        event.preventDefault();
+        installPrompt = event;
+        if (document.readyState !== 'loading') scheduleAutomaticInstallOffer();
+    });
+
+    window.addEventListener('appinstalled', () => {
+        localStorage.removeItem(installDismissedAtKey);
+        localStorage.setItem(installedAtKey, String(Date.now()));
+        installPrompt = null;
+        closeInstallDialog();
+    });
 
     document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('[data-push-enable]').forEach(button => button.addEventListener('click', () => enable().catch(error => showMessage(error.message, 'error'))));
         document.querySelectorAll('[data-push-disable]').forEach(button => button.addEventListener('click', () => disable().catch(error => showMessage(error.message, 'error'))));
         document.querySelectorAll('[data-push-test]').forEach(button => button.addEventListener('click', () => testNotification().catch(error => showMessage(error.message, 'error'))));
-        installExperience();
+        bindInstallExperience();
 
         if (supported && userId) {
             const previousUser = localStorage.getItem('task-management.push-user');
