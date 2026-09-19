@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\TaskState;
+use App\Exceptions\StaleTaskEditException;
 use App\Exceptions\TaskTransitionException;
 use App\Models\Project;
 use App\Models\Task;
@@ -141,9 +142,16 @@ class TaskLifecycleService
 
             Gate::forUser($actor)->authorize('update', $lockedTask);
 
+            $expectedVersion = $data['expected_version'] ?? $data['lock_version'] ?? $data['version'] ?? $context?->expectedVersion;
+            unset($data['expected_version'], $data['lock_version'], $data['version']);
+
+            if ($expectedVersion !== null && (int) $expectedVersion !== (int) $lockedTask->lock_version) {
+                throw new StaleTaskEditException($lockedTask, (int) $expectedVersion, (int) $lockedTask->lock_version);
+            }
+
             if ($lockedTask->machineState()->isFinal()) {
                 throw ValidationException::withMessages([
-                    'task' => 'Final tasks require a dedicated workflow action.',
+                    'task' => 'Completed and cancelled tasks require a dedicated workflow action.',
                 ]);
             }
 
@@ -172,7 +180,10 @@ class TaskLifecycleService
                 $merged['assigned_by'] = $actor->id;
             }
 
-            $lockedTask->update($merged);
+            $nextVersion = ((int) $lockedTask->lock_version) + 1;
+            $lockedTask->fill($merged);
+            $lockedTask->forceFill(['lock_version' => $nextVersion]);
+            $lockedTask->save();
             $lockedTask->refresh()->load(['project', 'assignee', 'reviewer']);
             $this->recordHistory($lockedTask, 'updated', ['old' => $old, 'new' => $merged], $actor);
             $changedFields = $this->changedEventValues($beforeEventValues, $this->taskEventValues($lockedTask));

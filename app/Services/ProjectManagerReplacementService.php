@@ -113,8 +113,11 @@ class ProjectManagerReplacementService
             $oldReviewerModel = $item['old_reviewer'];
             $oldReviewerId = $item['old_reviewer_id'];
 
-            // Atomically update reviewer_id
-            $task->forceFill(['reviewer_id' => $newPmId])->save();
+            // Atomically update reviewer_id and advance version
+            $task->forceFill([
+                'reviewer_id' => $newPmId,
+                'lock_version' => ((int) $task->lock_version) + 1,
+            ])->save();
 
             $changes = [
                 'reviewer_id' => [

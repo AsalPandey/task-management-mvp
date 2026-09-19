@@ -25,11 +25,14 @@ final readonly class TaskOperationContext
 
     public CarbonImmutable $occurredAt;
 
+    public ?int $expectedVersion;
+
     private function __construct(
         ?int $actorId,
         string $source,
         ?string $correlationId = null,
         ?CarbonInterface $occurredAt = null,
+        ?int $expectedVersion = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9._-]{0,31}$/', $source)) {
             throw new InvalidArgumentException('Task operation source must be a valid string of at most 32 characters.');
@@ -43,25 +46,26 @@ final readonly class TaskOperationContext
         $this->source = $source;
         $this->correlationId = $correlationId;
         $this->occurredAt = CarbonImmutable::instance($occurredAt ?? now());
+        $this->expectedVersion = $expectedVersion;
     }
 
-    public static function web(User $actor, ?string $correlationId = null, ?CarbonInterface $occurredAt = null): self
+    public static function web(User $actor, ?string $correlationId = null, ?CarbonInterface $occurredAt = null, ?int $expectedVersion = null): self
     {
-        return new self($actor->id, self::SOURCE_WEB, $correlationId, $occurredAt);
+        return new self($actor->id, self::SOURCE_WEB, $correlationId, $occurredAt, $expectedVersion);
     }
 
-    public static function system(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null): self
+    public static function system(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null, ?int $expectedVersion = null): self
     {
-        return new self($actorId, self::SOURCE_SYSTEM, $correlationId, $occurredAt);
+        return new self($actorId, self::SOURCE_SYSTEM, $correlationId, $occurredAt, $expectedVersion);
     }
 
-    public static function console(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null): self
+    public static function console(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null, ?int $expectedVersion = null): self
     {
-        return new self($actorId, self::SOURCE_CONSOLE, $correlationId, $occurredAt);
+        return new self($actorId, self::SOURCE_CONSOLE, $correlationId, $occurredAt, $expectedVersion);
     }
 
-    public static function test(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null): self
+    public static function test(?int $actorId = null, ?string $correlationId = null, ?CarbonInterface $occurredAt = null, ?int $expectedVersion = null): self
     {
-        return new self($actorId, self::SOURCE_TEST, $correlationId, $occurredAt);
+        return new self($actorId, self::SOURCE_TEST, $correlationId, $occurredAt, $expectedVersion);
     }
 }

@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const projectMembership = window.projectMembership || {};
     const canManageTasks = document.body.dataset.userRole !== 'team_member';
     let editTaskId = null;
+    let editTaskVersion = null;
 
     if (!canManageTasks) {
         newTaskBtn?.style.setProperty('display', 'none');
@@ -204,9 +205,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function populateTaskEditForm(task) {
+        if (!taskModal || !taskForm) return;
+        taskModal.classList.add('active');
+        document.getElementById('submitBtn').textContent = '✏️ Update Task';
+        document.getElementById('modalTitle').textContent = 'Edit Task';
+        taskForm.querySelector('#taskTitle').value = task.title || '';
+        taskForm.querySelector('#taskDescription').value = task.description || '';
+        taskForm.querySelector('#taskProject').value = task.project_id || '';
+        populateAssignees(task.project_id || '', task.assignee_id || '');
+        populateReviewers(task.project_id || '', task.reviewer_id || '');
+        taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
+        taskForm.querySelector('#taskStartDate').value = task.start_date || '';
+        taskForm.querySelector('#taskDueDate').value = task.due_date || '';
+        taskForm.querySelector('#taskDueDate').disabled = true;
+        taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
+        taskForm.querySelector('#taskReviewDueDate').disabled = true;
+        taskForm.querySelector('#taskReviewer').disabled = true;
+        taskForm.querySelector('#taskComments').value = task.comments || '';
+        editTaskId = task.id;
+        editTaskVersion = task.lock_version ?? task.version ?? 1;
+    }
+
     function resetModal() {
         taskForm.reset();
         editTaskId = null;
+        editTaskVersion = null;
         setLoading(false);
         // Do not show any message on modal reset/close
     }
@@ -215,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
         newTaskBtn.addEventListener('click', function() {
             taskForm.reset();
             editTaskId = null;
+            editTaskVersion = null;
             taskReviewerSelect.disabled = false;
             document.getElementById('taskDueDate').disabled = false;
             document.getElementById('taskReviewDueDate').disabled = false;
@@ -263,24 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.task) {
-                    const task = data.task;
-                    taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
-                    document.getElementById('modalTitle').textContent = 'Edit Task';
-                    taskForm.querySelector('#taskTitle').value = task.title || '';
-                    taskForm.querySelector('#taskDescription').value = task.description || '';
-                    taskForm.querySelector('#taskProject').value = task.project_id || '';
-                    populateAssignees(task.project_id || '', task.assignee_id || '');
-                    populateReviewers(task.project_id || '', task.reviewer_id || '');
-                    taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
-                    taskForm.querySelector('#taskStartDate').value = task.start_date || '';
-                    taskForm.querySelector('#taskDueDate').value = task.due_date || '';
-                    taskForm.querySelector('#taskDueDate').disabled = true;
-                    taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
-                    taskForm.querySelector('#taskReviewDueDate').disabled = true;
-                    taskForm.querySelector('#taskReviewer').disabled = true;
-                    taskForm.querySelector('#taskComments').value = task.comments || '';
-                    editTaskId = task.id;
+                    populateTaskEditForm(data.task);
                 } else {
                     showMessage('Could not fetch task data.', false);
                 }
@@ -341,7 +349,9 @@ document.addEventListener('DOMContentLoaded', function() {
             start_date: formData.get('taskStartDate'),
             comments: formData.get('taskComments'),
         };
-        if (!editTaskId) {
+        if (editTaskId) {
+            payload.expected_version = editTaskVersion;
+        } else {
             payload.reviewer_id = formData.get('taskReviewer');
             payload.due_date = formData.get('taskDueDate');
             payload.review_due_date = formData.get('taskReviewDueDate') || null;
@@ -373,9 +383,47 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify(payload),
         })
-        .then(r => r.json())
-        .then(data => {
+        .then(async response => {
+            const data = await response.json().catch(() => ({}));
             setLoading(false);
+
+            if (response.status === 409) {
+                const conflictMsg = data.message || 'This task changed after you opened it. Your update was not saved. Review the latest version and try again.';
+                const latestTask = data.task;
+
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Edit Conflict',
+                    text: conflictMsg,
+                    showCancelButton: true,
+                    confirmButtonText: 'Reload latest task',
+                    cancelButtonText: 'Keep viewing mine',
+                    confirmButtonColor: '#3085d6',
+                    cancelButtonColor: '#6c757d',
+                }).then((choice) => {
+                    if (choice.isConfirmed) {
+                        if (latestTask) {
+                            populateTaskEditForm(latestTask);
+                        } else if (editTaskId) {
+                            fetch(`/tasks/${editTaskId}/edit`, { headers: { 'Accept': 'application/json' } })
+                                .then(r => r.json())
+                                .then(latestData => {
+                                    if (latestData.success && latestData.task) {
+                                        populateTaskEditForm(latestData.task);
+                                    }
+                                });
+                        }
+                    }
+                });
+                return;
+            }
+
+            if (!response.ok) {
+                const message = firstErrorMessage(data, 'An error occurred while saving the task.');
+                showMessage(message, false);
+                return;
+            }
+
             if (data.task && editTaskId) {
                 showMessage('Task updated.');
                 if (data.moved) {
@@ -513,26 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.task) {
-                    const task = data.task;
-                    const taskModal = document.getElementById('taskModal');
-                    const taskForm = document.getElementById('taskForm');
-                    taskModal.classList.add('active');
-                    document.getElementById('submitBtn').textContent = '✏️ Update Task';
-                    document.getElementById('modalTitle').textContent = 'Edit Task';
-                    taskForm.querySelector('#taskTitle').value = task.title || '';
-                    taskForm.querySelector('#taskDescription').value = task.description || '';
-                    taskForm.querySelector('#taskProject').value = task.project_id || '';
-                    populateAssignees(task.project_id || '', task.assignee_id || '');
-                    populateReviewers(task.project_id || '', task.reviewer_id || '');
-                    taskForm.querySelector('#taskPriority').value = task.priority || 'Medium';
-                    taskForm.querySelector('#taskStartDate').value = task.start_date || '';
-                    taskForm.querySelector('#taskDueDate').value = task.due_date || '';
-                    taskForm.querySelector('#taskDueDate').disabled = true;
-                    taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
-                    taskForm.querySelector('#taskReviewDueDate').disabled = true;
-                    taskForm.querySelector('#taskReviewer').disabled = true;
-                    taskForm.querySelector('#taskComments').value = task.comments || '';
-                    editTaskId = task.id;
+                    populateTaskEditForm(data.task);
                 } else {
                     showMessage('Could not fetch task data.', false);
                 }

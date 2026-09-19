@@ -64,6 +64,11 @@ class Task extends Model
         'completed_at' => 'datetime',
         'deadline_reminder_sent_at' => 'datetime',
         'overdue_notification_sent_at' => 'datetime',
+        'lock_version' => 'integer',
+    ];
+
+    protected $attributes = [
+        'lock_version' => 1,
     ];
 
     public const PRIORITIES = ['Low', 'Medium', 'High'];

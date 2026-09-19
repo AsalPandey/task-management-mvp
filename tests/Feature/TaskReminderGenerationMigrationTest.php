@@ -41,7 +41,7 @@ class TaskReminderGenerationMigrationTest extends TestCase
             ]));
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 5,
+                '--step' => 6,
                 '--force' => true,
             ]));
 
@@ -70,12 +70,12 @@ class TaskReminderGenerationMigrationTest extends TestCase
             $this->assertSame($fingerprint, $task->overdue_notification_generation);
 
             $after = (array) DB::connection('r2b1_upgrade')->table('tasks')->find($id);
-            unset($after['deadline_reminder_generation'], $after['overdue_notification_generation']);
+            unset($after['deadline_reminder_generation'], $after['overdue_notification_generation'], $after['lock_version']);
             $this->assertSame($before, $after);
 
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 5,
+                '--step' => 6,
                 '--force' => true,
             ]));
             $this->assertFalse(Schema::connection('r2b1_upgrade')->hasColumn('tasks', 'deadline_reminder_generation'));

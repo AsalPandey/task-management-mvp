@@ -53,6 +53,9 @@ class TaskUpdateRequest extends FormRequest
             'progress' => 'sometimes|required|integer|min:0|max:99',
             'start_date' => 'nullable|date',
             'comments' => 'nullable|string',
+            'expected_version' => ['sometimes', 'required', 'integer', 'min:1'],
+            'lock_version' => ['sometimes', 'required', 'integer', 'min:1'],
+            'version' => ['sometimes', 'required', 'integer', 'min:1'],
         ];
     }
 
@@ -64,7 +67,10 @@ class TaskUpdateRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 $task = $this->route('task');
-                if ($task instanceof Task && $task->machineState()->isFinal() && $this->all() !== []) {
+                $expectedVersion = $this->input('expected_version') ?? $this->input('lock_version') ?? $this->input('version');
+                $isStale = $expectedVersion !== null && $task instanceof Task && (int) $expectedVersion !== (int) $task->lock_version;
+
+                if (! $isStale && $task instanceof Task && $task->machineState()->isFinal() && $this->all() !== []) {
                     $validator->errors()->add(
                         'task',
                         'Completed and cancelled tasks require a dedicated workflow action.',

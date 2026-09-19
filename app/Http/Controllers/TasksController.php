@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Contracts\TaskTransitionCommand;
 use App\Enums\TaskState;
 use App\Exceptions\DuplicateTaskOperationException;
+use App\Exceptions\StaleTaskEditException;
 use App\Exceptions\TaskNotificationDispatchException;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\ApproveTaskRequest;
@@ -218,13 +219,17 @@ class TasksController extends Controller
     public function update(TaskUpdateRequest $request, Task $task, TaskLifecycleService $tasks)
     {
         try {
+            $validated = $request->validated();
+            $expectedVersion = $validated['expected_version'] ?? $validated['lock_version'] ?? $validated['version'] ?? null;
             $updated = $tasks->update(
                 $task,
-                $request->validated(),
+                $validated,
                 $request->user(),
                 TaskOperationContext::web(
                     $request->user(),
                     $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+                    null,
+                    $expectedVersion !== null ? (int) $expectedVersion : null,
                 ),
             );
 
@@ -233,6 +238,15 @@ class TasksController extends Controller
                 'moved' => $updated->machineState() === TaskState::Completed,
                 'task' => $this->formatTask($updated),
             ]);
+        } catch (StaleTaskEditException $exception) {
+            $freshTask = Task::find($task->id);
+
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'current_version' => $exception->currentVersion,
+                'expected_version' => $exception->expectedVersion,
+                'task' => $freshTask ? $this->formatTask($freshTask, $request->user()) : null,
+            ], 409);
         } catch (TaskNotificationDispatchException $exception) {
             Log::warning('Task operation succeeded but notification dispatch failed.', [
                 'operation' => $exception->operation,
@@ -627,9 +641,13 @@ class TasksController extends Controller
 
     private function operationContext(Request $request): TaskOperationContext
     {
+        $expectedVersion = $request->input('expected_version') ?? $request->input('lock_version') ?? $request->input('version');
+
         return TaskOperationContext::web(
             $request->user(),
             $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
+            null,
+            $expectedVersion !== null ? (int) $expectedVersion : null,
         );
     }
 
@@ -645,6 +663,15 @@ class TasksController extends Controller
             $result = $executor->execute($task, $actor, $command, $context);
 
             return $this->transitionResponse($result, $message);
+        } catch (StaleTaskEditException $exception) {
+            $freshTask = Task::find($task->id);
+
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'current_version' => $exception->currentVersion,
+                'expected_version' => $exception->expectedVersion,
+                'task' => $freshTask ? $this->formatTask($freshTask, $actor) : null,
+            ], 409);
         } catch (TaskNotificationDispatchException $exception) {
             Log::warning('Task operation succeeded but notification dispatch failed.', [
                 'operation' => $exception->operation,

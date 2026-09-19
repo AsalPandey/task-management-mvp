@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Contracts\TaskTransitionCommand;
+use App\Exceptions\StaleTaskEditException;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
@@ -37,7 +38,12 @@ class TaskTransitionExecutor
             Gate::forUser($actor)->authorize($command->ability(), $lockedTask);
             $command->validate($lockedTask, $actor);
 
+            if ($context?->expectedVersion !== null && (int) $context->expectedVersion !== (int) $lockedTask->lock_version) {
+                throw new StaleTaskEditException($lockedTask, (int) $context->expectedVersion, (int) $lockedTask->lock_version);
+            }
+
             $effects = $command->apply($lockedTask, $actor, $context);
+            $lockedTask->forceFill(['lock_version' => ((int) $lockedTask->lock_version) + 1])->save();
             $lockedTask->refresh()->load(['project', 'assignee', 'reviewer']);
 
             $history = $this->recordHistory($lockedTask, $actor, $effects->historyAction, $effects->historyChanges);

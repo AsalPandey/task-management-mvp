@@ -18,6 +18,8 @@ final class TaskViewData
         $data = [
             'id' => (int) $task->id,
             'task_uid' => $task->task_uid,
+            'lock_version' => (int) ($task->lock_version ?? 1),
+            'version' => (int) ($task->lock_version ?? 1),
             'project_id' => $task->project_id === null ? null : (int) $task->project_id,
             'title' => $task->title,
             'description' => $task->description,
