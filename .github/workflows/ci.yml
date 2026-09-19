@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - phase-2-task-architecture
+      - "release/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: SQLite, quality, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: bcmath, curl, dom, fileinfo, intl, mbstring, openssl, pdo_sqlite
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install locked PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Create an ephemeral application key
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Validate and audit PHP dependencies
+        run: |
+          composer validate --strict
+          composer audit --locked --no-interaction
+
+      - name: Check PHP syntax
+        run: find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Check PHP formatting
+        run: vendor/bin/pint --test
+
+      - name: Run maintained SQLite suite
+        run: php artisan test
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Audit frontend dependencies
+        run: |
+          npm audit --audit-level=moderate
+          npm audit --omit=dev --audit-level=moderate
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Compile Blade templates
+        run: |
+          php artisan view:cache
+          php artisan view:clear
+
+      - name: Reject tracked secrets and generated source changes
+        shell: bash
+        run: |
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "A real .env file must not be tracked."
+            exit 1
+          fi
+
+          if git ls-files | grep -E '\.(pem|p12|pfx|sqlite|sqlite3|db|dump)$' >/dev/null; then
+            echo "A private-key or database artifact is tracked."
+            exit 1
+          fi
+
+          git diff --check
+          git diff --exit-code
+
+  mariadb:
+    name: MariaDB migrations and concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_ENV: testing
+      CACHE_STORE: array
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: task_management_phase28_ci_main
+      DB_USERNAME: root
+      DB_PASSWORD: ci_root_password
+      MAIL_MAILER: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+
+    services:
+      mariadb:
+        image: mariadb:10.4.32
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: task_management_phase28_ci_main
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: bcmath, curl, dom, fileinfo, intl, mbstring, openssl, pdo_mysql
+          coverage: none
+
+      - name: Install locked PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Create an ephemeral application key
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Run disposable MariaDB qualification
+        run: bash scripts/ci-mariadb-tests.sh
