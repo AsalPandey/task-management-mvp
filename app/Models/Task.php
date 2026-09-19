@@ -255,6 +255,11 @@ class Task extends Model
         return $this->hasMany(TaskSubmission::class);
     }
 
+    public function latestSubmission()
+    {
+        return $this->hasOne(TaskSubmission::class)->latestOfMany('submitted_at');
+    }
+
     public function approvals()
     {
         return $this->hasMany(TaskApproval::class);

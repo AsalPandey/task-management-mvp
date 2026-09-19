@@ -148,20 +148,22 @@ class ProjectsController extends Controller
             ],
         ]);
 
-        $member = User::query()->with('role')->findOrFail($data['user_id']);
+        $member = DB::transaction(function () use ($data, $project) {
+            $lockedProject = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $member = User::query()->with('role')->whereKey($data['user_id'])->lockForUpdate()->firstOrFail();
 
-        if (! $member->hasAnyRole(['project_manager', 'team_member'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only active project managers and team members can be added as project members.',
-            ], 422);
-        }
+            if (! $member->isActive() || ! $member->hasAnyRole(['project_manager', 'team_member'])) {
+                abort(422, 'Only active project managers and team members can be added as project members.');
+            }
 
-        $project->members()->syncWithoutDetaching([
-            $member->id => ['added_by' => auth()->id()],
-        ]);
+            $lockedProject->members()->syncWithoutDetaching([
+                $member->id => ['added_by' => auth()->id()],
+            ]);
+            $this->recordHistory($lockedProject, 'member_added', ['user_id' => $member->id]);
 
-        $this->recordHistory($project, 'member_added', ['user_id' => $member->id]);
+            return $member;
+        }, 3);
+
         $member->notify(new ProjectMemberAdded($project, auth()->user()));
 
         return response()->json([
@@ -178,22 +180,28 @@ class ProjectsController extends Controller
             'user_id' => ['required', 'exists:users,id'],
         ]);
 
-        $activeTasks = $project->tasks()
-            ->where('assignee_id', $data['user_id'])
-            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-            ->exists();
+        $member = DB::transaction(function () use ($data, $project) {
+            $lockedProject = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            $member = User::query()->whereKey($data['user_id'])->lockForUpdate()->firstOrFail();
+            $activeTasks = $lockedProject->tasks()
+                ->where(function ($query) use ($member) {
+                    $query->where('assignee_id', $member->id)
+                        ->orWhere('reviewer_id', $member->id);
+                })
+                ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
+                ->lockForUpdate()
+                ->exists();
 
-        if ($activeTasks) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot remove a member with active tasks in this project.',
-            ], 422);
-        }
+            if ($activeTasks) {
+                abort(422, 'Cannot remove a member with active tasks in this project.');
+            }
 
-        $member = User::query()->findOrFail($data['user_id']);
-        $project->members()->detach($member->id);
+            $lockedProject->members()->detach($member->id);
+            $this->recordHistory($lockedProject, 'member_removed', ['user_id' => $member->id]);
 
-        $this->recordHistory($project, 'member_removed', ['user_id' => $member->id]);
+            return $member;
+        }, 3);
+
         $member->notify(new ProjectMemberRemoved($project, auth()->user()));
 
         return response()->json([

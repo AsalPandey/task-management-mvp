@@ -36,7 +36,7 @@ body { background: #f7f8fa; }
         <button type="submit" class="btn-small btn-primary">Apply</button>
         <button type="button" class="btn-small" id="resetFilters">Reset</button>
         <button type="button" class="export-btn" id="exportCSV" data-export-url="{{ route('analytics.export.csv', request()->query()) }}">Export CSV</button>
-        <button type="button" class="export-btn" id="exportPDF" data-export-url="{{ route('analytics.export.pdf', request()->query()) }}">Export PDF</button>
+        <button type="button" class="export-btn" id="printReport" data-export-url="{{ route('analytics.export.print', request()->query()) }}">Print Report</button>
     </form>
     <!-- No data message -->
     <div id="noDataMsg" style="display:none; color:#888; text-align:center; margin:2rem 0; font-size:1.1rem;">No data for selected range.</div>
@@ -58,7 +58,6 @@ body { background: #f7f8fa; }
         <div class="metric-card blue">
             <div class="metric-header">
                 <div class="metric-icon">📊</div>
-                <div class="metric-trend">+12%</div>
             </div>
             <div class="metric-value">{{ $totalActiveTasks }}</div>
             <div class="metric-label">Active Workflow</div>
@@ -67,7 +66,6 @@ body { background: #f7f8fa; }
         <div class="metric-card green">
             <div class="metric-header">
                 <div class="metric-icon">🎯</div>
-                <div class="metric-trend">+8%</div>
             </div>
             <div class="metric-value">{{ $completionRate }}%</div>
             <div class="metric-label">Completion Rate</div>
@@ -76,7 +74,6 @@ body { background: #f7f8fa; }
         <div class="metric-card purple">
             <div class="metric-header">
                 <div class="metric-icon">📈</div>
-                <div class="metric-trend">+5%</div>
             </div>
             <div class="metric-value">{{ $avgProgress }}%</div>
             <div class="metric-label">Average Progress</div>
@@ -85,7 +82,6 @@ body { background: #f7f8fa; }
         <div class="metric-card red">
             <div class="metric-header">
                 <div class="metric-icon">⚠️</div>
-                <div class="metric-trend">-2%</div>
             </div>
             <div class="metric-value">{{ $overdueTasks }}</div>
             <div class="metric-label">Overdue Tasks</div>
@@ -259,7 +255,7 @@ new Chart(ctxOverdue, {
 document.getElementById('exportCSV').onclick = function() {
     window.location.href = this.dataset.exportUrl;
 };
-document.getElementById('exportPDF').onclick = function() {
+document.getElementById('printReport').onclick = function() {
     window.open(this.dataset.exportUrl, '_blank');
 };
 </script>

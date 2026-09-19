@@ -72,6 +72,7 @@ class TaskStatusConversionMigrationTest extends TestCase
         $this->assertDatabaseCount('tasks', 4);
 
         $defaultStatusId = DB::table('tasks')->insertGetId([
+            'task_uid' => (string) Str::ulid(),
             'title' => 'Database default state',
             'priority' => 'Medium',
             'progress' => 0,
@@ -95,6 +96,7 @@ class TaskStatusConversionMigrationTest extends TestCase
         $migration->down();
         DB::table('tasks')->insert([
             [
+                'task_uid' => (string) Str::ulid(),
                 'title' => 'Known status',
                 'priority' => 'Medium',
                 'status' => 'In Progress',
@@ -103,6 +105,7 @@ class TaskStatusConversionMigrationTest extends TestCase
                 'updated_at' => now(),
             ],
             [
+                'task_uid' => (string) Str::ulid(),
                 'title' => 'Unknown status',
                 'priority' => 'Medium',
                 'status' => 'Mystery',

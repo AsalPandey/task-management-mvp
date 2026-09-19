@@ -92,7 +92,7 @@ class AnalyticsExportSecurityTest extends TestCase
         $this->seed();
         [, , $member, $outsideMember, , $outsideProject] = $this->fixtures();
 
-        foreach (['analytics.export.csv', 'analytics.export.pdf'] as $route) {
+        foreach (['analytics.export.csv', 'analytics.export.print'] as $route) {
             $this->actingAs($member)
                 ->get(route($route, [
                     'project' => $outsideProject->id,
@@ -111,7 +111,7 @@ class AnalyticsExportSecurityTest extends TestCase
         $this->task($outsideProject, $outsideMember, TaskState::InProgress);
 
         $managerExport = $this->actingAs($manager)
-            ->get(route('analytics.export.pdf'))
+            ->get(route('analytics.export.print'))
             ->assertOk()
             ->assertHeader('content-type', 'text/html; charset=UTF-8')
             ->assertSee($outsideMember->name)
@@ -120,13 +120,13 @@ class AnalyticsExportSecurityTest extends TestCase
         $this->assertStringNotContainsString('<script', mb_strtolower($managerExport->getContent()));
 
         $this->actingAs($projectManager)
-            ->get(route('analytics.export.pdf'))
+            ->get(route('analytics.export.print'))
             ->assertOk()
             ->assertSee($member->name)
             ->assertDontSee($outsideMember->name);
 
         $empty = $this->actingAs($manager)
-            ->get(route('analytics.export.pdf', [
+            ->get(route('analytics.export.print', [
                 'assignee' => PHP_INT_MAX,
                 'dateFrom' => now()->subDay()->toDateString(),
                 'dateTo' => now()->toDateString(),

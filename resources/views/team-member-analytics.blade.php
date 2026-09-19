@@ -78,10 +78,6 @@ body { background: #f7f8fa; }
             <canvas id="completionTrendChart" height="120"></canvas>
         </div>
         <div class="chart-card">
-            <h3>⏰ Overdue Trend (Last 7 Days)</h3>
-            <canvas id="overdueTrendChart" height="120"></canvas>
-        </div>
-        <div class="chart-card">
             <h3>📊 Status Breakdown</h3>
             <canvas id="statusBreakdownChart" height="120"></canvas>
         </div>
@@ -147,31 +143,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     data: Object.values(completionTrendData),
                     borderColor: '#4f8cff',
                     backgroundColor: 'rgba(79,140,255,0.1)',
-                    fill: true,
-                    tension: 0.3,
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
-            }
-        });
-    }
-    
-    // Overdue Trend Chart (simulate with zero data for now)
-    const overdueData = Object.fromEntries(Object.keys(completionTrendData).map(day => [day, 0]));
-    const ctx2 = document.getElementById('overdueTrendChart');
-    if (ctx2) {
-        new Chart(ctx2, {
-            type: 'line',
-            data: {
-                labels: Object.keys(overdueData),
-                datasets: [{
-                    label: 'Overdue Tasks',
-                    data: Object.values(overdueData),
-                    borderColor: '#ff6b6b',
-                    backgroundColor: 'rgba(255,107,107,0.1)',
                     fill: true,
                     tension: 0.3,
                 }]

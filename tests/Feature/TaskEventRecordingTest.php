@@ -14,6 +14,7 @@ use App\Services\TaskLifecycleService;
 use App\Support\UlidGenerator;
 use App\ValueObjects\TaskOperationContext;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -316,7 +317,7 @@ class TaskEventRecordingTest extends TestCase
         $this->assertSame([1, 2], $task->events()->pluck('sequence')->all());
     }
 
-    public function test_recorder_requires_a_persisted_task_with_a_uid(): void
+    public function test_recorder_requires_a_persisted_task_and_schema_rejects_a_missing_uid(): void
     {
         $recorder = app(TaskEventRecorder::class);
         $unpersisted = new Task(['title' => 'Unpersisted task']);
@@ -333,7 +334,8 @@ class TaskEventRecordingTest extends TestCase
             $this->assertDatabaseCount('task_events', 0);
         }
 
-        $taskId = DB::table('tasks')->insertGetId([
+        $this->expectException(QueryException::class);
+        DB::table('tasks')->insertGetId([
             'title' => 'Task without UID',
             'priority' => 'Medium',
             'status' => 'Not Started',
@@ -342,13 +344,6 @@ class TaskEventRecordingTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->expectException(InvalidArgumentException::class);
-        $recorder->record(
-            Task::query()->findOrFail($taskId),
-            TaskEventRecorder::CREATED,
-            TaskOperationContext::test(),
-            [],
-        );
     }
 
     public function test_completion_and_reopen_record_canonical_events_on_the_same_task(): void

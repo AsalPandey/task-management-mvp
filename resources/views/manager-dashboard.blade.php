@@ -463,7 +463,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <rect x="3" y="14" width="7" height="7" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </div>
-                        <div class="metric-trend">+12%</div>
                     </div>
                     <div class="metric-value">{{ $currentActiveCount }}</div>
                     <div class="metric-label">Active Tasks</div>
@@ -476,7 +475,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </div>
-                        <div class="metric-trend">+8%</div>
                     </div>
                     <div class="metric-value">{{ $todayCompletedCount }}</div>
                     <div class="metric-label">Completed Today</div>
@@ -489,7 +487,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <polyline points="22,12 18,12 15,21 9,3 6,12 2,12" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </div>
-                        <div class="metric-trend">+5%</div>
                     </div>
                     <div class="metric-value">{{ $statusCounts['In Progress'] ?? 0 }}</div>
                     <div class="metric-label">In Progress</div>
@@ -504,7 +501,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </div>
-                        <div class="metric-trend">-2%</div>
                     </div>
                     <div class="metric-value">{{ $todayOverdueTasks->count() }}</div>
                     <div class="metric-label">Overdue</div>

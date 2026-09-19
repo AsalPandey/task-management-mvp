@@ -87,7 +87,7 @@ class TeamManagementController extends Controller
                 app(AccountLifecycleService::class)->assertCanChangeRole($lockedUser, (int) $data['role_id'], $authUser);
             }
             $lockedUser->update($data);
-        });
+        }, 3);
 
         return response()->json(UserPayload::account($user->refresh()->load('role')));
     }
@@ -103,7 +103,7 @@ class TeamManagementController extends Controller
                 $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 app(AccountLifecycleService::class)->assertCanDelete($lockedUser, $authUser);
                 $lockedUser->delete();
-            });
+            }, 3);
         } catch (AccountLifecycleException $e) {
             return response()->json([
                 'success' => false,
@@ -135,7 +135,7 @@ class TeamManagementController extends Controller
                 $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 app(AccountLifecycleService::class)->assertCanDeactivate($lockedUser, $authUser);
                 $lockedUser->forceFill(['active' => false])->save();
-            });
+            }, 3);
         } catch (AccountLifecycleException $e) {
             return response()->json([
                 'success' => false,

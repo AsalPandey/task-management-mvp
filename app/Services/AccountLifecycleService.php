@@ -48,11 +48,41 @@ class AccountLifecycleService
     public function assertCanChangeRole(User $user, int $newRoleId, User $actor): void
     {
         $currentRole = $user->role;
+        $newRole = Role::query()->findOrFail($newRoleId);
+
         if ($currentRole && $currentRole->name === 'manager') {
-            $newRole = Role::query()->find($newRoleId);
-            if ($newRole && $newRole->name !== 'manager') {
+            if ($newRole->name !== 'manager') {
                 $this->assertNotLastActiveManager($user, 'change the role of');
             }
+        }
+
+        if ($newRole->name === 'team_member') {
+            $this->assertNoActiveManagedProjects($user, 'change the role of');
+        }
+
+        $activeReviewDuties = Task::query()
+            ->with('project:id,project_manager_id')
+            ->where('reviewer_id', $user->id)
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
+            ->lockForUpdate()
+            ->get();
+
+        $wouldInvalidateDuty = $activeReviewDuties->contains(function (Task $task) use ($newRole, $user): bool {
+            if ($newRole->name === 'manager') {
+                return false;
+            }
+
+            return $newRole->name !== 'project_manager'
+                || ! $task->project
+                || (int) $task->project->project_manager_id !== (int) $user->id
+                || (int) $task->assignee_id === (int) $user->id;
+        });
+
+        if ($wouldInvalidateDuty) {
+            throw new AccountLifecycleException(
+                409,
+                'Cannot change the role of a user who is the reviewer for active tasks. Reassign their reviewer duties first.',
+            );
         }
     }
 

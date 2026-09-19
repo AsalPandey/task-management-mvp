@@ -50,7 +50,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
     Route::get('/analytics/export/csv', [AnalyticsController::class, 'exportCsv'])->middleware('throttle:10,1')->name('analytics.export.csv');
-    Route::get('/analytics/export/pdf', [AnalyticsController::class, 'exportPdf'])->middleware('throttle:10,1')->name('analytics.export.pdf');
+    Route::get('/analytics/print', [AnalyticsController::class, 'exportPrint'])->middleware('throttle:10,1')->name('analytics.export.print');
 
     Route::get('/projects', [ProjectsController::class, 'index'])->name('projects');
     Route::post('/projects', [ProjectsController::class, 'store'])->name('projects.store');

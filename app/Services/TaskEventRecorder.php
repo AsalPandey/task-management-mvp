@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\DuplicateTaskOperationException;
 use App\Models\Task;
 use App\Models\TaskEvent;
 use App\Support\UlidGenerator;
@@ -145,6 +146,9 @@ class TaskEventRecorder
                     'actor_id' => $context->actorId,
                     'source' => $context->source,
                     'correlation_id' => $context->correlationId,
+                    'operation_key' => $context->correlationId === null
+                        ? null
+                        : hash('sha256', implode('|', [$eventType, (string) $context->actorId, $context->correlationId])),
                     'changed_fields' => $changedFields,
                     'metadata' => $metadata,
                     'occurred_at' => $context->occurredAt,
@@ -152,6 +156,14 @@ class TaskEventRecorder
 
                 return $event;
             } catch (UniqueConstraintViolationException $exception) {
+                $message = strtolower($exception->getMessage());
+                if (str_contains($message, 'unique constraint failed: task_events.operation_key')
+                    || str_contains($message, 'task_events_operation_key_unique')) {
+                    throw new DuplicateTaskOperationException(
+                        'This task operation has already been recorded.',
+                        previous: $exception,
+                    );
+                }
                 $lastException = $exception;
             }
         }

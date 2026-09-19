@@ -18,9 +18,11 @@ class CanonicalTaskSchemaTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_canonical_fields_are_nullable_without_changing_existing_task_attributes(): void
+    public function test_canonical_uid_is_mandatory_without_changing_other_task_attributes(): void
     {
+        $uid = (string) Str::ulid();
         $id = DB::table('tasks')->insertGetId([
+            'task_uid' => $uid,
             'title' => 'Existing task',
             'priority' => 'Medium',
             'status' => 'In Progress',
@@ -29,6 +31,7 @@ class CanonicalTaskSchemaTest extends TestCase
             'updated_at' => now(),
         ]);
         DB::table('tasks')->insert([
+            'task_uid' => (string) Str::ulid(),
             'title' => 'Another existing task',
             'priority' => 'Medium',
             'status' => 'Not Started',
@@ -41,10 +44,10 @@ class CanonicalTaskSchemaTest extends TestCase
         $this->assertSame('Existing task', $first->title);
         $this->assertSame('In Progress', $first->status);
         $this->assertSame(40, $first->progress);
-        $this->assertNull($first->task_uid);
+        $this->assertSame($uid, $first->task_uid);
         $this->assertNull($first->completed_at);
         $this->assertNull($first->completed_by);
-        $this->assertSame(2, Task::query()->whereNull('task_uid')->count());
+        $this->assertSame(0, Task::query()->whereNull('task_uid')->count());
     }
 
     public function test_task_uid_is_not_mass_assignable_and_numeric_route_binding_is_unchanged(): void
@@ -62,7 +65,7 @@ class CanonicalTaskSchemaTest extends TestCase
         $this->assertSame('/tasks/'.$task->id.'/edit', route('tasks.edit', $task, false));
     }
 
-    public function test_duplicate_non_null_task_uids_are_rejected_while_multiple_nulls_are_allowed(): void
+    public function test_duplicate_task_uids_are_rejected(): void
     {
         $uid = (string) Str::ulid();
         $first = $this->createTask(['title' => 'First UID task']);

@@ -14,6 +14,7 @@ final class TaskViewData
      */
     public function make(Task $task, User $viewer): array
     {
+        $task->loadMissing('latestSubmission.submittedBy');
         $data = [
             'id' => (int) $task->id,
             'task_uid' => $task->task_uid,
@@ -35,6 +36,11 @@ final class TaskViewData
             'submitted_at' => $task->submitted_at?->toAtomString(),
             'review_started_at' => $task->review_started_at?->toAtomString(),
             'completed_at' => $task->completed_at?->toAtomString(),
+            'latest_submission' => $task->latestSubmission ? [
+                'note' => $task->latestSubmission->submission_note,
+                'submitted_at' => $task->latestSubmission->submitted_at?->toAtomString(),
+                'submitted_by' => $task->latestSubmission->submittedBy?->name,
+            ] : null,
             'project' => $task->project ? [
                 'id' => (int) $task->project->id,
                 'name' => $task->project->name,

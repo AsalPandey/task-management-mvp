@@ -18,8 +18,18 @@
 </style>
 @endpush
 @push('scripts')
+@php
+    $reopenReviewerCandidates = $reviewerCandidates->map(function ($reviewer) {
+        return [
+            'id' => $reviewer->id,
+            'name' => $reviewer->name,
+            'role' => $reviewer->role?->name,
+        ];
+    })->values();
+@endphp
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const reviewerCandidates = @json($reopenReviewerCandidates);
     document.querySelectorAll('.timeline-btn').forEach(button => {
         button.addEventListener('click', async function() {
             button.disabled = true;
@@ -55,6 +65,32 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (!reason.isConfirmed) return;
 
+            const instructions = await Swal.fire({
+                title: 'Instructions for the assignee',
+                input: 'textarea',
+                inputLabel: 'These instructions are visible to the assignee. The management reason remains private.',
+                inputAttributes: { maxlength: '5000' },
+                showCancelButton: true,
+                confirmButtonText: 'Continue',
+            });
+            if (!instructions.isConfirmed) return;
+
+            const reviewerOptions = Object.fromEntries(reviewerCandidates.map(candidate => [
+                candidate.id,
+                `${candidate.name} (${candidate.role === 'project_manager' ? 'Project Manager' : 'Manager'})`,
+            ]));
+            const reviewer = await Swal.fire({
+                title: 'Reviewer for future work',
+                input: 'select',
+                inputOptions: reviewerOptions,
+                inputValue: button.dataset.reviewerId || '',
+                inputPlaceholder: 'Select an eligible reviewer',
+                showCancelButton: true,
+                confirmButtonText: 'Continue',
+                inputValidator: value => value ? undefined : 'An eligible reviewer is required.',
+            });
+            if (!reviewer.isConfirmed) return;
+
             const deadline = await Swal.fire({
                 title: 'Set revision deadline',
                 input: 'date',
@@ -78,7 +114,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     body: JSON.stringify({
                         reopen_reason: reason.value.trim(),
+                        rework_instructions: instructions.value.trim() || null,
                         revision_due_date: deadline.value,
+                        reviewer_id: Number(reviewer.value),
                     }),
                 });
                 const data = await response.json().catch(() => ({}));
@@ -133,7 +171,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button type="button" class="btn-small btn-secondary timeline-btn"
                             data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
                         @can('reopen', $task)
-                            <button class="btn-small btn-primary reopen-revision-btn" data-url="{{ route('tasks.reopen', $task) }}">Reopen for Revision</button>
+                            <button class="btn-small btn-primary reopen-revision-btn"
+                                data-url="{{ route('tasks.reopen', $task) }}"
+                                data-reviewer-id="{{ $task->reviewer?->isActive() ? $task->reviewer_id : '' }}">Reopen for Revision</button>
                         @else
                             <span aria-label="Reopen unavailable">&mdash;</span>
                         @endcan

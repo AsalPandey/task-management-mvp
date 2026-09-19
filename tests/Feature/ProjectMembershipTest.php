@@ -85,7 +85,10 @@ class ProjectMembershipTest extends TestCase
     public function test_task_forms_offer_active_non_members_through_explicit_membership_flow(): void
     {
         $manager = $this->manager;
-        $member = User::factory()->create(['role_id' => Role::where('name', 'team_member')->first()->id]);
+        $member = User::factory()->create([
+            'name' => 'Existing Project Member',
+            'role_id' => Role::where('name', 'team_member')->first()->id,
+        ]);
         $nonMember = User::factory()->create([
             'name' => 'Not Yet A Project Member',
             'role_id' => Role::where('name', 'team_member')->first()->id,

@@ -1231,6 +1231,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p>{{ $activeRevisionCycle->formal_feedback }}</p>
                     </div>
                 @endif
+                @if (in_array($taskState, [\App\Enums\TaskState::Submitted, \App\Enums\TaskState::InReview], true) && $task->latestSubmission?->submission_note)
+                    <div class="task-comments">
+                        <strong>Submission note</strong>
+                        <p>{{ $task->latestSubmission->submission_note }}</p>
+                        <small>Submitted by {{ $task->latestSubmission->submittedBy?->name ?? 'Assignee' }}</small>
+                    </div>
+                @endif
                 @if($task->comments)
                 <div class="task-comments">
                     <p>{{ $task->comments }}</p>
@@ -1348,7 +1355,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 @if ($taskState === \App\Enums\TaskState::Cancelled)
                     <div class="task-meta">Cancelled {{ $task->cancelled_at?->format('m/d/Y H:i') }}</div>
                 @endif
-                @if(! $taskState->isFinal() && $activeDeadline?->isPast())
+                @if(! $taskState->isFinal() && ($task->activeDeadlineGeneration()?->isOverdue() ?? false))
                 <div class="overdue-warning">
                     <p><span aria-hidden="true">⚠️</span> Overdue</p>
                 </div>

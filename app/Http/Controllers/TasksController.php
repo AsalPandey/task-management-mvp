@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Contracts\TaskTransitionCommand;
 use App\Enums\TaskState;
+use App\Exceptions\DuplicateTaskOperationException;
 use App\Exceptions\TaskNotificationDispatchException;
 use App\Http\Middleware\EnsureTaskCorrelationId;
 use App\Http\Requests\ApproveTaskRequest;
@@ -83,7 +84,7 @@ class TasksController extends Controller
                     TaskState::Cancelled->value,
                 ]),
             )
-            ->with(['project', 'assignee', 'creator', 'reviewer', 'activeRevisionCycle'])
+            ->with(['project', 'assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'latestSubmission.submittedBy'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['priority'] ?? null, fn ($query, $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn ($query, $project) => $query->where('project_id', $project))
@@ -174,49 +175,8 @@ class TasksController extends Controller
     {
         $correlationId = $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE);
 
-        if ($correlationId) {
-            $existingEvent = DB::table('task_events')
-                ->where('event_type', TaskEventRecorder::CREATED)
-                ->where('correlation_id', $correlationId)
-                ->first();
-
-            if ($existingEvent) {
-                if ((int) $existingEvent->actor_id !== (int) $request->user()->id) {
-                    return response()->json([
-                        'message' => 'The provided correlation ID is already associated with another request.',
-                    ], 409);
-                }
-
-                $existingTask = Task::find($existingEvent->task_id);
-                if ($existingTask) {
-                    $incomingData = $request->validated();
-                    $incomingHash = $this->taskCreationPayloadHash($incomingData);
-                    $metadata = is_string($existingEvent->metadata)
-                        ? json_decode($existingEvent->metadata, true)
-                        : (array) ($existingEvent->metadata ?? []);
-                    $storedHash = is_array($metadata) ? ($metadata['payload_hash'] ?? null) : null;
-                    $matches = $storedHash !== null
-                        ? hash_equals($storedHash, $incomingHash)
-                        : $this->isPayloadMatchingTask($existingTask, $incomingData);
-
-                    if (! $matches) {
-                        return response()->json([
-                            'message' => 'Idempotency key collision with mismatched payload.',
-                        ], 409);
-                    }
-
-                    return response()->json([
-                        'success' => true,
-                        'moved' => false,
-                        'task' => $this->formatTask($existingTask, $request->user()),
-                        'idempotent_replay' => true,
-                    ]);
-                }
-
-                return response()->json([
-                    'message' => 'The provided correlation ID is already associated with a completed operation.',
-                ], 409);
-            }
+        if ($correlationId && ($replay = $this->resolveTaskCreationReplay($request, $correlationId))) {
+            return $replay;
         }
 
         try {
@@ -234,6 +194,9 @@ class TasksController extends Controller
                 'moved' => false,
                 'task' => $this->formatTask($task, $request->user()),
             ]);
+        } catch (DuplicateTaskOperationException) {
+            return $this->resolveTaskCreationReplay($request, $correlationId)
+                ?? response()->json(['message' => 'The duplicate operation could not be resolved safely.'], 409);
         } catch (TaskNotificationDispatchException $exception) {
             Log::warning('Task operation succeeded but notification dispatch failed.', [
                 'operation' => $exception->operation,
@@ -333,6 +296,10 @@ class TasksController extends Controller
         $command = app()->make(ReopenApprovedTask::class, [
             'reopenReason' => $request->validated()['reopen_reason'],
             'revisionDueDate' => $request->validated()['revision_due_date'],
+            'reviewerId' => isset($request->validated()['reviewer_id'])
+                ? (int) $request->validated()['reviewer_id']
+                : null,
+            'reworkInstructions' => $request->validated()['rework_instructions'] ?? null,
         ]);
 
         return $this->executeTransition(
@@ -702,6 +669,60 @@ class TasksController extends Controller
             'success' => true,
             'message' => $message,
             'task' => $this->formatTask($result->task),
+        ]);
+    }
+
+    private function resolveTaskCreationReplay(TaskStoreRequest $request, ?string $correlationId)
+    {
+        if (! $correlationId) {
+            return null;
+        }
+
+        $existingEvent = DB::table('task_events')
+            ->where('event_type', TaskEventRecorder::CREATED)
+            ->where('correlation_id', $correlationId)
+            ->first();
+
+        if (! $existingEvent) {
+            return null;
+        }
+
+        if ((int) $existingEvent->actor_id !== (int) $request->user()->id) {
+            return response()->json([
+                'message' => 'The provided correlation ID is already associated with another request.',
+            ], 409);
+        }
+
+        $existingTask = Task::find($existingEvent->task_id);
+        if (! $existingTask) {
+            return response()->json([
+                'message' => 'The provided correlation ID is already associated with a completed operation.',
+            ], 409);
+        }
+
+        $this->authorize('view', $existingTask);
+
+        $incomingData = $request->validated();
+        $incomingHash = $this->taskCreationPayloadHash($incomingData);
+        $metadata = is_string($existingEvent->metadata)
+            ? json_decode($existingEvent->metadata, true)
+            : (array) ($existingEvent->metadata ?? []);
+        $storedHash = is_array($metadata) ? ($metadata['payload_hash'] ?? null) : null;
+        $matches = $storedHash !== null
+            ? hash_equals($storedHash, $incomingHash)
+            : $this->isPayloadMatchingTask($existingTask, $incomingData);
+
+        if (! $matches) {
+            return response()->json([
+                'message' => 'Idempotency key collision with mismatched payload.',
+            ], 409);
+        }
+
+        return response()->json([
+            'success' => true,
+            'moved' => false,
+            'task' => $this->formatTask($existingTask, $request->user()),
+            'idempotent_replay' => true,
         ]);
     }
 

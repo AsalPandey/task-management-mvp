@@ -5,6 +5,7 @@ namespace App\TaskTransitions;
 use App\Contracts\TaskTransitionCommand;
 use App\Enums\TaskState;
 use App\Exceptions\TaskTransitionException;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskRevisionCycle;
 use App\Models\User;
@@ -22,7 +23,11 @@ final class ReopenApprovedTask implements TaskTransitionCommand
         private readonly TaskNotificationDispatcher $notifications,
         private readonly string $reopenReason,
         private readonly string $revisionDueDate,
+        private readonly ?int $reviewerId = null,
+        private readonly ?string $reworkInstructions = null,
     ) {}
+
+    private ?User $replacementReviewer = null;
 
     public function ability(): string
     {
@@ -52,15 +57,39 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             throw TaskTransitionException::invariant('assignee_id', 'An active task assignee and project are required.');
         }
 
+        $lockedProject = Project::query()->whereKey($task->project_id)->lockForUpdate()->firstOrFail();
+        $task->setRelation('project', $lockedProject);
+
         if (! $task->project->members()->whereKey($task->assignee_id)->exists()) {
             throw TaskTransitionException::invariant('assignee_id', 'The assignee must still belong to the task project.');
         }
 
-        if (! $task->reviewer) {
-            throw TaskTransitionException::missingData('reviewer_id', 'An eligible reviewer is required.');
+        if ($this->reviewerId !== null && (int) $this->reviewerId !== (int) $task->reviewer_id) {
+            $replacement = User::query()->with('role')->whereKey($this->reviewerId)->lockForUpdate()->first();
+            if (! $replacement) {
+                throw TaskTransitionException::missingData('reviewer_id', 'The replacement reviewer is unavailable.');
+            }
+            $this->reviewers->assertEligibleForTask($replacement, $task);
+            $this->replacementReviewer = $replacement;
         }
 
-        $this->reviewers->assertEligibleForTask($task->reviewer, $task);
+        if (! $this->replacementReviewer) {
+            if (! $task->reviewer) {
+                throw TaskTransitionException::missingData(
+                    'reviewer_id',
+                    'The previous reviewer is unavailable. Select an eligible reviewer for future review work.',
+                );
+            }
+
+            try {
+                $this->reviewers->assertEligibleForTask($task->reviewer, $task);
+            } catch (TaskTransitionException) {
+                throw TaskTransitionException::invariant(
+                    'reviewer_id',
+                    'The previous reviewer is no longer eligible. Select an eligible reviewer for future review work.',
+                );
+            }
+        }
 
         if (! $task->approval) {
             throw TaskTransitionException::missingData('approval_id', 'The completed task must retain an approval record.');
@@ -75,6 +104,8 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             ->max('cycle_number')) + 1;
         $approval = $task->approval;
         $approvalReference = "task_approvals:{$approval->id}";
+        $previousReviewerId = $task->reviewer_id;
+        $futureReviewerId = $this->replacementReviewer?->id ?? $previousReviewerId;
 
         $cycle = TaskRevisionCycle::query()->create([
             'task_id' => $task->id,
@@ -84,6 +115,7 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             'revision_due_date' => $dueDate,
             'origin' => 'completed_reopen',
             'reopen_reason' => trim($this->reopenReason),
+            'formal_feedback' => filled($this->reworkInstructions) ? trim($this->reworkInstructions) : null,
         ]);
 
         $changes = [
@@ -97,6 +129,9 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             'active_revision_cycle_id' => ['before' => $task->active_revision_cycle_id, 'after' => (int) $cycle->id],
             'revision_due_date' => ['before' => $task->revision_due_date?->toDateString(), 'after' => $dueDate->toDateString()],
         ];
+        if ((int) $previousReviewerId !== (int) $futureReviewerId) {
+            $changes['reviewer_id'] = ['before' => $previousReviewerId, 'after' => $futureReviewerId];
+        }
         $priorCompletionTimestamp = $task->completed_at?->toAtomString();
 
         $task->forceFill([
@@ -109,6 +144,7 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             'revision_count' => (int) $task->revision_count + 1,
             'active_revision_cycle_id' => $cycle->id,
             'revision_due_date' => $dueDate,
+            'reviewer_id' => $futureReviewerId,
         ])->save();
 
         $cycleReference = "task_revision_cycles:{$cycle->id}";
@@ -121,7 +157,15 @@ final class ReopenApprovedTask implements TaskTransitionCommand
                 'revision_cycle_id' => (int) $cycle->id,
                 'changes' => $changes,
             ],
-            events: [
+            events: array_values(array_filter([
+                (int) $previousReviewerId !== (int) $futureReviewerId ? [
+                    'type' => TaskEventRecorder::REVIEWER_REASSIGNED,
+                    'changed_fields' => ['reviewer_id' => $changes['reviewer_id']],
+                    'metadata' => [
+                        'reason' => 'completed_reopen_reconciliation',
+                        'prior_approval_reference' => $approvalReference,
+                    ],
+                ] : null,
                 [
                     'type' => TaskEventRecorder::REOPENED,
                     'changed_fields' => collect($changes)
@@ -148,7 +192,7 @@ final class ReopenApprovedTask implements TaskTransitionCommand
                         'state_after' => TaskState::RevisionRequested->value,
                     ],
                 ],
-            ],
+            ])),
             afterCommit: fn (Task $committedTask) => $this->notifications
                 ->dispatchApprovedTaskReopened($committedTask, $actor),
             metadata: ['revision_cycle_id' => (int) $cycle->id],

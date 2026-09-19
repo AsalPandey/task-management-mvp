@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\CompletedTaskIndexRequest;
+use App\Models\User;
 use App\Services\TaskReadService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +21,7 @@ class CompletedTasksController extends Controller
             fn ($value) => $value !== null && $value !== '',
         );
         $query = $this->taskReads->completedVisibleTo($request->user())
-            ->with(['project', 'assignee', 'completedBy'])
+            ->with(['project', 'assignee', 'completedBy', 'reviewer.role'])
             ->when($filters['priority'] ?? null, fn (Builder $query, string $priority) => $query->where('priority', $priority))
             ->when($filters['project'] ?? null, fn (Builder $query, int $project) => $query->where('project_id', $project))
             ->when($filters['assignee'] ?? null, fn (Builder $query, int $assignee) => $query->where('assignee_id', $assignee));
@@ -35,7 +36,14 @@ class CompletedTasksController extends Controller
             ->paginate(self::COMPLETED_TASKS_PER_PAGE)
             ->withQueryString();
 
-        return view('completed-tasks', compact('completed'));
+        $reviewerCandidates = User::query()
+            ->where('active', true)
+            ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
+            ->with('role:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'role_id']);
+
+        return view('completed-tasks', compact('completed', 'reviewerCandidates'));
     }
 
     /**

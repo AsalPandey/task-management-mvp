@@ -42,7 +42,7 @@ class TeamDashboardController extends Controller
         $todayTotalTasks = $todayTasks->count();
         $todayInProgressTasks = $todayTasks->where('status', 'In Progress')->count();
         $todayOverdueTasks = $todayTasks
-            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false)
             ->count();
         $todayAvgProgress = $todayTotalTasks ? round($todayTasks->avg('progress')) : 0;
 
@@ -50,7 +50,7 @@ class TeamDashboardController extends Controller
         $currentTotalTasks = $currentTasks->count();
         $currentInProgressTasks = $currentTasks->where('status', 'In Progress')->count();
         $currentOverdueTasks = $currentTasks
-            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false)
+            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false)
             ->count();
 
         // Completion rate (today's completed vs today's total)
@@ -76,7 +76,7 @@ class TeamDashboardController extends Controller
 
         // Today's overdue list
         $todayOverdueList = $todayTasks
-            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false);
+            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false);
 
         // Today's productivity (last 7 days for context)
         $days = collect(range(0, 6))->map(function ($i) {
@@ -102,7 +102,7 @@ class TeamDashboardController extends Controller
         foreach ($todayTasks->sortByDesc('created_at')->take(5) as $task) {
             if ($task->status === 'Completed') {
                 $notifications->push(['type' => 'completed', 'text' => "Task '{$task->title}' was completed."]);
-            } elseif ($task->activeDeadline()?->isPast()) {
+            } elseif ($task->activeDeadlineGeneration()?->isOverdue()) {
                 $notifications->push(['type' => 'overdue', 'text' => "Task '{$task->title}' is overdue."]);
             } else {
                 $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."]);

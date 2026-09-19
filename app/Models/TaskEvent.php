@@ -11,6 +11,7 @@ class TaskEvent extends Model
         'event_uid',
         'task_id',
         'sequence',
+        'operation_key',
     ];
 
     protected $casts = [
@@ -29,6 +30,6 @@ class TaskEvent extends Model
 
     public function actor()
     {
-        return $this->belongsTo(User::class, 'actor_id');
+        return $this->belongsTo(User::class, 'actor_id')->withTrashed();
     }
 }

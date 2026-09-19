@@ -64,7 +64,7 @@ class AnalyticsController extends Controller
         ]);
     }
 
-    public function exportPdf(Request $request)
+    public function exportPrint(Request $request)
     {
         abort_unless(auth()->user()->hasAnyRole(['manager', 'project_manager']), 403);
         $data = $this->analyticsData($request);

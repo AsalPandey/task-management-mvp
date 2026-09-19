@@ -41,11 +41,12 @@ class TaskReminderGenerationMigrationTest extends TestCase
             ]));
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 3,
+                '--step' => 5,
                 '--force' => true,
             ]));
 
             $id = DB::connection('r2b1_upgrade')->table('tasks')->insertGetId([
+                'task_uid' => '00000000000000000000000001',
                 'title' => 'Preserved legacy reminder task',
                 'status' => 'in_progress',
                 'execution_due_date' => '2026-09-20',
@@ -74,7 +75,7 @@ class TaskReminderGenerationMigrationTest extends TestCase
 
             $this->assertSame(0, Artisan::call('migrate:rollback', [
                 '--database' => 'r2b1_upgrade',
-                '--step' => 3,
+                '--step' => 5,
                 '--force' => true,
             ]));
             $this->assertFalse(Schema::connection('r2b1_upgrade')->hasColumn('tasks', 'deadline_reminder_generation'));

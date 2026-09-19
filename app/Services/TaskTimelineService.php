@@ -36,6 +36,7 @@ final class TaskTimelineService
         $management = $viewer->can('viewManagementNotes', $task);
         $events = $task->events()
             ->with('actor:id,name')
+            ->reorder()
             ->orderByDesc('sequence')
             ->limit(min(max($limit, 1), 100))
             ->get()

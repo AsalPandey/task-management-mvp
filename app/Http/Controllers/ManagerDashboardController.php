@@ -52,7 +52,7 @@ class ManagerDashboardController extends Controller
         foreach ($recentTasks as $task) {
             if (($task->status ?? null) === 'Completed') {
                 $notifications->push(['type' => 'completed', 'text' => "Task '{$task->title}' was completed by ".($task->assignee ? $task->assignee->name : 'Unassigned').'.']);
-            } elseif ($task->activeDeadline()?->isPast()) {
+            } elseif ($task->activeDeadlineGeneration()?->isOverdue()) {
                 $notifications->push(['type' => 'overdue', 'text' => "Task '{$task->title}' is overdue."]);
             } else {
                 $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to ".($task->assignee ? $task->assignee->name : 'Unassigned').'.']);
@@ -62,7 +62,7 @@ class ManagerDashboardController extends Controller
         $statusCounts = $currentActiveTasks->groupBy('status')->map->count();
         $priorityCounts = $currentActiveTasks->groupBy('priority')->map->count();
         $todayOverdueTasks = $currentActiveTasks
-            ->filter(fn ($task) => $task->activeDeadline()?->isPast() ?? false);
+            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false);
 
         $achievements = [
             'Completed '.$todayCompletedCount.' tasks today',
