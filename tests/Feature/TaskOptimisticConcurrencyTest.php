@@ -102,6 +102,68 @@ class TaskOptimisticConcurrencyTest extends TestCase
         $this->assertSame('Second sequential edit', $task->fresh()->title);
     }
 
+    public function test_generic_update_rejects_missing_version_for_json_and_form_clients(): void
+    {
+        [$manager, , , $task] = $this->fixtures();
+
+        $this->actingAs($manager)->putJson(route('tasks.update', $task), [
+            'title' => 'JSON bypass attempt',
+        ])->assertUnprocessable()->assertJsonValidationErrors('expected_version');
+
+        $this->actingAs($manager)->put(route('tasks.update', $task), [
+            'title' => 'Form bypass attempt',
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('expected_version');
+
+        $this->assertSame('Concurrency baseline task', $task->fresh()->title);
+        $this->assertSame(1, $task->fresh()->lock_version);
+    }
+
+    public function test_generic_update_rejects_null_empty_and_malformed_versions(): void
+    {
+        [$manager, , , $task] = $this->fixtures();
+
+        foreach ([null, '', 'not-a-version'] as $invalidVersion) {
+            $this->actingAs($manager)->putJson(route('tasks.update', $task), [
+                'title' => 'Invalid version attempt',
+                'expected_version' => $invalidVersion,
+            ])->assertUnprocessable()->assertJsonValidationErrors('expected_version');
+        }
+
+        $this->assertSame('Concurrency baseline task', $task->fresh()->title);
+        $this->assertSame(1, $task->fresh()->lock_version);
+    }
+
+    public function test_generic_update_rejects_conflicting_version_aliases(): void
+    {
+        [$manager, , , $task] = $this->fixtures();
+
+        $this->actingAs($manager)->putJson(route('tasks.update', $task), [
+            'title' => 'Conflicting alias attempt',
+            'expected_version' => 1,
+            'lock_version' => 2,
+        ])->assertUnprocessable()->assertJsonValidationErrors('expected_version');
+
+        $this->assertSame('Concurrency baseline task', $task->fresh()->title);
+        $this->assertSame(1, $task->fresh()->lock_version);
+    }
+
+    public function test_each_supported_version_alias_can_supply_the_current_version(): void
+    {
+        [$manager, , , $task] = $this->fixtures();
+
+        foreach (['expected_version', 'lock_version', 'version'] as $index => $alias) {
+            $currentVersion = $index + 1;
+            $this->actingAs($manager)->putJson(route('tasks.update', $task), [
+                'title' => "Updated through {$alias}",
+                $alias => $currentVersion,
+            ])->assertOk();
+        }
+
+        $this->assertSame(4, $task->fresh()->lock_version);
+    }
+
     public function test_concurrent_edits_to_different_fields_conflict_without_silent_merge(): void
     {
         [$manager, , , $task] = $this->fixtures();

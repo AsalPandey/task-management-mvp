@@ -47,7 +47,10 @@ class TaskDeadlineGenerationTest extends TestCase
         $task->markDeadlineReminderSentForActiveGeneration();
         $consumed = $this->fingerprint($task->fresh());
 
-        $this->actingAs($f['manager'])->putJson(route('tasks.update', $task), ['title' => 'Renamed'])->assertOk();
+        $this->actingAs($f['manager'])->putJson(route('tasks.update', $task), [
+            'title' => 'Renamed',
+            'expected_version' => $task->lock_version,
+        ])->assertOk();
         $this->assertSame($consumed, $this->fingerprint($task->fresh()));
         $this->assertTrue($task->fresh()->deadlineReminderWasSentForActiveGeneration());
 
@@ -59,7 +62,10 @@ class TaskDeadlineGenerationTest extends TestCase
 
         $task->markDeadlineReminderSentForActiveGeneration();
         $beforeReassignment = $this->fingerprint($task->fresh());
-        $this->putJson(route('tasks.update', $task), ['assignee_id' => $f['other_assignee']->id])->assertOk();
+        $this->putJson(route('tasks.update', $task), [
+            'assignee_id' => $f['other_assignee']->id,
+            'expected_version' => $task->fresh()->lock_version,
+        ])->assertOk();
         $this->assertNotSame($beforeReassignment, $this->fingerprint($task->fresh()));
         $this->assertFalse($task->fresh()->deadlineReminderWasSentForActiveGeneration());
     }

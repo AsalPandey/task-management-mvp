@@ -53,7 +53,7 @@ class TaskUpdateRequest extends FormRequest
             'progress' => 'sometimes|required|integer|min:0|max:99',
             'start_date' => 'nullable|date',
             'comments' => 'nullable|string',
-            'expected_version' => ['sometimes', 'required', 'integer', 'min:1'],
+            'expected_version' => ['required_without_all:lock_version,version', 'integer', 'min:1'],
             'lock_version' => ['sometimes', 'required', 'integer', 'min:1'],
             'version' => ['sometimes', 'required', 'integer', 'min:1'],
         ];
@@ -67,6 +67,18 @@ class TaskUpdateRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 $task = $this->route('task');
+                $providedVersions = collect(['expected_version', 'lock_version', 'version'])
+                    ->filter(fn (string $field): bool => $this->exists($field))
+                    ->map(fn (string $field): int => (int) $this->input($field))
+                    ->unique();
+
+                if ($providedVersions->count() > 1) {
+                    $validator->errors()->add(
+                        'expected_version',
+                        'The supplied task version fields must match.',
+                    );
+                }
+
                 $expectedVersion = $this->input('expected_version') ?? $this->input('lock_version') ?? $this->input('version');
                 $isStale = $expectedVersion !== null && $task instanceof Task && (int) $expectedVersion !== (int) $task->lock_version;
 

@@ -6,8 +6,10 @@ use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
+use App\Models\TaskApproval;
 use App\Models\TaskEvent;
 use App\Models\TaskHistory;
+use App\Models\TaskSubmission;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use Illuminate\Support\Facades\DB;
@@ -184,11 +186,175 @@ class R3A3MariaDbConcurrencyTest extends TestCase
         }
     }
 
+    public function test_edit_and_deadline_change_have_one_version_winner(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $reviewer, $assignee, $project] = $this->fixtures();
+        $task = $this->activeTask($project, $assignee, $reviewer);
+
+        try {
+            $this->assertEditTransitionRace($task, $manager, $manager, 'deadline', [
+                'deadline_type' => 'execution',
+                'due_date' => now()->addDays(7)->toDateString(),
+            ]);
+        } finally {
+            $this->cleanupProject($project, [$manager, $reviewer, $assignee]);
+        }
+    }
+
+    public function test_edit_and_reviewer_reassignment_have_one_version_winner(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $reviewer, $assignee, $project] = $this->fixtures();
+        $replacement = $this->user('manager');
+        $task = $this->activeTask($project, $assignee, $reviewer);
+
+        try {
+            $this->assertEditTransitionRace($task, $manager, $manager, 'reassign', [
+                'reviewer_id' => $replacement->id,
+            ]);
+        } finally {
+            $this->cleanupProject($project, [$manager, $reviewer, $assignee, $replacement]);
+        }
+    }
+
+    public function test_edit_and_cancellation_have_one_version_winner(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $reviewer, $assignee, $project] = $this->fixtures();
+        $task = $this->activeTask($project, $assignee, $reviewer);
+
+        try {
+            $this->assertEditTransitionRace($task, $manager, $manager, 'cancel', [
+                'cancellation_reason' => 'Concurrent cancellation qualification.',
+            ]);
+        } finally {
+            $this->cleanupProject($project, [$manager, $reviewer, $assignee]);
+        }
+    }
+
+    public function test_edit_and_approval_have_one_version_winner(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $reviewer, $assignee, $project] = $this->fixtures();
+        $task = $this->activeTask($project, $assignee, $reviewer);
+        $task->forceFill([
+            'status' => TaskState::InReview,
+            'progress' => 90,
+            'submitted_at' => now(),
+            'review_started_at' => now(),
+        ])->save();
+        TaskSubmission::query()->create([
+            'task_id' => $task->id,
+            'submitted_by' => $assignee->id,
+            'submitted_at' => now(),
+        ]);
+
+        try {
+            $this->assertEditTransitionRace($task->fresh(), $manager, $reviewer, 'approve', [
+                'approval_comment' => 'Concurrent approval qualification.',
+            ], allowEditValidationLoss: true, expectedEventDelta: 2);
+        } finally {
+            $this->cleanupProject($project, [$manager, $reviewer, $assignee]);
+        }
+    }
+
+    public function test_stale_edit_and_reopen_never_mutate_the_completed_task_twice(): void
+    {
+        $this->requireDisposableMariaDb();
+        [$manager, $reviewer, $assignee, $project] = $this->fixtures();
+        $task = $this->activeTask($project, $assignee, $reviewer);
+        $submission = TaskSubmission::query()->create([
+            'task_id' => $task->id,
+            'submitted_by' => $assignee->id,
+            'submitted_at' => now()->subMinute(),
+        ]);
+        $task->forceFill([
+            'status' => TaskState::Completed,
+            'progress' => 100,
+            'submitted_at' => now()->subMinute(),
+            'review_started_at' => now()->subMinute(),
+            'approved_at' => now(),
+            'approved_by' => $reviewer->id,
+            'completed_at' => now(),
+            'completed_by' => $reviewer->id,
+        ])->save();
+        TaskApproval::query()->create([
+            'task_id' => $task->id,
+            'submission_id' => $submission->id,
+            'approved_by' => $reviewer->id,
+            'assigned_reviewer_id' => $reviewer->id,
+            'approved_at' => now(),
+        ]);
+
+        try {
+            $this->assertEditTransitionRace($task->fresh(), $manager, $manager, 'reopen', [
+                'reopen_reason' => 'Concurrent reopen qualification.',
+                'revision_due_date' => now()->addDays(4)->toDateString(),
+                'reviewer_id' => $reviewer->id,
+            ], allowEditValidationLoss: true, expectedEventDelta: 2);
+        } finally {
+            $this->cleanupProject($project, [$manager, $reviewer, $assignee]);
+        }
+    }
+
     private function requireDisposableMariaDb(): void
     {
         if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)
             || preg_match('/^task_management_phase28_r3a3_[a-z0-9_]+$/', DB::getDatabaseName()) !== 1) {
             $this->markTestSkipped('Requires an isolated R3A.3 MariaDB database.');
+        }
+    }
+
+    private function assertEditTransitionRace(
+        Task $task,
+        User $editActor,
+        User $transitionActor,
+        string $operation,
+        array $transitionData,
+        bool $allowEditValidationLoss = false,
+        int $expectedEventDelta = 1,
+    ): void {
+        $initialVersion = (int) $task->lock_version;
+        $historyCount = TaskHistory::query()->where('task_id', $task->id)->count();
+        $eventCount = TaskEvent::query()->where('task_id', $task->id)->count();
+        $startFile = $this->barrier("r3a3-{$operation}-start-");
+        $update = $this->worker('update', [
+            'actor_id' => $editActor->id,
+            'task_id' => $task->id,
+            'correlation_id' => "r3a3-{$operation}-edit",
+            'expected_version' => $initialVersion,
+            'data' => ['title' => "Concurrent edit against {$operation}"],
+        ], startFile: $startFile);
+        $transition = $this->worker($operation, array_merge($transitionData, [
+            'actor_id' => $transitionActor->id,
+            'task_id' => $task->id,
+            'correlation_id' => "r3a3-{$operation}-transition",
+            'expected_version' => $initialVersion,
+        ]), startFile: $startFile);
+
+        try {
+            $update->start();
+            $transition->start();
+            file_put_contents($startFile, 'go');
+            $update->wait();
+            $transition->wait();
+
+            $updateResult = $this->decode($update);
+            $transitionResult = $this->decode($transition);
+            $this->assertSame('success', $transitionResult['result'] === 'success' ? 'success' : $updateResult['result']);
+            $loser = $transitionResult['result'] === 'success' ? $updateResult : $transitionResult;
+            $this->assertContains(
+                $loser['result'],
+                $allowEditValidationLoss ? ['conflict', 'validation_error'] : ['conflict'],
+                json_encode(['update' => $updateResult, 'transition' => $transitionResult], JSON_THROW_ON_ERROR),
+            );
+
+            $this->assertSame($initialVersion + 1, $task->fresh()->lock_version);
+            $this->assertSame($historyCount + 1, TaskHistory::query()->where('task_id', $task->id)->count());
+            $this->assertSame($eventCount + $expectedEventDelta, TaskEvent::query()->where('task_id', $task->id)->count());
+        } finally {
+            @unlink($startFile);
         }
     }
 
@@ -271,6 +437,7 @@ class R3A3MariaDbConcurrencyTest extends TestCase
         DB::table('task_approvals')->whereIn('task_id', $taskIds)->delete();
         DB::table('task_submissions')->whereIn('task_id', $taskIds)->delete();
         DB::table('task_histories')->whereIn('task_id', $taskIds)->delete();
+        Task::withTrashed()->whereIn('id', $taskIds)->update(['active_revision_cycle_id' => null]);
         DB::table('task_revision_cycles')->whereIn('task_id', $taskIds)->delete();
         Task::withTrashed()->whereIn('id', $taskIds)->forceDelete();
         $project->members()->detach();

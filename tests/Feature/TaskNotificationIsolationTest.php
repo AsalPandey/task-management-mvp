@@ -6,6 +6,7 @@ use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
+use App\Models\TaskEvent;
 use App\Models\TaskSubmission;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -129,6 +130,7 @@ class TaskNotificationIsolationTest extends TestCase
         $createdTaskId = $response->json('task.id');
         $this->assertNotNull($createdTaskId);
         $this->assertDatabaseHas('tasks', ['id' => $createdTaskId, 'title' => 'Idempotent Task Creation']);
+        $this->assertSame(1, Task::query()->findOrFail($createdTaskId)->lock_version);
 
         Log::shouldHaveReceived('warning')->withArgs(function ($message, $context) use ($createdTaskId) {
             return str_contains($message, 'Task operation succeeded but notification dispatch failed.')
@@ -148,6 +150,8 @@ class TaskNotificationIsolationTest extends TestCase
         ]);
 
         $this->assertSame(1, Task::where('title', 'Idempotent Task Creation')->count());
+        $this->assertSame(1, Task::query()->findOrFail($createdTaskId)->lock_version);
+        $this->assertSame(1, TaskEvent::query()->where('task_id', $createdTaskId)->where('event_type', 'task.created')->count());
     }
 
     public function test_task_transition_failure_still_returns_client_error(): void

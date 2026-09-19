@@ -121,6 +121,7 @@ class ProjectManagerReplacementIntegrityTest extends TestCase
                 $fresh->reviewer_id,
                 "Task in state {$stateValue} should have PM2 as reviewer.",
             );
+            $this->assertSame(2, $fresh->lock_version, "Task in state {$stateValue} must advance exactly one version.");
 
             // Reviewer eligibility must be true for PM2 and false for PM1
             $this->assertTrue(

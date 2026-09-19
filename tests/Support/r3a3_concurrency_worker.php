@@ -6,6 +6,11 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
+use App\TaskTransitions\ApproveTask;
+use App\TaskTransitions\CancelTask;
+use App\TaskTransitions\ChangeTaskDeadline;
+use App\TaskTransitions\ReassignTaskReviewer;
+use App\TaskTransitions\ReopenApprovedTask;
 use App\TaskTransitions\SubmitTask;
 use App\ValueObjects\TaskOperationContext;
 use Illuminate\Contracts\Console\Kernel;
@@ -65,26 +70,53 @@ try {
             ];
         }
 
-        if ($operation === 'submit') {
+        if (in_array($operation, ['submit', 'deadline', 'reassign', 'cancel', 'approve', 'reopen'], true)) {
             $context = TaskOperationContext::test(
                 $actor->id,
                 $payload['correlation_id'] ?? null,
                 expectedVersion: isset($payload['expected_version']) ? (int) $payload['expected_version'] : null,
             );
 
+            $command = match ($operation) {
+                'submit' => app()->make(SubmitTask::class, [
+                    'submissionNote' => $payload['submission_note'] ?? 'Concurrent submission',
+                ]),
+                'deadline' => app()->make(ChangeTaskDeadline::class, [
+                    'deadlineType' => $payload['deadline_type'] ?? 'execution',
+                    'dueDate' => $payload['due_date'],
+                    'reason' => $payload['reason'] ?? null,
+                ]),
+                'reassign' => app()->make(ReassignTaskReviewer::class, [
+                    'reviewerId' => (int) $payload['reviewer_id'],
+                    'reason' => $payload['reason'] ?? null,
+                ]),
+                'cancel' => app()->make(CancelTask::class, [
+                    'cancellationReason' => $payload['cancellation_reason'],
+                    'expectedState' => $task->machineState()->value,
+                ]),
+                'approve' => app()->make(ApproveTask::class, [
+                    'approvalComment' => $payload['approval_comment'] ?? null,
+                ]),
+                'reopen' => app()->make(ReopenApprovedTask::class, [
+                    'reopenReason' => $payload['reopen_reason'],
+                    'revisionDueDate' => $payload['revision_due_date'],
+                    'reviewerId' => isset($payload['reviewer_id']) ? (int) $payload['reviewer_id'] : null,
+                    'reworkInstructions' => $payload['rework_instructions'] ?? null,
+                ]),
+            };
+
             $result = app(TaskTransitionExecutor::class)->execute(
                 $task,
                 $actor,
-                app()->make(SubmitTask::class, [
-                    'submissionNote' => $payload['submission_note'] ?? 'Concurrent submission',
-                ]),
+                $command,
                 $context,
             );
 
             return [
                 'task_id' => $result->task->id,
-                'outcome' => 'submitted',
+                'outcome' => $operation,
                 'lock_version' => $result->task->lock_version,
+                'state' => $result->task->machineState()->value,
             ];
         }
 

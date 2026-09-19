@@ -171,7 +171,10 @@ class TaskEventRecordingTest extends TestCase
 
         $this->assertSame($originalUid, $task->fresh()->task_uid);
         $this->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
-            ->putJson(route('tasks.update', $task), ['title' => 'HTTP updated title'])
+            ->putJson(route('tasks.update', $task), [
+                'title' => 'HTTP updated title',
+                'expected_version' => $task->lock_version,
+            ])
             ->assertOk();
         $event = $task->events()->where('event_type', TaskEventRecorder::UPDATED)->sole();
         $this->assertSame($correlationId, $event->correlation_id);

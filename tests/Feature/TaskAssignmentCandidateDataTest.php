@@ -121,6 +121,7 @@ class TaskAssignmentCandidateDataTest extends TestCase
 
         $response = $this->actingAs($projectManager)->putJson(route('tasks.update', $task), [
             'assignee_id' => $outsideMember->id,
+            'expected_version' => $task->lock_version,
         ]);
 
         $response->assertStatus(422);
