@@ -38,7 +38,13 @@ if ($startFile) {
 try {
     $details = DB::transaction(function () use ($operation, $payload, $holdMilliseconds, $readyFile) {
         $actor = User::query()->findOrFail((int) $payload['actor_id']);
-        $task = Task::query()->findOrFail((int) $payload['task_id']);
+        $taskQuery = Task::query();
+
+        if ($readyFile) {
+            $taskQuery->lockForUpdate();
+        }
+
+        $task = $taskQuery->findOrFail((int) $payload['task_id']);
 
         if ($readyFile) {
             file_put_contents($readyFile, 'ready');
