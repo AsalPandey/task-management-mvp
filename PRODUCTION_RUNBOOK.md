@@ -125,7 +125,7 @@ mandatory item below is available.
 
 ### Mandatory
 
-- Linux hosting with PHP 8.2, 8.3, or 8.4 and the extensions listed below.
+- Linux hosting with PHP 8.4 and the extensions listed below.
 - MariaDB 10.4.32 or newer, or MySQL 8.0 or newer, with InnoDB, transactions,
   foreign keys, row locks, and `utf8mb4`.
 - The domain document root points to Laravel's `public` directory, or
