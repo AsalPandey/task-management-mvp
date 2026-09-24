@@ -14,7 +14,7 @@
                 </svg>
             </div>
             <div class="logo-text">
-                <h1>Task Management</h1>
+                <h1>{{ config('app.name', 'Task Management MVP') }}</h1>
                 <p>Task Management System</p>
             </div>
         </div>

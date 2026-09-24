@@ -21,7 +21,7 @@ class SentrySmokeTest extends Command
             return self::FAILURE;
         }
 
-        captureException(new Exception('Task Management Sentry smoke test'));
+        captureException(new Exception(config('app.name', 'Task Management MVP').' Sentry smoke test'));
         $this->info('Sentry smoke test exception captured.');
 
         return self::SUCCESS;

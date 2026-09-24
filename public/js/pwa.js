@@ -218,7 +218,7 @@
 
     function installationGuide() {
         if (isStandalone() || localStorage.getItem(installedAtKey)) {
-            return '<p><strong>Task Management is already installed on this device.</strong></p>';
+            return '<p><strong>Task Management MVP is already installed on this device.</strong></p>';
         }
 
         const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent)

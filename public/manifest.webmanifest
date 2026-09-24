@@ -1,6 +1,6 @@
 {
     "id": "./",
-    "name": "Task Management",
+    "name": "Task Management MVP",
     "short_name": "Tasks",
     "description": "A focused task management workspace for teams.",
     "start_url": "dashboard",

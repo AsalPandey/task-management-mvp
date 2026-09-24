@@ -96,7 +96,7 @@ There is no fourth category of manual initialization data.
 The application automatically offers installation only after authentication on a
 device identified as mobile by browser/device signals—not viewport width. It does
 not promote installation on desktop. `Not Now` stores a 30-day device/browser
-cooldown; Settings → Notifications → Install Task Management remains available
+cooldown; Settings → Notifications → Install Task Management MVP remains available
 throughout. Standalone mode and the `appinstalled` event suppress the offer.
 
 When `beforeinstallprompt` is available, **Install App** invokes it only from the

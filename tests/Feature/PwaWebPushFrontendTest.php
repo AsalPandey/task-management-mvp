@@ -30,6 +30,7 @@ class PwaWebPushFrontendTest extends TestCase
         $worker = file_get_contents(public_path('service-worker.js'));
 
         $this->assertSame('standalone', $manifest['display']);
+        $this->assertSame('Task Management MVP', $manifest['name']);
         $this->assertSame('./', $manifest['scope']);
         $this->assertSame('dashboard', $manifest['start_url']);
         $this->assertNotEmpty($manifest['icons']);

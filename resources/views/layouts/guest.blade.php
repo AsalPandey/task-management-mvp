@@ -8,9 +8,9 @@
         <meta name="mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
-        <meta name="apple-mobile-web-app-title" content="Task Management">
+        <meta name="apple-mobile-web-app-title" content="{{ config('app.name', 'Task Management MVP') }}">
 
-        <title>{{ config('app.name', 'Task Management') }}</title>
+        <title>{{ config('app.name', 'Task Management MVP') }}</title>
         <link rel="manifest" href="{{ url('/manifest.webmanifest') }}">
         <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('icons/pwa-192.png') }}">
 
@@ -24,11 +24,11 @@
         <a class="skip-link" href="#main-content">Skip to sign in</a>
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 guest-shell">
             <div class="auth-brand">
-                <a href="/" aria-label="Task Management home">
+                <a href="/" aria-label="{{ config('app.name', 'Task Management MVP') }} home">
                     <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
                 </a>
                 <div>
-                    <strong>Task Management</strong>
+                    <strong>{{ config('app.name', 'Task Management MVP') }}</strong>
                     <span>Keep work moving, one clear step at a time.</span>
                 </div>
             </div>

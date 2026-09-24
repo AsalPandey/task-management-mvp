@@ -167,7 +167,7 @@ class BrowserPushSubscriptionSecurityTest extends TestCase
             SendBrowserPushNotification::class,
             fn (SendBrowserPushNotification $job): bool => $job->userId === $owner->id
                 && $job->subscriptionId === BrowserPushSubscription::query()->value('id')
-                && $job->payload['title'] === 'Task Management notifications are enabled'
+                && $job->payload['title'] === config('app.name').' notifications are enabled'
                 && $job->payload['data']['target'] === '/notifications/all'
         );
     }

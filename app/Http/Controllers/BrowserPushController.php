@@ -104,7 +104,7 @@ class BrowserPushController extends Controller
 
         $notificationId = (string) Str::uuid();
         $message = new BrowserPushMessage(
-            title: 'Task Management notifications are enabled',
+            title: config('app.name', 'Task Management MVP').' notifications are enabled',
             body: 'This browser can now receive task updates.',
             type: 'browser_push_test',
             targetPath: BrowserPushMessageFactory::applicationPath('notifications/all'),

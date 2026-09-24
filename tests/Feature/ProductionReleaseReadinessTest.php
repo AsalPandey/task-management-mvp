@@ -4,6 +4,7 @@ test('production environment template has secure explicit operational defaults',
     $environment = file_get_contents(base_path('.env.example'));
 
     foreach ([
+        'APP_NAME="Task Management MVP"',
         'APP_ENV=production',
         'APP_DEBUG=false',
         'APP_URL=https://tasks.example.com',

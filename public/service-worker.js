@@ -78,7 +78,7 @@ self.addEventListener('push', event => {
     }
 
     event.waitUntil(self.registration.showNotification(
-        String(payload.title || 'Task Management').slice(0, 80),
+        String(payload.title || 'Task Management MVP').slice(0, 80),
         {
             body: String(payload.body || 'A task has an update.').slice(0, 180),
             icon: appPath('icons/pwa-192.png'),

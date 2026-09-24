@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <h1>Task Management Analytics</h1>
+    <h1>{{ config('app.name', 'Task Management MVP') }} Analytics</h1>
     <p>Generated {{ now()->format('Y-m-d H:i') }}</p>
     <table>
         <tr><th>Metric</th><th>Value</th></tr>

@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Task Management'),
+    'name' => env('APP_NAME', 'Task Management MVP'),
 
     /*
     |--------------------------------------------------------------------------

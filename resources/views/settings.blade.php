@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <!-- Section D: PWA Install Card -->
                 <section class="pwa-install-card notification-card-section" data-pwa-card aria-labelledby="installAppHeading">
                     <div>
-                        <h3 id="installAppHeading">Install Task Management</h3>
+                        <h3 id="installAppHeading">Install {{ config('app.name', 'Task Management MVP') }}</h3>
                         <p>Open the installation option for this browser and device. This remains available even if you previously selected Not Now.</p>
                     </div>
                     <div class="push-actions">

@@ -8,9 +8,9 @@
         <meta name="mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
-        <meta name="apple-mobile-web-app-title" content="Task Management">
+        <meta name="apple-mobile-web-app-title" content="{{ config('app.name', 'Task Management MVP') }}">
 
-        <title>{{ config('app.name', 'Task Management') }}</title>
+        <title>{{ config('app.name', 'Task Management MVP') }}</title>
 
         <!-- Styles -->
         @stack('styles')
@@ -56,8 +56,8 @@
             <section class="pwa-install-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="pwaInstallTitle" aria-describedby="pwaInstallDescription">
                 <button type="button" class="pwa-install-dialog__close" data-pwa-dismiss aria-label="Close installation prompt">&times;</button>
                 <div class="pwa-install-dialog__icon" aria-hidden="true">TM</div>
-                <h2 id="pwaInstallTitle">Install Task Management</h2>
-                <p id="pwaInstallDescription">Add Task Management to your phone for faster access and a home-screen app experience.</p>
+                <h2 id="pwaInstallTitle">Install {{ config('app.name', 'Task Management MVP') }}</h2>
+                <p id="pwaInstallDescription">Add {{ config('app.name', 'Task Management MVP') }} to your phone for faster access and a home-screen app experience.</p>
                 <div class="pwa-install-dialog__actions">
                     <button type="button" class="btn-primary" data-pwa-install>Install App</button>
                     <button type="button" class="btn-secondary" data-pwa-dismiss>Not Now</button>
