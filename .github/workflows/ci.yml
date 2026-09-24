@@ -57,9 +57,6 @@ jobs:
       - name: Check PHP formatting
         run: vendor/bin/pint --test
 
-      - name: Run maintained SQLite suite
-        run: php artisan test
-
       - name: Install locked frontend dependencies
         run: npm ci
 
@@ -70,6 +67,9 @@ jobs:
 
       - name: Build production assets
         run: npm run build
+
+      - name: Run maintained SQLite suite
+        run: php artisan test
 
       - name: Compile Blade templates
         run: |
@@ -139,8 +139,19 @@ jobs:
           extensions: bcmath, curl, dom, fileinfo, intl, mbstring, openssl, pdo_mysql
           coverage: none
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install locked PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install locked frontend dependencies
+        run: npm ci
+
+      - name: Build production assets
+        run: npm run build
 
       - name: Create an ephemeral application key
         run: |
