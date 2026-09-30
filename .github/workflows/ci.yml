@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   quality:
@@ -52,7 +52,10 @@ jobs:
           composer audit --locked --no-interaction
 
       - name: Check PHP syntax
-        run: find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: |
+          find app bootstrap config database routes tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+          bash -n scripts/hostinger-deploy.sh
+          bash -n scripts/hostinger-cron.sh
 
       - name: Check PHP formatting
         run: vendor/bin/pint --test
@@ -67,6 +70,14 @@ jobs:
 
       - name: Build production assets
         run: npm run build
+
+      - name: Preserve the exact production asset build
+        uses: actions/upload-artifact@v4
+        with:
+          name: vite-${{ github.sha }}
+          path: public/build
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run maintained SQLite suite
         run: php artisan test
@@ -160,3 +171,62 @@ jobs:
 
       - name: Run disposable MariaDB qualification
         run: bash scripts/ci-mariadb-tests.sh
+
+  deploy:
+    name: Hostinger atomic release
+    needs: [quality, mariadb]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.HOSTINGER_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: hostinger-task-management
+      cancel-in-progress: false
+    steps:
+      - name: Check out the tested revision
+        uses: actions/checkout@v4
+
+      - name: Set up production PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: bcmath, curl, dom, fileinfo, intl, mbstring, openssl, pdo_mysql, zip
+          coverage: none
+
+      - name: Assemble only tracked source and locked production dependencies
+        run: |
+          mkdir release
+          git archive "$GITHUB_SHA" | tar -x -C release
+          cd release
+          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+          test ! -f .env
+          printf '%s\n' "$GITHUB_SHA" > .release-sha
+
+      - name: Restore assets built by the successful quality job
+        uses: actions/download-artifact@v4
+        with:
+          name: vite-${{ github.sha }}
+          path: release/public/build
+
+      - name: Package the immutable release
+        run: |
+          test -f release/public/build/manifest.json
+          tar -czf "$RUNNER_TEMP/task-release.tar.gz" -C release .
+
+      - name: Deploy through the dedicated restricted SSH key
+        env:
+          TASK_DEPLOY_KEY: ${{ secrets.HOSTINGER_DEPLOY_KEY }}
+          TASK_DEPLOY_KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+          TASK_DEPLOY_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          TASK_DEPLOY_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          TASK_DEPLOY_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/task-ssh"
+          printf '%s\n' "$TASK_DEPLOY_KEY" > "$RUNNER_TEMP/task-ssh/key"
+          printf '%s\n' "$TASK_DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/task-ssh/known_hosts"
+          ssh -T -i "$RUNNER_TEMP/task-ssh/key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/task-ssh/known_hosts" \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            -p "$TASK_DEPLOY_PORT" "$TASK_DEPLOY_USER@$TASK_DEPLOY_HOST" \
+            "deploy $GITHUB_SHA" < "$RUNNER_TEMP/task-release.tar.gz"
