@@ -5,6 +5,8 @@ use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetSentryContext;
 use App\Models\CompanySetting;
+use App\Support\SafeDatabaseFailure;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -30,6 +32,17 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->report(function (Throwable $exception) {
+            for ($cause = $exception; $cause !== null; $cause = $cause->getPrevious()) {
+                if ($cause instanceof QueryException) {
+                    SafeDatabaseFailure::report($cause);
+
+                    return false;
+                }
+            }
+
+            return null;
+        });
         Integration::handles($exceptions);
         $exceptions->dontReportDuplicates();
         $exceptions->context(function () {
