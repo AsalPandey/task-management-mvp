@@ -40,12 +40,13 @@ body { background: #f7f8fa; }
 <div class="app-container" id="analyticsApp">
     <form class="analytics-filters" id="analyticsFilters" method="get" style="margin-bottom:2rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
         <label for="dateFrom">From:</label>
-        <input type="date" id="dateFrom" name="dateFrom" value="{{ request('dateFrom', now()->subDays(7)->format('Y-m-d')) }}">
+        <input type="date" id="dateFrom" name="dateFrom" value="{{ $dateFrom }}">
         <label for="dateTo">To:</label>
-        <input type="date" id="dateTo" name="dateTo" value="{{ request('dateTo', now()->format('Y-m-d')) }}">
+        <input type="date" id="dateTo" name="dateTo" value="{{ $dateTo }}">
         <button type="submit" class="btn-small btn-primary">Apply</button>
         <button type="button" class="btn-small" id="resetFilters">Reset</button>
     </form>
+    <p>Task metrics describe tasks created in the selected inclusive company-date range, at their current state. Completion events describe activity within that period.</p>
     <div class="page-header">
         <h2>Performance: {{ $user->name }}</h2>
         <p>Role: {{ $user->role ? ucfirst($user->role->name) : '-' }}</p>
@@ -74,7 +75,7 @@ body { background: #f7f8fa; }
     </div>
     <div class="charts-grid">
         <div class="chart-card">
-            <h3>📈 Completion Trend (Last 7 Days)</h3>
+            <h3>📈 Completion Events (Last 30 Days, within selected period)</h3>
             <canvas id="completionTrendChart" height="120"></canvas>
         </div>
         <div class="chart-card">
@@ -84,7 +85,7 @@ body { background: #f7f8fa; }
     </div>
     <div class="completed-history-card" style="margin: 2rem auto 0 auto; max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06); padding: 1.5rem 1.2rem;">
         <h3 style="font-weight:600; color:#4f8cff; display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
-            <span style="font-size:1.3rem;">✅</span> Completed Tasks (Last 7 Days)
+            <span style="font-size:1.3rem;">✅</span> Completed Tasks in Selected Creation Period
         </h3>
         <table class="tasks-table" style="margin-bottom:0;">
             <thead style="background:#f4f8ff;">

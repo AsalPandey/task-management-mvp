@@ -55,7 +55,7 @@ final class TaskAnalyticsService
             ->selectRaw('event_type, COUNT(*) AS aggregate')
             ->groupBy('event_type')
             ->pluck('aggregate', 'event_type');
-        $trendStart = now(config('app.timezone'))->subDays(29)->startOfDay();
+        $trendStart = CarbonImmutable::now(config('app.timezone'))->subDays(29)->startOfDay();
         $completionDates = (clone $events)
             ->where('event_type', TaskEventRecorder::COMPLETED)
             ->where('occurred_at', '>=', $trendStart)
@@ -106,7 +106,7 @@ final class TaskAnalyticsService
             'cancellationEvents' => (int) ($eventCounts[TaskEventRecorder::CANCELLED] ?? 0),
             'reopenEvents' => (int) ($eventCounts[TaskEventRecorder::REOPENED] ?? 0),
             'completionRate' => $completionRate,
-            'inProgressTasks' => $active->where('status', TaskState::InProgress->value)->count(),
+            'inProgressTasks' => $active->filter(fn (Task $task) => $task->machineState() === TaskState::InProgress)->count(),
             'overdueTasks' => $overdue->count(),
             'dueSoonTasks' => $active->filter(fn (Task $task) => $task->activeDeadline()?->toDateString()
                 === today(config('app.timezone'))->addDay()->toDateString())->count(),

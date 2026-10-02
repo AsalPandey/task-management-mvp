@@ -95,8 +95,8 @@ body { background: #f7f8fa; }
             <canvas id="priorityChartCanvas" height="180" aria-label="Tasks by Priority" role="img"></canvas>
         </div>
         <div class="chart-card">
-            <h3>📈 7-Day Productivity Trend</h3>
-            <canvas id="productivityChartCanvas" height="180" aria-label="7-Day Productivity Trend" role="img"></canvas>
+            <h3>📈 30-Day Creation Trend</h3>
+            <canvas id="productivityChartCanvas" height="180" aria-label="30-Day Creation Trend" role="img"></canvas>
         </div>
         <div class="chart-card">
             <h3>🟠 Status Breakdown</h3>

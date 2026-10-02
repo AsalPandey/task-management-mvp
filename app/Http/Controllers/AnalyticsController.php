@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
+use App\Support\AnalyticsFilters;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -85,12 +86,7 @@ class AnalyticsController extends Controller
 
     private function analyticsData(Request $request): array
     {
-        $validated = $request->validate([
-            'dateFrom' => ['nullable', 'date_format:Y-m-d'],
-            'dateTo' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:dateFrom'],
-            'assignee' => ['nullable', 'integer'],
-            'project' => ['nullable', 'integer'],
-        ]);
+        $validated = AnalyticsFilters::fromRequest($request);
         $dateFrom = $validated['dateFrom'] ?? now(config('app.timezone'))->subDays(7)->toDateString();
         $dateTo = $validated['dateTo'] ?? now(config('app.timezone'))->toDateString();
         $report = $this->analytics->report(
