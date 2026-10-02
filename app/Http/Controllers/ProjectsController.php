@@ -51,15 +51,19 @@ class ProjectsController extends Controller
         if (auth()->user()->hasRole('project_manager') && ! auth()->user()->hasRole('manager')) {
             $data['project_manager_id'] = auth()->id();
         }
-        $project = Project::query()->create($data);
+        $project = DB::transaction(function () use ($data) {
+            $project = Project::query()->create($data);
 
-        if ($project->project_manager_id) {
-            $project->members()->syncWithoutDetaching([
-                $project->project_manager_id => ['added_by' => auth()->id()],
-            ]);
-        }
+            if ($project->project_manager_id) {
+                $project->members()->syncWithoutDetaching([
+                    $project->project_manager_id => ['added_by' => auth()->id()],
+                ]);
+            }
 
-        $this->recordHistory($project, 'created', $data);
+            $this->recordHistory($project, 'created', $data);
+
+            return $project;
+        }, 3);
 
         return response()->json([
             'success' => true,
