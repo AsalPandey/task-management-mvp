@@ -16,6 +16,11 @@ PHP dependencies with PHP 8.4, and includes the frontend artifact from the
 successful quality job. Local untracked files, `.env`, databases, audit artifacts,
 and private keys are never part of this release archive.
 
+`scripts/hostinger-package.sh` materializes dependency documentation symlinks only
+when their targets are regular files inside the build. Links outside the build,
+directory links, and private/runtime files are rejected. The server continues
+to reject archives containing links or path traversal.
+
 Repository Actions secrets:
 
 - `HOSTINGER_DEPLOY_KEY`: a dedicated key, not a personal/shared SSH key.

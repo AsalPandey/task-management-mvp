@@ -56,6 +56,8 @@ jobs:
           find app bootstrap config database routes tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
           bash -n scripts/hostinger-deploy.sh
           bash -n scripts/hostinger-cron.sh
+          bash -n scripts/hostinger-package.sh
+          bash tests/hostinger-package-test.sh
 
       - name: Check PHP formatting
         run: vendor/bin/pint --test
@@ -210,7 +212,7 @@ jobs:
       - name: Package the immutable release
         run: |
           test -f release/public/build/manifest.json
-          tar -czf "$RUNNER_TEMP/task-release.tar.gz" -C release .
+          bash scripts/hostinger-package.sh release "$RUNNER_TEMP/task-release.tar.gz"
 
       - name: Deploy through the dedicated restricted SSH key
         env:
