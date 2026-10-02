@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\ProjectHistory;
 use App\Models\User;
-use App\Notifications\ProjectMemberAdded;
-use App\Notifications\ProjectMemberRemoved;
 use App\Services\ProjectManagerReplacementService;
+use App\Services\ProjectMembershipService;
+use App\Support\InputContracts;
 use App\Support\UserPayload;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -146,29 +145,10 @@ class ProjectsController extends Controller
         $this->authorize('manageMembers', $project);
 
         $data = $request->validate([
-            'user_id' => [
-                'required',
-                Rule::exists('users', 'id')->where('active', true)->whereNull('deleted_at'),
-            ],
+            'user_id' => InputContracts::id('required', Rule::exists('users', 'id')->where('active', true)->whereNull('deleted_at')),
         ]);
 
-        $member = DB::transaction(function () use ($data, $project) {
-            $lockedProject = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
-            $member = User::query()->with('role')->whereKey($data['user_id'])->lockForUpdate()->firstOrFail();
-
-            if (! $member->isActive() || ! $member->hasAnyRole(['project_manager', 'team_member'])) {
-                abort(422, 'Only active project managers and team members can be added as project members.');
-            }
-
-            $lockedProject->members()->syncWithoutDetaching([
-                $member->id => ['added_by' => auth()->id()],
-            ]);
-            $this->recordHistory($lockedProject, 'member_added', ['user_id' => $member->id]);
-
-            return $member;
-        }, 3);
-
-        $member->notify(new ProjectMemberAdded($project, auth()->user()));
+        app(ProjectMembershipService::class)->change($project, (int) $data['user_id'], $request->user(), true);
 
         return response()->json([
             'success' => true,
@@ -181,32 +161,10 @@ class ProjectsController extends Controller
         $this->authorize('manageMembers', $project);
 
         $data = $request->validate([
-            'user_id' => ['required', 'exists:users,id'],
+            'user_id' => InputContracts::id('required', 'exists:users,id'),
         ]);
 
-        $member = DB::transaction(function () use ($data, $project) {
-            $lockedProject = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
-            $member = User::query()->whereKey($data['user_id'])->lockForUpdate()->firstOrFail();
-            $activeTasks = $lockedProject->tasks()
-                ->where(function ($query) use ($member) {
-                    $query->where('assignee_id', $member->id)
-                        ->orWhere('reviewer_id', $member->id);
-                })
-                ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-                ->lockForUpdate()
-                ->exists();
-
-            if ($activeTasks) {
-                abort(422, 'Cannot remove a member with active tasks in this project.');
-            }
-
-            $lockedProject->members()->detach($member->id);
-            $this->recordHistory($lockedProject, 'member_removed', ['user_id' => $member->id]);
-
-            return $member;
-        }, 3);
-
-        $member->notify(new ProjectMemberRemoved($project, auth()->user()));
+        app(ProjectMembershipService::class)->change($project, (int) $data['user_id'], $request->user(), false);
 
         return response()->json([
             'success' => true,
@@ -252,11 +210,8 @@ class ProjectsController extends Controller
                 'max:255',
                 Rule::unique('projects', 'name')->ignore($project?->id),
             ],
-            'description' => ['nullable', 'string'],
-            'project_manager_id' => [
-                'nullable',
-                Rule::exists('users', 'id')->where('active', true)->whereNull('deleted_at'),
-            ],
+            'description' => InputContracts::text(),
+            'project_manager_id' => InputContracts::id('nullable', Rule::exists('users', 'id')->where('active', true)->whereNull('deleted_at')),
             'color' => ['nullable', 'string', 'max:20'],
             'status' => ['required', Rule::in(['active', 'on_hold', 'completed', 'archived'])],
             'start_date' => ['nullable', 'date'],
