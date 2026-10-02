@@ -49,6 +49,7 @@ body { background: #f7f8fa; }
 </style>
 @endpush
 @push('scripts')
+<script src="{{ asset('js/team-forms.js') }}?v={{ filemtime(public_path('js/team-forms.js')) }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Modal logic
@@ -75,23 +76,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (addMemberBtn && addMemberModal) {
         addMemberBtn.addEventListener('click', function() {
             addMemberForm.reset();
+            TeamForms.clearErrors(addMemberForm);
+            document.getElementById('createAccountBtn').disabled = true;
             addMemberModal.classList.add('active');
         });
     }
     if (addMemberModal) {
         addMemberModal.querySelector('.modal-close').addEventListener('click', function() {
+            if (addMemberForm.dataset.pending === 'true') return;
             addMemberModal.classList.remove('active');
         });
         addMemberModal.addEventListener('click', function(e) {
-            if (e.target === this) addMemberModal.classList.remove('active');
+            if (e.target === this && addMemberForm.dataset.pending !== 'true') addMemberModal.classList.remove('active');
         });
     }
     if (editMemberModal) {
         editMemberModal.querySelector('.modal-close').addEventListener('click', function() {
+            if (editMemberForm.dataset.pending === 'true') return;
             editMemberModal.classList.remove('active');
         });
         editMemberModal.addEventListener('click', function(e) {
-            if (e.target === this) editMemberModal.classList.remove('active');
+            if (e.target === this && editMemberForm.dataset.pending !== 'true') editMemberModal.classList.remove('active');
         });
     }
     if (deleteModal) {
@@ -108,6 +113,8 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const card = this.closest('.member-card');
             editMemberId = card.dataset.memberId;
+            editMemberForm.reset();
+            TeamForms.clearErrors(editMemberForm);
             editMemberModal.classList.add('active');
             editMemberForm.querySelector('#editMemberId').value = editMemberId;
             editMemberForm.querySelector('#editMemberName').value = card.querySelector('h3').textContent;
@@ -174,6 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const createAccountBtn = document.getElementById('createAccountBtn');
     if (addMemberFormEl && createAccountBtn) {
         const updateCreateButton = function() {
+            if (addMemberFormEl.dataset.pending === 'true') return;
             const name = addMemberFormEl.querySelector('#memberName').value.trim();
             const email = addMemberFormEl.querySelector('#memberEmail').value.trim();
             const password = addMemberFormEl.querySelector('#memberPassword').value.trim();
@@ -183,104 +191,38 @@ document.addEventListener('DOMContentLoaded', function() {
         addMemberFormEl.addEventListener('input', updateCreateButton);
         addMemberFormEl.addEventListener('change', updateCreateButton);
     }
-    // Fix add member form submission
+    function confirmRole(title, text, confirmButtonText) {
+        return async () => (await Swal.fire({ title, text, icon: 'warning', showCancelButton: true, confirmButtonText })).isConfirmed;
+    }
     addMemberFormEl?.addEventListener('submit', function(e) {
         e.preventDefault();
         if (createAccountBtn.disabled) return;
-        const formData = new FormData(addMemberForm);
-        const selectedRole = formData.get('memberRole');
-        const selectedRoleText = addMemberForm.querySelector('#memberRole option:checked').textContent.trim();
-        // If assigning manager, confirm
-        if (['manager'].includes(selectedRoleText.toLowerCase())) {
-            Swal.fire({
-                title: `Assign ${selectedRoleText} role?`,
-                text: `Are you sure you want to assign the ${selectedRoleText} role to this member?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#aaa',
-                confirmButtonText: 'Yes, assign!'
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-                submitAddMember();
-            });
-        } else {
-            submitAddMember();
-        }
-        function submitAddMember() {
-            const payload = {
-                name: formData.get('memberName'),
-                email: formData.get('memberEmail'),
-                password: formData.get('memberPassword'),
-                role_id: selectedRole,
-            };
-            fetch('/team-management', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                },
-                body: JSON.stringify(payload),
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.id) {
-                    showMessage('Member created.');
-                    window.location.reload();
-                }
-            });
-            addMemberModal.classList.remove('active');
-        }
+        const form = new FormData(addMemberForm);
+        const roleText = addMemberForm.querySelector('#memberRole option:checked').textContent.trim();
+        TeamForms.submit(addMemberForm, {
+            url: @json(route('team-management.store')),
+            method: 'POST',
+            payload: { name: form.get('memberName'), email: form.get('memberEmail'), password: form.get('memberPassword'), role_id: form.get('memberRole') },
+            confirm: roleText.toLowerCase() === 'manager'
+                ? confirmRole(`Assign ${roleText} role?`, `Assign the ${roleText} role to this member?`, 'Yes, assign!') : null,
+        });
     });
-    // Edit member
     editMemberForm?.addEventListener('submit', function(e) {
         e.preventDefault();
-        const formData = new FormData(editMemberForm);
-        const id = formData.get('editMemberId');
-        const selectedRole = formData.get('editMemberRole');
-        const selectedRoleText = editMemberForm.querySelector('#editMemberRole option:checked').textContent.trim();
+        if (editMemberForm.dataset.pending === 'true') return;
+        const form = new FormData(editMemberForm);
+        const id = form.get('editMemberId');
+        if (!/^\d+$/.test(id || '') || Number(id) < 1) return;
+        const roleText = editMemberForm.querySelector('#editMemberRole option:checked').textContent.trim();
         const currentRole = editMemberForm.querySelector('#editMemberRole').getAttribute('data-current-role');
-        // If role changed, confirm
-        if (currentRole && selectedRoleText.toLowerCase() !== currentRole.toLowerCase()) {
-            Swal.fire({
-                title: `Change role to ${selectedRoleText}?`,
-                text: `Are you sure you want to change this member's role to ${selectedRoleText}?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#3085d6',
-                cancelButtonColor: '#aaa',
-                confirmButtonText: 'Yes, change!'
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-                submitEditMember();
-            });
-        } else {
-            submitEditMember();
-        }
-        function submitEditMember() {
-            const payload = {
-                name: formData.get('editMemberName'),
-                email: formData.get('editMemberEmail'),
-                password: formData.get('editMemberPassword'),
-                role_id: selectedRole,
-            };
-            fetch(`/team-management/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                },
-                body: JSON.stringify(payload),
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.id) {
-                    showMessage('Member updated.');
-                    window.location.reload();
-                }
-            });
-            editMemberModal.classList.remove('active');
-        }
+        const template = @json(route('team-management.update', ['user' => '__USER_ID__']));
+        TeamForms.submit(editMemberForm, {
+            url: template.replace('__USER_ID__', encodeURIComponent(id)),
+            method: 'PUT',
+            payload: { name: form.get('editMemberName'), email: form.get('editMemberEmail'), password: form.get('editMemberPassword'), role_id: form.get('editMemberRole') },
+            confirm: currentRole && roleText.toLowerCase() !== currentRole.toLowerCase()
+                ? confirmRole(`Change role to ${roleText}?`, `Change this member's role to ${roleText}?`, 'Yes, change!') : null,
+        });
     });
     // Delete member (modal confirm)
     document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
@@ -462,19 +404,19 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             <form id="addMemberForm" class="modal-form">
                 <div class="form-group">
                     <label for="memberName">Full Name *</label>
-                    <input type="text" id="memberName" name="memberName" placeholder="Enter full name" required>
+                    <input type="text" id="memberName" data-error-field="name" name="memberName" placeholder="Enter full name" required>
                 </div>
                 <div class="form-group">
                     <label for="memberEmail">Login ID (Email) *</label>
-                    <input type="email" id="memberEmail" name="memberEmail" placeholder="Enter login email" required>
+                    <input type="email" id="memberEmail" data-error-field="email" name="memberEmail" placeholder="Enter login email" required>
                 </div>
                 <div class="form-group">
                     <label for="memberPassword">Password *</label>
-                    <input type="password" id="memberPassword" name="memberPassword" placeholder="Enter password" required minlength="8">
+                    <input type="password" id="memberPassword" data-error-field="password" name="memberPassword" placeholder="Enter password" required minlength="8">
                 </div>
                 <div class="form-group">
                     <label for="memberRole">Role *</label>
-                    <select id="memberRole" name="memberRole" required>
+                    <select id="memberRole" data-error-field="role_id" name="memberRole" required>
                         <option value="">Select Role</option>
                         @foreach($roles as $role)
                             <option value="{{ $role->id }}">{{ ucfirst($role->name) }}</option>
@@ -496,22 +438,22 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                 <button class="modal-close">&times;</button>
             </div>
             <form id="editMemberForm" class="modal-form">
-                <input type="hidden" id="editMemberId">
+                <input type="hidden" id="editMemberId" name="editMemberId">
                 <div class="form-group">
                     <label for="editMemberName">Full Name *</label>
-                    <input type="text" id="editMemberName" name="editMemberName" placeholder="Enter full name" required>
+                    <input type="text" id="editMemberName" data-error-field="name" name="editMemberName" placeholder="Enter full name" required>
                 </div>
                 <div class="form-group">
                     <label for="editMemberEmail">Login ID (Email) *</label>
-                    <input type="email" id="editMemberEmail" name="editMemberEmail" placeholder="Enter login email" required>
+                    <input type="email" id="editMemberEmail" data-error-field="email" name="editMemberEmail" placeholder="Enter login email" required>
                 </div>
                 <div class="form-group">
                     <label for="editMemberPassword">Password</label>
-                    <input type="password" id="editMemberPassword" name="editMemberPassword" placeholder="Enter new password (leave blank to keep current)" minlength="8">
+                    <input type="password" id="editMemberPassword" data-error-field="password" name="editMemberPassword" placeholder="Enter new password (leave blank to keep current)" minlength="8">
                 </div>
                 <div class="form-group">
                     <label for="editMemberRole">Role *</label>
-                    <select id="editMemberRole" name="editMemberRole" required>
+                    <select id="editMemberRole" data-error-field="role_id" name="editMemberRole" required>
                         <option value="">Select Role</option>
                         @foreach($roles as $role)
                             <option value="{{ $role->id }}">{{ ucfirst($role->name) }}</option>
