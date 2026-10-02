@@ -91,7 +91,7 @@ class Task extends Model
         return $this->activeDeadlineGeneration()?->deadline;
     }
 
-    public function activeDeadlineGeneration(): ?TaskDeadlineGeneration
+    public function activeDeadlineKind(): ?string
     {
         $state = $this->machineState();
         if ($state->isFinal()) {
@@ -99,26 +99,30 @@ class Task extends Model
         }
 
         if (in_array($state, [TaskState::Submitted, TaskState::InReview], true)) {
-            $kind = 'review';
-            $deadline = $this->review_due_date;
-            $responsibleUserId = $this->reviewer_id;
-            $workflowCycleId = $this->active_revision_cycle_id;
-        } elseif ($state === TaskState::RevisionRequested
+            return 'review';
+        }
+        if ($state === TaskState::RevisionRequested
             || ($state === TaskState::InProgress && $this->active_revision_cycle_id && $this->revision_due_date)) {
-            $kind = 'revision';
-            $deadline = $this->revision_due_date;
-            $responsibleUserId = $this->assignee_id;
-            $workflowCycleId = $this->active_revision_cycle_id;
-        } else {
-            $kind = 'execution';
-            $deadline = $this->execution_due_date ?? $this->due_date;
-            $responsibleUserId = $this->assignee_id;
-            $workflowCycleId = null;
+            return 'revision';
         }
 
+        return 'execution';
+    }
+
+    public function activeDeadlineGeneration(): ?TaskDeadlineGeneration
+    {
+        $kind = $this->activeDeadlineKind();
+        $deadline = match ($kind) {
+            'review' => $this->review_due_date,
+            'revision' => $this->revision_due_date,
+            'execution' => $this->execution_due_date ?? $this->due_date,
+            default => null,
+        };
         if (! $deadline) {
             return null;
         }
+        $responsibleUserId = $kind === 'review' ? $this->reviewer_id : $this->assignee_id;
+        $workflowCycleId = $kind === 'execution' ? null : $this->active_revision_cycle_id;
 
         return new TaskDeadlineGeneration(
             kind: $kind,

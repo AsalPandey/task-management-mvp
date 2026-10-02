@@ -196,6 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function setLoading(isLoading) {
+        taskForm.dataset.pending = isLoading ? 'true' : 'false';
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = isLoading;
         if (isLoading) {
@@ -219,8 +220,6 @@ document.addEventListener('DOMContentLoaded', function() {
         taskForm.querySelector('#taskStartDate').value = task.start_date || '';
         taskForm.querySelector('#taskDueDate').value = task.due_date || '';
         taskForm.querySelector('#taskDueDate').disabled = true;
-        taskForm.querySelector('#taskReviewDueDate').value = task.review_due_date || '';
-        taskForm.querySelector('#taskReviewDueDate').disabled = true;
         taskForm.querySelector('#taskReviewer').disabled = true;
         taskForm.querySelector('#taskComments').value = task.comments || '';
         editTaskId = task.id;
@@ -242,7 +241,6 @@ document.addEventListener('DOMContentLoaded', function() {
             editTaskVersion = null;
             taskReviewerSelect.disabled = false;
             document.getElementById('taskDueDate').disabled = false;
-            document.getElementById('taskReviewDueDate').disabled = false;
             taskModal.classList.add('active');
             document.getElementById('submitBtn').textContent = '➕ Create Task';
             document.getElementById('modalTitle').textContent = 'Create New Task';
@@ -338,6 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Create/update task
     taskForm.addEventListener('submit', async function(e) {
         e.preventDefault();
+        if (taskForm.dataset.pending === 'true') return;
         setLoading(true);
         const formData = new FormData(taskForm);
         const payload = {
@@ -354,7 +353,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             payload.reviewer_id = formData.get('taskReviewer');
             payload.due_date = formData.get('taskDueDate');
-            payload.review_due_date = formData.get('taskReviewDueDate') || null;
         }
         const url = editTaskId
             ? window.taskUpdateUrlTemplate.replace('__TASK_ID__', encodeURIComponent(editTaskId))
@@ -1362,23 +1360,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                 data-reason-required="{{ $task->submitted_at || $task->active_revision_cycle_id ? 'true' : 'false' }}"
                                 data-url="{{ route('tasks.reviewer.reassign', $task) }}">Reassign Reviewer</button>
                         @endcan
-                        @can('changeDeadline', $task)
-                            @php
-                                $deadlineType = $taskState === \App\Enums\TaskState::RevisionRequested || $task->active_revision_cycle_id
-                                    ? 'revision'
-                                    : ($taskState->isReviewState() ? 'review' : 'execution');
-                                $deadlineReasonRequired = $deadlineType === 'revision'
-                                    || ($deadlineType === 'review' && $taskState->isReviewState())
-                                    || ($deadlineType === 'execution' && $taskState !== \App\Enums\TaskState::NotStarted);
-                            @endphp
+                        @php
+                            $deadlineAction = app(\App\Services\TaskDeadlineAction::class)->for($task, $user);
+                        @endphp
+                        @if ($deadlineAction)
                             <button type="button" class="btn-small btn-secondary management-action-btn"
                                 data-action="change-deadline"
-                                data-deadline-type="{{ $deadlineType }}"
-                                data-reason-required="{{ $deadlineReasonRequired ? 'true' : 'false' }}"
-                                data-url="{{ route('tasks.deadline.change', ['task' => $task, 'deadlineType' => $deadlineType]) }}">
-                                Change {{ ucfirst($deadlineType) }} Deadline
+                                data-deadline-type="{{ $deadlineAction['type'] }}"
+                                data-reason-required="{{ $deadlineAction['reason_required'] ? 'true' : 'false' }}"
+                                data-url="{{ $deadlineAction['url'] }}">
+                                {{ $deadlineAction['label'] }}
                             </button>
-                        @endcan
+                        @endif
                     @endif
                 </div>
                 @if ($taskState === \App\Enums\TaskState::Cancelled)
@@ -1597,10 +1590,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <option value="">Select Reviewer</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="taskReviewDueDate">Review Deadline</label>
-                        <input type="date" id="taskReviewDueDate" name="taskReviewDueDate">
-                    </div>
+                    <p class="form-help">The review deadline is set when work is submitted for review.</p>
                 </div>
                 <div class="form-row">
                     <div class="form-group">

@@ -3,24 +3,18 @@
 namespace App\TaskTransitions;
 
 use App\Contracts\TaskTransitionCommand;
-use App\Enums\TaskState;
 use App\Exceptions\TaskTransitionException;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskNotificationDispatcher;
+use App\Support\TaskDeadlineRules;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionEffects;
 use Carbon\CarbonImmutable;
 
 final class ChangeTaskDeadline implements TaskTransitionCommand
 {
-    private const ALLOWED_STATES = [
-        'execution' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold],
-        'review' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold, TaskState::Submitted, TaskState::InReview],
-        'revision' => [TaskState::RevisionRequested, TaskState::InProgress],
-    ];
-
     public function __construct(
         private readonly TaskNotificationDispatcher $notifications,
         private readonly string $deadlineType,
@@ -35,11 +29,11 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
 
     public function validate(Task $task, User $actor): void
     {
-        if (! isset(self::ALLOWED_STATES[$this->deadlineType])) {
+        if (! TaskDeadlineRules::supports($this->deadlineType)) {
             throw TaskTransitionException::invariant('deadline_type', 'The deadline type is invalid.');
         }
 
-        if (! in_array($task->machineState(), self::ALLOWED_STATES[$this->deadlineType], true)) {
+        if (! TaskDeadlineRules::allows($task, $this->deadlineType)) {
             throw TaskTransitionException::invalidState(
                 ucfirst($this->deadlineType).' deadline changes are not valid in the current task state.',
             );
@@ -56,7 +50,7 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
             throw TaskTransitionException::invariant('due_date', 'The deadline must be in the future.');
         }
 
-        if ($this->reasonRequired($task) && trim((string) $this->reason) === '') {
+        if (TaskDeadlineRules::reasonRequired($task, $this->deadlineType) && trim((string) $this->reason) === '') {
             throw TaskTransitionException::missingData(
                 'reason',
                 'A reason is required after this workflow period begins.',
@@ -119,14 +113,5 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
     private function parsedDueDate(): CarbonImmutable
     {
         return CarbonImmutable::parse($this->dueDate, config('app.timezone'))->startOfDay();
-    }
-
-    private function reasonRequired(Task $task): bool
-    {
-        return match ($this->deadlineType) {
-            'execution' => $task->machineState() !== TaskState::NotStarted || $task->started_at !== null,
-            'review' => in_array($task->machineState(), [TaskState::Submitted, TaskState::InReview], true),
-            'revision' => true,
-        };
     }
 }

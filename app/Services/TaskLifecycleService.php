@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
+use App\Support\TaskCreationFields;
 use App\ValueObjects\TaskOperationContext;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -47,30 +48,7 @@ class TaskLifecycleService
     public function create(array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
         $context ??= TaskOperationContext::system($actor->id);
-        $forbidden = array_values(array_intersect(array_keys($data), [
-            'task_uid',
-            'status',
-            'state',
-            'progress',
-            'started_at',
-            'submitted_at',
-            'review_started_at',
-            'approved_at',
-            'approved_by',
-            'held_at',
-            'held_by',
-            'hold_reason',
-            'completed_at',
-            'completed_by',
-            'cancelled_at',
-            'cancelled_by',
-            'cancellation_reason',
-            'revision_count',
-            'active_revision_cycle_id',
-            'execution_due_date',
-            'review_due_date',
-            'revision_due_date',
-        ]));
+        $forbidden = array_values(array_intersect(array_keys($data), TaskCreationFields::FORBIDDEN));
         if ($forbidden !== []) {
             throw ValidationException::withMessages([
                 $forbidden[0] => 'Lifecycle state and metadata cannot be supplied during task creation.',
