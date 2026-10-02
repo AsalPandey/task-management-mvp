@@ -166,7 +166,7 @@ body { background: #f7f8fa; }
 </div>
 @endsection
 @push('scripts')
-<script>
+<script type="module">
 const priorityData = @json($priorityCounts);
 const productivityData = @json($productivity);
 const statusData = @json($statusCounts);
