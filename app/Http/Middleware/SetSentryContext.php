@@ -31,7 +31,7 @@ class SetSentryContext
                     $scope->setContext('company', [
                         'id' => $company->id,
                         'name' => $company->company_name,
-                        'timezone' => $company->timezone,
+                        'timezone' => config('app.timezone'),
                     ]);
                 }
             });

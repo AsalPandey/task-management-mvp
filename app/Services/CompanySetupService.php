@@ -9,12 +9,23 @@ use Database\Seeders\PermissionsTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class CompanySetupService
 {
     public function setup(array $data): User
     {
+        Validator::make($data, [
+            'company_name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:8'],
+            'timezone' => ['sometimes', 'timezone', Rule::in([config('app.timezone')])],
+            'app_url' => ['nullable', 'url', 'max:255'],
+        ])->validate();
+
         return DB::transaction(function () use ($data) {
             $usersExist = User::query()->lockForUpdate()->exists();
             if ($usersExist) {
@@ -41,7 +52,7 @@ class CompanySetupService
                 ['id' => CompanySetting::query()->value('id') ?: 1],
                 [
                     'company_name' => $data['company_name'],
-                    'timezone' => $data['timezone'] ?? 'Asia/Kathmandu',
+                    'timezone' => config('app.timezone'),
                     'app_url' => $data['app_url'] ?? config('app.url'),
                     'installed_at' => now(),
                     'settings' => [
@@ -61,7 +72,7 @@ class CompanySetupService
                 'password' => Hash::make($data['password']),
                 'role_id' => $managerRole->id,
                 'active' => true,
-                'timezone' => $data['timezone'] ?? 'Asia/Kathmandu',
+                'timezone' => config('app.timezone'),
                 'email_verified_at' => now(),
                 'notification_preferences' => [
                     'task_assigned' => true,

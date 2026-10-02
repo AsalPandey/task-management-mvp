@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\CompanySetupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SetupController extends Controller
 {
@@ -27,8 +28,8 @@ class SetupController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'timezone' => ['required', 'timezone'],
-            'app_url' => ['nullable', 'url'],
+            'timezone' => ['required', 'timezone', Rule::in([config('app.timezone')])],
+            'app_url' => ['nullable', 'url', 'max:255'],
         ])->validate();
 
         abort_unless(hash_equals((string) config('app.setup_token'), $data['setup_token']), 404);

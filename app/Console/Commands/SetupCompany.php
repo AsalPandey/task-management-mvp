@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\CompanySetupService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SetupCompany extends Command
 {
@@ -12,7 +13,7 @@ class SetupCompany extends Command
         {--company= : Company name}
         {--name= : First manager name}
         {--email= : First manager email}
-        {--timezone=Asia/Kathmandu : Company timezone}
+        {--timezone= : Must match the deployment APP_TIMEZONE}
         {--app-url= : Public application URL}';
 
     protected $description = 'Create the initial company profile, roles, permissions, and first manager account.';
@@ -24,7 +25,7 @@ class SetupCompany extends Command
             'name' => $this->option('name') ?: config('company-bootstrap.manager_name') ?: $this->prompt('First manager name'),
             'email' => $this->option('email') ?: config('company-bootstrap.manager_email') ?: $this->prompt('First manager email'),
             'password' => config('company-bootstrap.manager_password') ?: $this->prompt('First manager password', true),
-            'timezone' => $this->option('timezone') ?: 'Asia/Kathmandu',
+            'timezone' => $this->option('timezone') ?: config('app.timezone'),
             'app_url' => $this->option('app-url') ?: config('app.url'),
         ];
 
@@ -33,8 +34,8 @@ class SetupCompany extends Command
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string', 'min:8'],
-            'timezone' => ['required', 'timezone'],
-            'app_url' => ['nullable', 'url'],
+            'timezone' => ['required', 'timezone', Rule::in([config('app.timezone')])],
+            'app_url' => ['nullable', 'url', 'max:255'],
         ]);
 
         if ($validator->fails()) {

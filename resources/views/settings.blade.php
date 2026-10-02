@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await postJson('{{ route('settings.profile') }}', {
                     name: document.getElementById('profileFullName').value,
                     email: document.getElementById('profileEmail').value,
-                    timezone: '{{ $user->timezone ?: config('app.timezone') }}',
+                    timezone: '{{ config('app.timezone') }}',
                 });
                 document.getElementById('profileName').textContent = data.user.name;
                 showMessage('profileMessage', 'Profile updated.');

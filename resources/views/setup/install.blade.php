@@ -39,7 +39,9 @@
 
         <div class="mt-4">
             <x-input-label for="timezone" value="Timezone" />
-            <x-text-input id="timezone" class="block mt-1 w-full" type="text" name="timezone" value="{{ old('timezone', 'Asia/Kathmandu') }}" required />
+            <x-text-input id="timezone" class="block mt-1 w-full" type="text" name="timezone" readonly value="{{ config('app.timezone') }}" required />
+            <p>Company dates use the deployment timezone. Set APP_TIMEZONE and rebuild configuration before installation to change it.</p>
+            <p>Company dates use the deployment timezone. Set APP_TIMEZONE and rebuild configuration before installation to change it.</p>
             <x-input-error :messages="$errors->get('timezone')" class="mt-2" />
         </div>
 
