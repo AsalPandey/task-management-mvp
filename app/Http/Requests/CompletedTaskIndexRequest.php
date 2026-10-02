@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Task;
+use App\Support\InputContracts;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,8 +28,8 @@ class CompletedTaskIndexRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:200'],
             'priority' => ['nullable', 'string', Rule::in(Task::PRIORITIES)],
-            'project' => ['nullable', 'integer', 'min:1'],
-            'assignee' => ['nullable', 'integer', 'min:1'],
+            'project' => InputContracts::id('nullable', 'min:1'),
+            'assignee' => InputContracts::id('nullable', 'min:1'),
         ];
     }
 }

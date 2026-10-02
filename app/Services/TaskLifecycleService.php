@@ -9,12 +9,14 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
+use App\Support\InputContracts;
 use App\Support\TaskCreationFields;
 use App\ValueObjects\TaskOperationContext;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
@@ -54,6 +56,14 @@ class TaskLifecycleService
                 $forbidden[0] => 'Lifecycle state and metadata cannot be supplied during task creation.',
             ]);
         }
+        Validator::make($data, [
+            'project_id' => InputContracts::id(),
+            'assignee_id' => InputContracts::id(),
+            'reviewer_id' => InputContracts::id(),
+            'title' => ['required', 'string', 'max:255'],
+            'description' => InputContracts::text(),
+            'comments' => InputContracts::text(),
+        ])->validate();
         $reviewerId = array_key_exists('reviewer_id', $data) ? $data['reviewer_id'] : null;
         unset($data['reviewer_id']);
 
@@ -110,6 +120,13 @@ class TaskLifecycleService
 
     public function update(Task $task, array $data, User $actor, ?TaskOperationContext $context = null): Task
     {
+        Validator::make($data, [
+            'project_id' => InputContracts::id('sometimes', 'required'),
+            'assignee_id' => InputContracts::id('sometimes', 'required'),
+            'description' => InputContracts::text(),
+            'comments' => InputContracts::text(),
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
+        ])->validate();
         $context ??= TaskOperationContext::system($actor->id);
 
         return DB::transaction(function () use ($task, $data, $actor, $context) {

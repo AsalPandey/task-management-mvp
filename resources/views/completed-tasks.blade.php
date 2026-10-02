@@ -170,6 +170,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>
                         <button type="button" class="btn-small btn-secondary timeline-btn"
                             data-url="{{ route('tasks.timeline', $task) }}">Timeline</button>
+                        @if($task->legacy_completion_provenance && !$task->approval)
+                            <span>Historical completion: approval evidence unavailable. Retained for audit; create separately reviewed follow-up work.</span>
+                        @else
                         @can('reopen', $task)
                             <button class="btn-small btn-primary reopen-revision-btn"
                                 data-url="{{ route('tasks.reopen', $task) }}"
@@ -177,6 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         @else
                             <span aria-label="Reopen unavailable">&mdash;</span>
                         @endcan
+                        @endif
                     </td>
                 </tr>
             @empty

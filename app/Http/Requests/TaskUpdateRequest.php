@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\TaskState;
 use App\Models\Task;
+use App\Support\InputContracts;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -23,15 +24,16 @@ class TaskUpdateRequest extends FormRequest
     {
         return [
             'title' => 'sometimes|required|string|max:255',
-            'project_id' => 'sometimes|required|exists:projects,id',
-            'description' => 'nullable|string',
-            'assignee_id' => 'sometimes|required|exists:users,id',
+            'project_id' => InputContracts::id('sometimes', 'required', 'exists:projects,id'),
+            'description' => InputContracts::text(),
+            'assignee_id' => InputContracts::id('sometimes', 'required', 'exists:users,id'),
             'reviewer_id' => ['missing'],
             'review_due_date' => ['missing'],
             'execution_due_date' => ['missing'],
             'revision_due_date' => ['missing'],
             'due_date' => ['missing'],
             'task_uid' => ['missing'],
+            'legacy_completion_provenance' => ['missing'],
             'state' => ['missing'],
             'started_at' => ['missing'],
             'submitted_at' => ['missing'],
@@ -52,7 +54,7 @@ class TaskUpdateRequest extends FormRequest
             'status' => ['missing'],
             'progress' => 'sometimes|required|integer|min:0|max:99',
             'start_date' => 'nullable|date',
-            'comments' => 'nullable|string',
+            'comments' => InputContracts::text(),
             'expected_version' => ['required_without_all:lock_version,version', 'integer', 'min:1'],
             'lock_version' => ['sometimes', 'required', 'integer', 'min:1'],
             'version' => ['sometimes', 'required', 'integer', 'min:1'],

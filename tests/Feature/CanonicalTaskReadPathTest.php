@@ -233,7 +233,7 @@ class CanonicalTaskReadPathTest extends TestCase
         $memberAnalytics = $this->actingAs($manager)
             ->get(route('team-management.analytics', $assignee))
             ->assertOk();
-        $this->assertSame(1, $memberAnalytics->viewData('totalTasks'));
+        $this->assertSame(2, $memberAnalytics->viewData('totalTasks')); // Total creation cohort includes completed work.
         $this->assertSame(1, $memberAnalytics->viewData('totalCompletedTasks'));
         $this->assertSame(50.0, $memberAnalytics->viewData('overallCompletionRate'));
         $this->assertSame(1, $memberAnalytics->viewData('statusCounts')['Completed']);

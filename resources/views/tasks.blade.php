@@ -1557,7 +1557,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="form-group">
                     <label for="taskDescription">Task Description *</label>
-                    <textarea id="taskDescription" name="taskDescription" rows="3" placeholder="Describe the task..." required></textarea>
+                    <textarea id="taskDescription" name="taskDescription" rows="3" placeholder="Describe the task..." required maxlength="20000"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="taskProject">Project *</label>
@@ -1604,7 +1604,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div class="form-group">
                     <label for="taskComments">Comments</label>
-                    <textarea id="taskComments" name="taskComments" rows="3" placeholder="Add any additional comments..."></textarea>
+                    <textarea id="taskComments" name="taskComments" rows="3" placeholder="Add any additional comments..." maxlength="20000"></textarea>
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="taskModal.classList.remove('active')">Cancel</button>

@@ -65,6 +65,7 @@ class Task extends Model
         'deadline_reminder_sent_at' => 'datetime',
         'overdue_notification_sent_at' => 'datetime',
         'lock_version' => 'integer',
+        'legacy_completion_provenance' => 'array',
     ];
 
     protected $attributes = [

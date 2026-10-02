@@ -17,6 +17,6 @@ final class TaskCreationFields
         'execution_due_date', 'review_due_date', 'revision_due_date',
         'lock_version', 'expected_version', 'created_by', 'assigned_by', 'original_task_id',
         'event_uid', 'event_type', 'sequence', 'actor_id', 'operation_key',
-        'correlation_id', 'changed_fields', 'metadata',
+        'correlation_id', 'changed_fields', 'metadata', 'legacy_completion_provenance',
     ];
 }

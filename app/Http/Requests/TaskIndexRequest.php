@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\TaskState;
 use App\Models\Task;
+use App\Support\InputContracts;
 use App\Support\TaskStateCompatibility;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -40,9 +41,9 @@ class TaskIndexRequest extends FormRequest
                 Rule::in(array_column(TaskState::cases(), 'value')),
             ],
             'priority' => ['nullable', 'string', Rule::in(Task::PRIORITIES)],
-            'project' => ['nullable', 'integer', 'min:1'],
-            'assignee' => ['nullable', 'integer', 'min:1'],
-            'reviewer' => ['nullable', 'integer', 'min:1'],
+            'project' => InputContracts::id('nullable', 'min:1'),
+            'assignee' => InputContracts::id('nullable', 'min:1'),
+            'reviewer' => InputContracts::id('nullable', 'min:1'),
             'scope' => [
                 'nullable',
                 Rule::in(['assigned_to_me', 'created_by_me', 'waiting_for_review']),

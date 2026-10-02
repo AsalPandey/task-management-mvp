@@ -24,14 +24,19 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('completed_tasks', function (Blueprint $table) {
+            $table->dropForeign(['project_id']);
+            $table->dropForeign(['created_by']);
+            $table->dropForeign(['assigned_by']);
+            $table->dropForeign(['completed_by']);
+            $table->dropForeign(['reverted_by']);
             $table->dropIndex(['project_id', 'assignee_id', 'completed_at']);
             $table->dropIndex(['completed_at', 'status']);
+            $table->dropColumn('project_id');
+            $table->dropColumn('created_by');
+            $table->dropColumn('assigned_by');
+            $table->dropColumn('completed_by');
+            $table->dropColumn('reverted_by');
             $table->dropColumn('original_task_id');
-            $table->dropConstrainedForeignId('project_id');
-            $table->dropConstrainedForeignId('created_by');
-            $table->dropConstrainedForeignId('assigned_by');
-            $table->dropConstrainedForeignId('completed_by');
-            $table->dropConstrainedForeignId('reverted_by');
             $table->dropColumn('reverted_at');
         });
     }

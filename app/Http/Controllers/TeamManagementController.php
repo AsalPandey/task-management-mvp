@@ -6,13 +6,15 @@ use App\Exceptions\AccountLifecycleException;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\AccountStatusChangedNotification;
+use App\Rules\AccountEmailAvailable;
 use App\Services\AccountLifecycleService;
 use App\Services\TaskAnalyticsService;
+use App\Support\AnalyticsFilters;
+use App\Support\InputContracts;
 use App\Support\UserPayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class TeamManagementController extends Controller
@@ -21,10 +23,11 @@ class TeamManagementController extends Controller
     {
         $authUser = auth()->user();
         abort_unless($authUser->hasAnyRole(['manager', 'project_manager']), 403);
+        $filters = $request->validate(['search' => ['nullable', 'string', 'max:255']]);
 
         $users = $this->manageableUsers()
             ->with(['role', 'projects:id,name'])
-            ->when($request->input('search'), function ($query, string $search) {
+            ->when($filters['search'] ?? null, function ($query, string $search) {
                 $query->where(function ($subQuery) use ($search) {
                     $subQuery->where('name', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
@@ -49,9 +52,9 @@ class TeamManagementController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', Rule::unique('users', 'email')],
+            'email' => ['bail', 'required', 'string', 'email', 'max:255', new AccountEmailAvailable],
             'password' => ['required', 'string', 'min:8'],
-            'role_id' => ['required', 'exists:roles,id'],
+            'role_id' => InputContracts::id('required', 'exists:roles,id'),
         ]);
 
         $data['password'] = Hash::make($data['password']);
@@ -69,8 +72,8 @@ class TeamManagementController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'role_id' => ['sometimes', 'required', 'exists:roles,id'],
+            'email' => ['bail', 'required', 'string', 'email', 'max:255', new AccountEmailAvailable($user->id)],
+            'role_id' => InputContracts::id('sometimes', 'required', 'exists:roles,id'),
             'password' => ['nullable', 'string', 'min:8'],
         ]);
 
@@ -148,7 +151,7 @@ class TeamManagementController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function analytics(User $user, TaskAnalyticsService $analytics)
+    public function analytics(Request $request, User $user, TaskAnalyticsService $analytics)
     {
         $authUser = auth()->user();
         if (! $authUser->hasRole('manager') && ! $authUser->hasRole('project_manager') && ! $authUser->is($user)) {
@@ -161,10 +164,13 @@ class TeamManagementController extends Controller
             abort_unless($allowed || $authUser->is($user), 403);
         }
 
-        $report = $analytics->report($authUser, assigneeId: $user->id);
+        $filters = AnalyticsFilters::fromRequest($request);
+        $dateFrom = $filters['dateFrom'] ?? now(config('app.timezone'))->subDays(7)->toDateString();
+        $dateTo = $filters['dateTo'] ?? now(config('app.timezone'))->toDateString();
+        $report = $analytics->report($authUser, $dateFrom, $dateTo, $user->id);
         $allTasks = $report['activeTasks'];
         $allCompletedTasks = $report['completedTasks'];
-        $totalTasks = $report['totalActiveTasks'];
+        $totalTasks = $report['totalTasks'];
         $totalCompletedTasks = $report['totalCompletedTasks'];
         $overallCompletionRate = $report['completionRate'];
         $currentActiveTasks = $allTasks;
@@ -176,11 +182,7 @@ class TeamManagementController extends Controller
             'Medium' => $allTasks->where('priority', 'Medium')->count(),
             'Low' => $allTasks->where('priority', 'Low')->count(),
         ];
-        $statusCounts = [
-            'Not Started' => $allTasks->where('status', 'Not Started')->count(),
-            'In Progress' => $allTasks->where('status', 'In Progress')->count(),
-            'Completed' => $allCompletedTasks->count(),
-        ];
+        $statusCounts = $report['statusCounts'];
         $dailyCompletionTrend = $report['completionTrend'];
         $dailyTaskCreationTrend = $report['creationTrend'];
         $monthlyPerformance = collect(range(0, 5))->mapWithKeys(function ($i) use ($analytics, $authUser, $user) {
@@ -198,7 +200,7 @@ class TeamManagementController extends Controller
             ->sortByDesc(fn ($task) => $task->completed_at ?? $task->created_at)
             ->take(10);
         $achievements = [
-            'Completed '.$totalCompletedTasks.' tasks overall',
+            'Completed '.$totalCompletedTasks.' tasks in the selected creation cohort',
             'Current completion rate: '.$overallCompletionRate.'%',
             'Average progress on active tasks: '.$currentAvgProgress.'%',
         ];
@@ -211,6 +213,8 @@ class TeamManagementController extends Controller
 
         return view('team-member-analytics', compact(
             'user',
+            'dateFrom',
+            'dateTo',
             'allTasks',
             'allCompletedTasks',
             'totalTasks',

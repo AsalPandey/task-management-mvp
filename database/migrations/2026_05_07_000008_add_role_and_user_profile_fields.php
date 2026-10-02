@@ -21,6 +21,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        // MariaDB may replace the original FK index when a covering index is added.
+        if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            if (! Schema::hasIndex('users', 'users_role_id_foreign')) {
+                Schema::table('users', fn (Blueprint $table) => $table->index('role_id', 'users_role_id_foreign'));
+            }
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropIndex(['role_id', 'active']);
             $table->dropColumn(['notification_preferences', 'last_login_at']);

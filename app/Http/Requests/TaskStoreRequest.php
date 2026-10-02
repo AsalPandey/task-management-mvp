@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Task;
+use App\Support\InputContracts;
 use App\Support\TaskCreationFields;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -18,14 +19,14 @@ class TaskStoreRequest extends FormRequest
     {
         return [
             'title' => 'required|string|max:255',
-            'project_id' => 'required|exists:projects,id',
-            'description' => 'nullable|string',
-            'assignee_id' => 'required|exists:users,id',
-            'reviewer_id' => 'required|exists:users,id|different:assignee_id',
+            'project_id' => InputContracts::id('required', 'exists:projects,id'),
+            'description' => InputContracts::text(),
+            'assignee_id' => InputContracts::id('required', 'exists:users,id'),
+            'reviewer_id' => InputContracts::id('required', 'exists:users,id', 'different:assignee_id'),
             'priority' => ['required', Rule::in(Task::PRIORITIES)],
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date|after_or_equal:start_date',
-            'comments' => 'nullable|string',
+            'comments' => InputContracts::text(),
         ] + array_fill_keys(TaskCreationFields::FORBIDDEN, ['missing']);
     }
 }

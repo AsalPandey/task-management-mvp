@@ -20,6 +20,11 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
+    public function setEmailAttribute(mixed $value): void
+    {
+        $this->attributes['email'] = is_string($value) ? mb_strtolower(trim($value)) : $value;
+    }
+
     protected $fillable = [
         'name',
         'email',

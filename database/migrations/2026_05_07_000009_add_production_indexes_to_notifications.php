@@ -20,6 +20,16 @@ return new class extends Migration
 
     public function down(): void
     {
+        // MariaDB may replace the original FK index when a covering index is added.
+        if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            if (! Schema::hasIndex('task_histories', 'task_histories_task_id_foreign')) {
+                Schema::table('task_histories', fn (Blueprint $table) => $table->index('task_id', 'task_histories_task_id_foreign'));
+            }
+            if (! Schema::hasIndex('task_histories', 'task_histories_user_id_foreign')) {
+                Schema::table('task_histories', fn (Blueprint $table) => $table->index('user_id', 'task_histories_user_id_foreign'));
+            }
+        }
+
         Schema::table('task_histories', function (Blueprint $table) {
             $table->dropIndex(['task_id', 'created_at']);
             $table->dropIndex(['user_id', 'created_at']);

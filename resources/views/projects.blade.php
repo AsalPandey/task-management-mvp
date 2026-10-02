@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="form-group">
                 <label for="projectDescription">Description</label>
-                <textarea id="projectDescription" name="description" rows="3"></textarea>
+                <textarea id="projectDescription" name="description" rows="3" maxlength="20000"></textarea>
             </div>
             <div class="form-row">
                 <div class="form-group">

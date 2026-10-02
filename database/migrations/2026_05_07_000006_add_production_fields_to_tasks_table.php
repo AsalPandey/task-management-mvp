@@ -23,12 +23,15 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('tasks', function (Blueprint $table) {
+            $table->dropForeign(['project_id']);
+            $table->dropForeign(['created_by']);
+            $table->dropForeign(['assigned_by']);
             $table->dropIndex(['project_id', 'assignee_id', 'status']);
             $table->dropIndex(['due_date', 'status']);
-            $table->dropConstrainedForeignId('project_id');
+            $table->dropColumn('project_id');
+            $table->dropColumn('created_by');
+            $table->dropColumn('assigned_by');
             $table->dropColumn('original_task_id');
-            $table->dropConstrainedForeignId('created_by');
-            $table->dropConstrainedForeignId('assigned_by');
             $table->dropColumn(['deadline_reminder_sent_at', 'overdue_notification_sent_at']);
         });
     }

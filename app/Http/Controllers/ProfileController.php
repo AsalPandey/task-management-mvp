@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Rules\AccountEmailAvailable;
 use App\Services\AccountLifecycleService;
 use App\Services\AccountSessionSecurity;
 use App\Support\UserPayload;
@@ -50,7 +51,7 @@ class ProfileController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$request->user()->id],
+            'email' => ['required', 'email', 'max:255', new AccountEmailAvailable($request->user()->id)],
             'timezone' => ['nullable', 'timezone'],
             'current_password' => ['nullable', 'required_with:password', 'current_password'],
             'password' => ['nullable', 'confirmed', Password::defaults()],

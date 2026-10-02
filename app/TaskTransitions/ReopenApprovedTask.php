@@ -91,6 +91,10 @@ final class ReopenApprovedTask implements TaskTransitionCommand
             }
         }
 
+        if ($task->legacy_completion_provenance && ! $task->approval) {
+            throw TaskTransitionException::missingData('approval_id', 'This historical completion has no retained approval evidence and cannot be reopened. Its identity and history remain available; create separately reviewed follow-up work.');
+        }
+
         if (! $task->approval) {
             throw TaskTransitionException::missingData('approval_id', 'The completed task must retain an approval record.');
         }

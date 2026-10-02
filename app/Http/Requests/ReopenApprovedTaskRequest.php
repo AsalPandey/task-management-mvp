@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\InputContracts;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ReopenApprovedTaskRequest extends FormRequest
@@ -30,7 +31,7 @@ class ReopenApprovedTaskRequest extends FormRequest
             'status' => ['prohibited'],
             'progress' => ['prohibited'],
             'assignee_id' => ['prohibited'],
-            'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
+            'reviewer_id' => InputContracts::id('nullable', 'exists:users,id'),
         ];
     }
 }

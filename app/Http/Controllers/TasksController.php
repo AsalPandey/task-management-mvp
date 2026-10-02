@@ -35,6 +35,7 @@ use App\Services\TaskReadService;
 use App\Services\TaskTimelineService;
 use App\Services\TaskTransitionExecutor;
 use App\Services\TaskViewData;
+use App\Support\InputContracts;
 use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\CancelTask;
 use App\TaskTransitions\ChangeTaskDeadline;
@@ -279,7 +280,7 @@ class TasksController extends Controller
 
         $ids = $request->validate([
             'task_ids' => ['required', 'array', 'min:1'],
-            'task_ids.*' => ['integer', 'exists:tasks,id'],
+            'task_ids.*' => InputContracts::id('required', 'exists:tasks,id'),
         ])['task_ids'];
 
         $tasks = $this->visibleTasks()->whereIn('id', $ids)->get();

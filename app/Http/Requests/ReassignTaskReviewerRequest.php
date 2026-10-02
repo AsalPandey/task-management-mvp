@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\InputContracts;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ReassignTaskReviewerRequest extends FormRequest
@@ -16,7 +17,7 @@ class ReassignTaskReviewerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reviewer_id' => ['required', 'integer', 'exists:users,id'],
+            'reviewer_id' => InputContracts::id('required', 'exists:users,id'),
             'reason' => ['nullable', 'string', 'max:1000'],
         ];
     }

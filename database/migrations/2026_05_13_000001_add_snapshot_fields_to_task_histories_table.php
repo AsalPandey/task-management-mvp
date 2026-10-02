@@ -20,10 +20,12 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('task_histories', function (Blueprint $table) {
+            $table->dropForeign(['completed_task_id']);
+            $table->dropForeign(['project_id']);
             $table->dropIndex(['project_id', 'created_at']);
             $table->dropIndex(['original_task_id']);
-            $table->dropConstrainedForeignId('completed_task_id');
-            $table->dropConstrainedForeignId('project_id');
+            $table->dropColumn('completed_task_id');
+            $table->dropColumn('project_id');
             $table->dropColumn(['original_task_id', 'task_title']);
         });
     }
