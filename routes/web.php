@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/setup', [SetupController::class, 'create'])->name('setup.create');
-Route::post('/setup', [SetupController::class, 'store'])->middleware('throttle:10,1')->name('setup.store');
+Route::post('/setup', [SetupController::class, 'store'])->middleware('throttle:setup')->name('setup.store');
 
 Route::get('/', function () {
     if (Auth::check()) {
@@ -49,8 +49,8 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
-    Route::get('/analytics/export/csv', [AnalyticsController::class, 'exportCsv'])->middleware('throttle:10,1')->name('analytics.export.csv');
-    Route::get('/analytics/print', [AnalyticsController::class, 'exportPrint'])->middleware('throttle:10,1')->name('analytics.export.print');
+    Route::get('/analytics/export/csv', [AnalyticsController::class, 'exportCsv'])->middleware('throttle:analytics-export')->name('analytics.export.csv');
+    Route::get('/analytics/print', [AnalyticsController::class, 'exportPrint'])->middleware('throttle:analytics-export')->name('analytics.export.print');
 
     Route::get('/projects', [ProjectsController::class, 'index'])->name('projects');
     Route::post('/projects', [ProjectsController::class, 'store'])->name('projects.store');
@@ -62,7 +62,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     Route::get('/tasks', [TasksController::class, 'index'])->name('tasks');
     Route::middleware(EnsureTaskCorrelationId::class)->group(function () {
-        Route::post('/tasks', [TasksController::class, 'store'])->middleware('throttle:30,1')->name('tasks.store');
+        Route::post('/tasks', [TasksController::class, 'store'])->middleware('throttle:task-create')->name('tasks.store');
         Route::put('/tasks/{task}', [TasksController::class, 'update'])->name('tasks.update');
         Route::delete('/tasks/{task}', [TasksController::class, 'destroy'])->name('tasks.destroy');
         Route::post('/tasks/bulk-delete', [TasksController::class, 'bulkDelete'])->name('tasks.bulk-delete');
@@ -102,7 +102,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/team-management/{user}/activate', [TeamManagementController::class, 'activate'])->name('team-management.activate');
     Route::post('/team-management/{user}/deactivate', [TeamManagementController::class, 'deactivate'])->name('team-management.deactivate');
 
-    Route::post('/settings/profile', [ProfileController::class, 'updateJson'])->middleware('throttle:10,1')->name('settings.profile');
+    Route::post('/settings/profile', [ProfileController::class, 'updateJson'])->middleware('throttle:profile-update')->name('settings.profile');
     Route::post('/settings/preferences', [ProfileController::class, 'updatePreferences'])->name('settings.preferences');
 
     Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsRead'])->name('notifications.read');
@@ -110,10 +110,10 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/notifications/all', [NotificationController::class, 'all'])->name('notifications.all');
 
     Route::get('/push/status', [BrowserPushController::class, 'status'])->name('push.status');
-    Route::post('/push/subscriptions', [BrowserPushController::class, 'store'])->middleware('throttle:30,1')->name('push.subscriptions.store');
+    Route::post('/push/subscriptions', [BrowserPushController::class, 'store'])->middleware('throttle:push-subscribe')->name('push.subscriptions.store');
     Route::delete('/push/subscriptions', [BrowserPushController::class, 'destroy'])->name('push.subscriptions.destroy');
     Route::post('/push/test', [BrowserPushController::class, 'test'])
-        ->middleware('throttle:3,10')
+        ->middleware('throttle:push-test')
         ->name('push.test');
 });
 

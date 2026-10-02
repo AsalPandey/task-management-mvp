@@ -26,14 +26,14 @@ Route::middleware('guest')->group(function () {
         ->name('password.request');
 
     Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:password-forgot')
         ->name('password.email');
 
     Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
         ->name('password.reset');
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:password-reset')
         ->name('password.store');
 });
 
@@ -42,19 +42,19 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->name('verification.notice');
 
     Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:6,1'])
+        ->middleware(['signed', 'throttle:email-verification'])
         ->name('verification.verify');
 
     Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:email-verification')
         ->name('verification.send');
 
     Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
         ->name('password.confirm');
 
-    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:10,1');
+    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:password-confirm');
 
-    Route::put('password', [PasswordController::class, 'update'])->middleware('throttle:10,1')->name('password.update');
+    Route::put('password', [PasswordController::class, 'update'])->middleware('throttle:password-update')->name('password.update');
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
