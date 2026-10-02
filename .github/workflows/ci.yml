@@ -174,9 +174,82 @@ jobs:
       - name: Run disposable MariaDB qualification
         run: bash scripts/ci-mariadb-tests.sh
 
+  browser:
+    name: Clean-company browser critical path
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: http://127.0.0.1:8046
+      APP_TIMEZONE: Asia/Kathmandu
+      APP_SETUP_TOKEN: r41-disposable-installer-token
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: task_management_r41_browser_ci
+      DB_USERNAME: root
+      DB_PASSWORD: ci_root_password
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      MAIL_MAILER: log
+    services:
+      mariadb:
+        image: mariadb:10.4.32
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+          MARIADB_ROOT_HOST: "%"
+          MARIADB_DATABASE: task_management_r41_browser_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: bcmath, curl, dom, fileinfo, intl, mbstring, openssl, pdo_mysql
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: vite-${{ github.sha }}
+          path: public/build
+      - run: npx playwright install --with-deps chromium
+      - name: Prepare empty production-like company
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+          php scripts/r41-browser-prepare.php
+      - name: Exercise the real rendered critical path
+        run: |
+          (cd public && php -S 127.0.0.1:8046 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php) > /tmp/r41-browser-server.log 2>&1 &
+          for attempt in {1..30}; do curl --fail --silent http://127.0.0.1:8046/up && break || sleep 1; done
+          curl --fail --silent http://127.0.0.1:8046/up
+          npm run test:browser
+          php artisan optimize:clear
+          php artisan optimize
+          npx playwright test --grep 'logout and login retain'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-${{ github.sha }}
+          path: output/playwright
+          retention-days: 7
+
   deploy:
     name: Hostinger atomic release
-    needs: [quality, mariadb]
+    needs: [quality, mariadb, browser]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.HOSTINGER_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15

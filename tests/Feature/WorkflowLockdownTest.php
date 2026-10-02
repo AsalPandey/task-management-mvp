@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\TaskState;
 use App\Http\Middleware\EnsureTaskCorrelationId;
+use App\Http\Requests\TaskStoreRequest;
 use App\Models\Project;
 use App\Models\Role;
 use App\Models\Task;
@@ -322,14 +323,13 @@ class WorkflowLockdownTest extends TestCase
     {
         $controller = file_get_contents(app_path('Http/Controllers/TasksController.php'));
         $taskView = file_get_contents(resource_path('views/tasks.blade.php'));
-        $storeRequest = file_get_contents(app_path('Http/Requests/TaskStoreRequest.php'));
         $updateRequest = file_get_contents(app_path('Http/Requests/TaskUpdateRequest.php'));
 
         $this->assertStringNotContainsString("forceFill(['status'", $controller);
         $this->assertStringNotContainsString("->update(['status'", $controller);
         $this->assertStringNotContainsString('id="taskStatus"', $taskView);
         $this->assertStringNotContainsString('name="taskStatus"', $taskView);
-        $this->assertStringContainsString("'status' => ['missing']", $storeRequest);
+        $this->assertSame(['missing'], (new TaskStoreRequest)->rules()['status']);
         $this->assertStringContainsString("'status' => ['missing']", $updateRequest);
 
         foreach ([

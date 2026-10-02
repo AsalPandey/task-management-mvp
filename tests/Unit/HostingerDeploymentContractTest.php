@@ -1,10 +1,12 @@
 <?php
 
-test('hostinger release is gated by both maintained CI jobs', function () {
+test('hostinger release is gated by quality MariaDB and real browser qualification', function () {
     $workflow = file_get_contents(dirname(__DIR__, 2).'/.github/workflows/ci.yml');
 
     expect($workflow)
-        ->toContain('needs: [quality, mariadb]')
+        ->toContain('needs: [quality, mariadb, browser]')
+        ->toContain('name: Clean-company browser critical path')
+        ->toContain('npm run test:browser')
         ->toContain("vars.HOSTINGER_DEPLOY_ENABLED == 'true'")
         ->toContain('git archive "$GITHUB_SHA"')
         ->toContain('test ! -f .env')
