@@ -40,3 +40,11 @@ Artifacts go to `output/playwright/r41` (override with `BROWSER_OUTPUT_DIR`). Fa
 Transport simulations intercept only Team requests to exercise error UI. The weak-password test alters that form's outgoing password solely to exercise server validation. Task creation and all qualified transitions use the real serializer, CSRF, selected UI identities, authorization and database persistence.
 
 MariaDB PHPUnit/failure-injection and concurrency gates remain separate. SQLite and HTTP tests do not substitute for this browser gate. This gate does not qualify installed PWAs, physical devices, real SMTP/push transport, scalability or external hosting.
+
+## R4.3 scalability qualification
+
+The normal browser run also creates 14 accounts through the real Team UI, locates the oldest account through server search, verifies Unicode/email search, clears it, and checks pagination and page reset. This runs after the existing workflow prerequisites.
+
+A second run uses an explicitly disposable `task_management_r43_*` MariaDB schema prepared by `scripts/r43-prepare-performance.php 10000 20 10000`. Set `R43_LARGE_BROWSER=1` and run only `tests/Browser/r43-performance.spec.js`. This synthetic performance fixture is separate from the clean-company workflow gate. It checks manager totals, bounded dashboard lists, Projects/Tasks pagination, analytics/print, notification pagination, a 390px member dashboard, and PM read-only search. Run the PHP server with `-d memory_limit=128M`. CI runs both gates.
+
+Stable PHPUnit budgets are in `ScalabilityBudgetTest` and `PerformanceReadCorrectnessTest`. The separate MariaDB qualification command `php -d memory_limit=128M scripts/r43-check-performance.php` starts fresh 128M PHP processes, checks independent fixture arithmetic, query/row/output limits, a 96 MiB measured peak guard, and repeat scheduler delivery. It is run on a fresh 10k fixture in the existing MariaDB CI job; no 25k/50k fixture is required in ordinary CI.

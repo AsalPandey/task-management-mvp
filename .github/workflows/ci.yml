@@ -233,13 +233,22 @@ jobs:
           php scripts/r41-browser-prepare.php
       - name: Exercise the real rendered critical path
         run: |
-          (cd public && php -S 127.0.0.1:8046 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php) > /tmp/r41-browser-server.log 2>&1 &
+          (cd public && php -d memory_limit=128M -S 127.0.0.1:8046 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php) > /tmp/r41-browser-server.log 2>&1 &
           for attempt in {1..30}; do curl --fail --silent http://127.0.0.1:8046/up && break || sleep 1; done
           curl --fail --silent http://127.0.0.1:8046/up
           npm run test:browser
           php artisan optimize:clear
           php artisan optimize
           npx playwright test --grep 'logout and login retain'
+      - name: Exercise bounded large-data browser pages
+        run: |
+          php artisan config:clear
+          export DB_DATABASE=task_management_r43_browser_ci
+          MYSQL_PWD="$DB_PASSWORD" mysql --protocol=tcp --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USERNAME" --execute="CREATE DATABASE task_management_r43_browser_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          php artisan migrate --seed --force --no-interaction
+          php scripts/r43-prepare-performance.php 10000 20 10000 > /tmp/r43-browser-oracle.json
+          php artisan optimize
+          R43_LARGE_BROWSER=1 npx playwright test tests/Browser/r43-performance.spec.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:

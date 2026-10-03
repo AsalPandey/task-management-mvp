@@ -19,6 +19,8 @@ readonly r42_upgrade_database="task_management_r42_upgrade_ci"
 readonly r42_reset_database="task_management_r42_reset_ci"
 readonly r42_timezone_database="task_management_r42_timezone_ci"
 readonly r3c_fresh_database="task_management_r3c_fresh_ci"
+readonly r43_qualification_database="task_management_r43_ci_qualification"
+readonly r43_concurrency_database="task_management_r43_concurrency_ci"
 
 mysql_command=(
     mysql
@@ -32,7 +34,7 @@ mysql_command=(
 
 database_is_approved() {
     case "$1" in
-        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}")
+        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r43_concurrency_database}")
             return 0
             ;;
         *)
@@ -128,6 +130,7 @@ run_suite "${r3a3_database}" \
 
 # R4.2 gates: effects under real contention, reverse DDL, and truthful old-schema upgrade.
 run_suite "${r42_membership_database}" tests/Feature/ProjectMembershipMariaDbConcurrencyTest.php
+run_suite "${r43_concurrency_database}" tests/Feature/R43NotificationMariaDbConcurrencyTest.php
 recreate_database "${r42_reset_database}"
 php artisan db:seed --force --no-interaction
 php artisan migrate:reset --force --no-interaction
@@ -151,6 +154,19 @@ for timezone in Asia/Kathmandu America/New_York; do
     php artisan optimize
     php tests/Support/r42_cached_timezone_check.php
 done
+php artisan config:clear
+php artisan route:clear
+php artisan event:clear
+
+# R4.3 is a separate 10k resource gate; the normal suite keeps small deterministic budgets.
+export APP_TIMEZONE=Asia/Kathmandu
+export APP_CONFIG_CACHE=storage/framework/r43-config.php APP_ROUTES_CACHE=storage/framework/r43-routes.php APP_EVENTS_CACHE=storage/framework/r43-events.php
+recreate_database "${r43_qualification_database}"
+php artisan db:seed --force --no-interaction
+mkdir -p output/r43
+php scripts/r43-prepare-performance.php 10000 20 10000 > output/r43/ci-oracle.json
+php artisan optimize
+php -d memory_limit=128M scripts/r43-check-performance.php > output/r43/ci-performance.json
 php artisan config:clear
 php artisan route:clear
 php artisan event:clear
