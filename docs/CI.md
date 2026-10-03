@@ -7,6 +7,8 @@ GitHub Actions runs three release gates for pull requests and pushes to `main`,
   `package-lock.json`, validates and audits them, checks PHP syntax and Pint,
   runs the maintained SQLite suite, builds production assets, and compiles Blade
   templates.
+  Frontend compilation uses the official Tailwind v4 Vite plugin and explicit
+  source-template scanning; see [frontend build and browser contract](FRONTEND_BUILD.md).
 - **MariaDB migrations and concurrency** uses an ephemeral MariaDB 10.4.32 service.
   It creates only explicitly approved `task_management_phase28_*_ci` databases,
   runs a fresh migration and the maintained MariaDB suite, then reruns every

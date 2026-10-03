@@ -2,7 +2,7 @@ const CACHE_PREFIX = 'task-management-static-';
 const APP_SCOPE = new URL(self.registration.scope);
 const APP_BASE_PATH = APP_SCOPE.pathname.replace(/\/$/, '');
 const CACHE_NAMESPACE = `${CACHE_PREFIX}${encodeURIComponent(APP_SCOPE.pathname)}-`;
-const CACHE_VERSION = `${CACHE_NAMESPACE}v3`;
+const CACHE_VERSION = `${CACHE_NAMESPACE}v4`;
 const appPath = path => `${APP_BASE_PATH}/${String(path).replace(/^\/+/, '')}`;
 const STATIC_ASSETS = [
     'manifest.webmanifest',

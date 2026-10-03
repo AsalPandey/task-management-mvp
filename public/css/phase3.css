@@ -375,6 +375,12 @@ button:disabled,
     animation: phase3-spin 650ms linear infinite;
 }
 
+/* Preserve the established form layout across Tailwind's layered v4 defaults. */
+.guest-body { color: #111827; }
+.auth-card label.block { display: block; line-height: 20px; }
+.auth-card label.inline-flex { display: inline-flex; }
+.member-add select { padding: 8px 40px 8px 12px; }
+
 /* Forms */
 :where(.modal-form, .settings-tab, .auth-card, .form-group, .analytics-filters, .filters-card)
     :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {

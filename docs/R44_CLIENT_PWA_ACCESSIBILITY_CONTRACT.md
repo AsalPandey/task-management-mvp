@@ -20,7 +20,7 @@ An account change/expired or forbidden session clears the old workspace/header/n
 
 ## Worker and offline boundary
 
-Worker cache names include encoded registration scope and explicit version. v3 supersedes the old unscoped v2 cache. Installation precaches only public static assets and a generic offline information page. Activation removes superseded caches of this application namespace, claims clients and sends APP_UPDATED. Other application-scope caches are preserved. A retired fetch handler holds its original cache handle before awaiting the network, avoiding resurrection of a removed cache.
+Worker cache names include encoded registration scope and explicit version. R4.4A uses v4 for the Tailwind compiler migration, superseding scoped v3 and the old unscoped v2 cache. Installation precaches only public static assets and a generic offline information page. Activation removes superseded caches of this application namespace, claims clients and sends APP_UPDATED. Other application-scope caches are preserved. A retired fetch handler holds its original cache handle before awaiting the network, avoiding resurrection of a removed cache.
 
 Authenticated documents, business JSON and mutations are not cached or queued. Navigation uses the network and falls back only on network failure to the generic offline page. Static scripts/styles/images/fonts use network-first with a cached fallback. An HTTP authorization/server error is not silently replaced with cached business data. The offline page contains no user/company/task information and provides retry/online feedback. Offline writes fail visibly and leave the draft on the current page; unsaved drafts are not persisted across a manual reload or browser crash.
 
