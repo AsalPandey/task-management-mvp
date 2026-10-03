@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
+const evidenceDir = process.env.R44_EVIDENCE_DIR || 'output/r44';
+fs.mkdirSync(evidenceDir, { recursive: true });
 
 test('R44 persisted long Unicode task, project, member and email retain reachable controls', async ({ page }) => {
     const taskTitle='R44 '+ '界'.repeat(251), projectName='R44 '+ 'P'.repeat(251);
@@ -28,6 +30,6 @@ test('R44 persisted long Unicode task, project, member and email retain reachabl
             await action.scrollIntoViewIfNeeded(); await expect(action).toBeVisible();
         }
     }
-    fs.mkdirSync('output/r44',{recursive:true}); fs.writeFileSync('output/r44/long-content.json',JSON.stringify(results,null,2));
+    fs.writeFileSync(`${evidenceDir}/long-content.json`,JSON.stringify(results,null,2));
     expect(results.filter(row=>row.scroll>row.viewport+1)).toEqual([]);
 });

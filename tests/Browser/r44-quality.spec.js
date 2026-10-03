@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
+const evidenceDir = process.env.R44_EVIDENCE_DIR || 'output/r44';
+fs.mkdirSync(evidenceDir, { recursive: true });
 import { chromium, firefox, webkit } from 'playwright';
 
 const password = 'R41-browser-unique-secret-123!';
@@ -33,8 +35,11 @@ async function fresh(page) {
     await page.locator('[data-client-notice] button').click(); await expect(page.locator('[data-client-notice]')).toBeHidden();
 }
 async function transition(page, title, action, prompts = []) {
+    // A reload can render the card before DOMContentLoaded attaches its actions.
+    await settled(page);
     const button = card(page, title).locator(`[data-transition="${action}"]`);
     await button.click();
+    await expect(page.locator('.swal2-popup')).toBeVisible();
     for (const value of prompts) {
         await page.locator('.swal2-popup .swal2-input, .swal2-popup .swal2-textarea').filter({ visible: true }).fill(value);
         await page.locator('.swal2-confirm').click();
@@ -53,7 +58,7 @@ test('R44 different-user polling detects creation and lifecycle focus revalidati
     const title = `R44 Multiuser Contract ${Date.now()}`; const started = Date.now(); await create(a, title);
     await expect(b.locator('[data-client-notice]')).toContainText('Newer data', { timeout: 65_000 });
     const elapsed = Date.now() - started;
-    fs.writeFileSync('output/r44/cross-user-timing.json', JSON.stringify({ creationVisibleAfterMs: elapsed, pollingIntervalMs: 60_000 }));
+    fs.writeFileSync(`${evidenceDir}/cross-user-timing.json`, JSON.stringify({ creationVisibleAfterMs: elapsed, pollingIntervalMs: 60_000 }));
     await b.locator('[data-client-notice] button').click(); await expect(card(b, title)).toBeVisible();
     await transition(b, title, 'start'); await fresh(c);
     await expect(card(c, title)).toContainText('In Progress');
@@ -96,13 +101,15 @@ test('R44 installation dialog keyboard and update notice preserve unsaved input'
     await page.evaluate(() => navigator.serviceWorker.ready);
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     const path='public/service-worker.js'; const original=fs.readFileSync(path,'utf8');
+    const version=original.match(/const CACHE_VERSION = `\$\{CACHE_NAMESPACE\}(v\d+)`;/)?.[1];
+    expect(version, 'Worker exposes its explicit shell version').toBeTruthy();
     try {
-        fs.writeFileSync(path, original.replace('${CACHE_NAMESPACE}v3', '${CACHE_NAMESPACE}v3-r44-update-probe'));
+        fs.writeFileSync(path, original.replace('${CACHE_NAMESPACE}'+version, '${CACHE_NAMESPACE}'+version+'-r44-update-probe'));
         await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
         await expect(page.locator('[data-client-notice]')).toContainText('application update', { timeout: 15_000 });
         await expect(page.locator('#taskTitle')).toHaveValue('R44 preserved update draft');
-        await expect.poll(async()=> (await page.evaluate(()=>caches.keys())).includes('task-management-static-%2F-v3-r44-update-probe')).toBe(true);
-        await expect.poll(async()=> (await page.evaluate(()=>caches.keys())).includes('task-management-static-%2F-v3')).toBe(false);
+        await expect.poll(async()=> (await page.evaluate(()=>caches.keys())).includes('task-management-static-%2F-'+version+'-r44-update-probe')).toBe(true);
+        await expect.poll(async()=> (await page.evaluate(()=>caches.keys())).includes('task-management-static-%2F-'+version)).toBe(false);
     } finally { fs.writeFileSync(path,original); }
 });
 
@@ -190,7 +197,7 @@ test('R44 core pages pass axe high-confidence WCAG A and AA checks', async ({ pa
     for (const route of ['/manager', '/team-management', '/projects', '/tasks', '/analytics', '/notifications/all', '/settings']) {
         await page.goto(route); await settled(page); results.push({ route, result: await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze() });
     }
-    fs.writeFileSync('output/r44/axe.json', JSON.stringify(results, null, 2));
+    fs.writeFileSync(`${evidenceDir}/axe.json`, JSON.stringify(results, null, 2));
     expect(results.flatMap(({ route, result }) => result.violations.map(v => `${route} ${v.id} ${v.nodes.map(n => n.target).join(';')}`))).toEqual([]);
 });
 
@@ -214,12 +221,12 @@ test('R44 responsive matrix preserves page and modal reflow including long conte
         await page.locator('#taskTitle').fill('आशा '.repeat(63).slice(0,255));
         await expect(page.locator('#taskForm button[type=submit]')).toBeVisible();
         await page.locator('#taskForm button[type=submit]').scrollIntoViewIfNeeded();
-        if (width === 320 || width === 1440) await page.screenshot({ path:`output/playwright/r44-modal-${width}.png`, fullPage: true });
+        if (width === 320 || width === 1440) await page.screenshot({ path:`${process.env.BROWSER_OUTPUT_DIR || 'output/playwright'}/r44-modal-${width}.png`, fullPage: true });
         await page.keyboard.press('Escape');
     }
     const ctx = await browser.newContext(); const p = await ctx.newPage(); await login(p, member);
     for (const [width,height] of matrix) { await p.setViewportSize({ width,height }); await p.goto('/team-dashboard'); results.push({ width,height,route:'/team-dashboard',...await p.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth})) }); }
-    await ctx.close(); fs.writeFileSync('output/r44/responsive.json',JSON.stringify(results,null,2));
+    await ctx.close(); fs.writeFileSync(`${evidenceDir}/responsive.json`,JSON.stringify(results,null,2));
     expect(results.filter(row=>row.scroll>row.viewport+1)).toEqual([]);
 });
 
@@ -230,7 +237,7 @@ for (const engine of ['chromium','firefox','webkit']) {
             try { browser=await ({chromium,firefox,webkit})[engine].launch(); }
             catch(error) {
                 if(engine==='firefox' && process.platform==='win32' && error.message.includes('spawn UNKNOWN')) {
-                    fs.writeFileSync('output/r44/firefox-launch-limitation.txt', error.message+'\nDirect binary check: Windows reports incorrect side-by-side configuration.\n');
+                    fs.writeFileSync(`${evidenceDir}/firefox-launch-limitation.txt`, error.message+'\nDirect binary check: Windows reports incorrect side-by-side configuration.\n');
                     test.skip(true,'Installed Firefox cannot start on this Windows host: incorrect side-by-side configuration.');
                 }
                 throw error;
@@ -238,9 +245,9 @@ for (const engine of ['chromium','firefox','webkit']) {
             const context=await browser.newContext({ baseURL: process.env.APP_URL || 'http://127.0.0.1:8046' }); const page=await context.newPage();
             page.setDefaultTimeout(30_000);
             page.setDefaultNavigationTimeout(25_000);
-            let stage='initial'; const step=message=>{ stage=message; fs.appendFileSync(`output/r44/${engine}-steps.txt`,message+'\n'); };
-            const errors=[]; page.on('pageerror', e=>{ errors.push(e.message); fs.appendFileSync(`output/r44/${engine}-console.jsonl`,JSON.stringify({message:e.message,stack:e.stack,page:page.url(),stage,at:Date.now()})+'\n'); });
-            page.on('console', msg=>{ if(msg.type()==='error') { errors.push(msg.text()); fs.appendFileSync(`output/r44/${engine}-console.jsonl`,JSON.stringify({message:msg.text(),location:msg.location(),page:page.url(),at:Date.now()})+'\n'); } });
+            let stage='initial'; const step=message=>{ stage=message; fs.appendFileSync(`${evidenceDir}/${engine}-steps.txt`,message+'\n'); };
+            const errors=[]; page.on('pageerror', e=>{ errors.push(e.message); fs.appendFileSync(`${evidenceDir}/${engine}-console.jsonl`,JSON.stringify({message:e.message,stack:e.stack,page:page.url(),stage,at:Date.now()})+'\n'); });
+            page.on('console', msg=>{ if(msg.type()==='error') { errors.push(msg.text()); fs.appendFileSync(`${evidenceDir}/${engine}-console.jsonl`,JSON.stringify({message:msg.text(),location:msg.location(),page:page.url(),at:Date.now()})+'\n'); } });
             await login(page); step('login'); await page.goto('/team-management?search=unicode%40r44');
             await expect(page.locator('.member-avatar')).toHaveText('आपा');
             const edit=page.getByRole('button',{name:'Edit आशा पाण्डे',exact:true}); await edit.focus(); await page.keyboard.press('Space');

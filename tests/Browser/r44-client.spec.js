@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+const evidenceDir = process.env.R44_EVIDENCE_DIR || 'output/r44';
+fs.mkdirSync(evidenceDir, { recursive: true });
 
 const password = 'R41-browser-unique-secret-123!';
 const manager = 'manager@r41.example.invalid';
@@ -72,7 +74,7 @@ test('R4-024 Team secondary text meets normal-text contrast', async ({ page }) =
     await login(page); await page.goto('/team-management');
     const colors = await page.locator('.member-info p').evaluateAll(nodes => nodes.map(node => ({ fg: getComputedStyle(node).color, bg: getComputedStyle(node.closest('.member-card')).backgroundColor })));
     const results = colors.map(c => ({ ...c, ratio: contrast(c.fg, c.bg) }));
-    fs.mkdirSync('output/r44', { recursive: true }); fs.writeFileSync('output/r44/team-contrast.json', JSON.stringify(results, null, 2));
+    fs.writeFileSync(`${evidenceDir}/team-contrast.json`, JSON.stringify(results, null, 2));
     for (const result of results) expect(result.ratio).toBeGreaterThanOrEqual(4.5);
 });
 test('R4-012 same-profile invalidation signals another tab without destroying a draft', async ({ page, context }) => {
