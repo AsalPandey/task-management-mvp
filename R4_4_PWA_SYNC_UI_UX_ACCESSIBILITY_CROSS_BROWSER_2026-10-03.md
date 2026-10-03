@@ -2,6 +2,13 @@
 
 Date: 2026-10-03, Asia/Kathmandu. Local qualification only.
 
+**Reconciled 2026-10-04: R4.4 PASSED — CLIENT, PWA, UI/UX AND ACCESSIBILITY LAYER STABILIZED.**
+R4.4A removed the vulnerable build dependency chain, passed the full dependency
+audit and reran the required regression gates. See
+[R4.4A qualification report](R4_4A_DEPENDENCY_ADVISORY_RELEASE_GATE_2026-10-03.md).
+The original failed classification below is retained as the historical result
+before that remediation. R4.5 external production acceptance has not begun.
+
 ## 1. Executive summary
 
 All six remaining original R4 findings have implemented repairs and rendered-browser regressions. The client layer now detects relevant changes, preserves drafts, retains optimistic conflicts, uses a deliberate static-only/offline PWA policy, provides native keyboard actions, renders Unicode initials correctly and uses readable role labels and contextual control names. The existing Laravel/Blade and single-company/database architecture remains.
