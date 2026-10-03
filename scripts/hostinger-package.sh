@@ -18,6 +18,21 @@ while IFS= read -r -d '' link; do
     target="$(realpath -e -- "$link")"
     [[ "$target" == "$release"/* && -f "$target" ]] || { echo 'Unsafe dependency link in release.' >&2; exit 1; }
 done
-tar --dereference --hard-dereference --exclude=./node_modules -czf "$archive" -C "$release" .
+# Runtime state and qualification material are never deployment inputs, even
+# when a completed build directory contains them. Keep directory skeletons.
+tar --dereference --hard-dereference \
+    --exclude=./node_modules --exclude=./tests --exclude=./output --exclude=./audit \
+    --exclude=./.github --exclude=./docs --exclude=./.idea \
+    --exclude='./R*.md' --exclude='./*AUDIT*.md' --exclude=./PRODUCTION_RUNBOOK.md \
+    --exclude='./*_DOCUMENTATION.*' \
+    --exclude='./scripts/r[0-9]*' --exclude='./playwright*.js' --exclude=./phpunit.xml \
+    --exclude=./.env.backup --exclude=./.env.production --exclude=./.env.local --exclude=./auth.json \
+    --exclude='./bootstrap/cache/*.php' --exclude='./storage/logs/*' \
+    --exclude='./storage/framework/views/*' --exclude='./storage/framework/sessions/*' \
+    --exclude='./storage/framework/cache/data/*' --exclude='./storage/app/backup-temp/*' \
+    --exclude='./storage/app/private/*' --exclude='./storage/app/public/*' \
+    --exclude='./storage/debugbar/*' --exclude='./storage/pail/*' --exclude='./database/*.sql' \
+    --exclude='*.sqlite' --exclude='*.sqlite3' --exclude='*.db' --exclude='*.dump' \
+    -czf "$archive" -C "$release" .
 [[ $(stat -c %s "$archive") -le 134217728 ]] || { echo 'Release archive exceeds 128 MiB.' >&2; exit 1; }
 printf 'Release archive prepared without filesystem links.\n'

@@ -58,6 +58,7 @@ jobs:
           bash -n scripts/hostinger-cron.sh
           bash -n scripts/hostinger-package.sh
           bash tests/hostinger-package-test.sh
+          bash tests/hostinger-package-content-test.sh
 
       - name: Check PHP formatting
         run: vendor/bin/pint --test
