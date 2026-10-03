@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Models\Project;
 use App\Models\ProjectHistory;
 use App\Models\User;
@@ -22,8 +23,13 @@ class ProjectsController extends Controller
     {
         $user = auth()->user();
         $projects = $this->visibleProjects()
-            ->with(['projectManager', 'members', 'tasks'])
+            ->with(['projectManager', 'members.role'])
+            ->withCount([
+                'tasks as active_tasks_count' => fn ($query) => $query->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value]),
+                'tasks as completed_tasks_count' => fn ($query) => $query->where('status', TaskState::Completed->value),
+            ])
             ->latest()
+            ->orderByDesc('id')
             ->paginate(12);
 
         $projectManagers = User::query()

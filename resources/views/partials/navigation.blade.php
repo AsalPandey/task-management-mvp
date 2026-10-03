@@ -88,7 +88,10 @@
                             <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </div>
-                    @php $unreadCount = $user ? $user->unreadNotifications->count() : 0; @endphp
+                    @php
+                        $unreadCount = $user ? $user->unreadNotifications()->count() : 0;
+                        $recentNotifications = $user ? $user->notifications()->latest()->orderByDesc('id')->limit(8)->get() : collect();
+                    @endphp
                     @if($unreadCount > 0)
                         <span class="notification-badge">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
                     @endif
@@ -101,12 +104,13 @@
                         @endif
                     </div>
                     <div class="notifications-content">
-                    @if($user && $user->notifications->count())
-                            @foreach($user->notifications->take(8) as $notification)
+                    @if($recentNotifications->isNotEmpty())
+                            @foreach($recentNotifications as $notification)
+                                @php $notificationData = $notification->data; @endphp
                                 <div class="notification-item {{ $notification->read_at ? 'read' : 'unread' }}" data-id="{{ $notification->id }}">
                                     <div class="notification-icon">
                                         @php
-                                            $type = $notification->data['type'] ?? '';
+                                            $type = $notificationData['type'] ?? '';
                                             if(str_contains($type, 'assigned')) echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m22 21-2-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                                             elseif(str_contains($type, 'completed')) echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 11 3 3L22 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
                                             elseif(str_contains($type, 'deadline') || str_contains($type, 'overdue')) echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -116,7 +120,7 @@
                                         @endphp
                                     </div>
                                     <div class="notification-content">
-                                        <div class="notification-message">{{ $notification->data['message'] ?? 'You have a new notification.' }}</div>
+                                        <div class="notification-message">{{ $notificationData['message'] ?? 'You have a new notification.' }}</div>
                                         <div class="notification-time">{{ $notification->created_at->diffForHumans() }}</div>
                                     </div>
                                     @if(!$notification->read_at)

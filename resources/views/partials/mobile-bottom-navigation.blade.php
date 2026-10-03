@@ -28,7 +28,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M18 8a6 6 0 0 0-12 0c0 6-3 8-3 8h18s-3-2-3-8m-4 12h-4"/>
                 </svg>
-                @php $mobileUnreadCount = $mobileUser->unreadNotifications->count(); @endphp
+                @php $mobileUnreadCount = $mobileUser->unreadNotifications()->count(); @endphp
                 @if ($mobileUnreadCount)
                     <span class="mobile-nav-badge" aria-label="{{ $mobileUnreadCount }} unread notifications">
                         {{ $mobileUnreadCount > 9 ? '9+' : $mobileUnreadCount }}

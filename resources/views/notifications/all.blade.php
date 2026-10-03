@@ -45,10 +45,11 @@
                 <div class="notifications-list">
                     @foreach($groupNotifications as $notification)
                         @php
-                            $type = $notification->data['type'] ?? '';
-                            $taskId = $notification->data['task_id'] ?? null;
-                            $taskTitle = $notification->data['task_title'] ?? null;
-                            $currentState = $notification->data['current_state'] ?? null;
+                            $notificationData = $notification->data;
+                            $type = $notificationData['type'] ?? '';
+                            $taskId = $notificationData['task_id'] ?? null;
+                            $taskTitle = $notificationData['task_title'] ?? null;
+                            $currentState = $notificationData['current_state'] ?? null;
                             $taskParameters = $taskTitle ? ['search' => $taskTitle] : [];
 
                             if (in_array($currentState, ['completed', 'cancelled'], true)) {
@@ -76,7 +77,7 @@
                                     @endphp
                                 </div>
                                 <div class="notification-page-content">
-                                    <div class="notification-page-message">{{ $notification->data['message'] ?? 'You have a new notification.' }}</div>
+                                    <div class="notification-page-message">{{ $notificationData['message'] ?? 'You have a new notification.' }}</div>
                                     <div class="notification-page-time">{{ $notification->created_at->diffForHumans() }}</div>
                                     @if($taskUrl)
                                         <span class="notification-task-action">Open task</span>
