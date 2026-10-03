@@ -74,9 +74,24 @@ a {
 }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid var(--ui-focus);
     outline: 3px solid color-mix(in srgb, var(--ui-focus) 72%, white);
     outline-offset: 3px;
 }
+
+.client-notice:not([hidden]) { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem; margin:1rem; color:#172033; background:#fff7e6; border:1px solid #a15c00; border-radius:10px; }
+.client-notice p { margin:0; }
+.task-open-btn { background:none; border:0; padding:0; color:inherit; font:inherit; font-weight:inherit; text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+.member-analytics-link { color:inherit; text-decoration:underline; }
+.last-updated, .last-updated span, .settings-tab .tab-header p { color:var(--ui-text-muted) !important; }
+.settings-tab .tab-header p { color:#475467 !important; }
+.team-member-performance .member-info { min-width:0; overflow-wrap:anywhere; }
+.team-member-performance .member-info p { color:#475467 !important; }
+.insight-section h4 { color:var(--ui-primary-dark) !important; }
+.task-title, .project-title h3, .member-info h3, .detail-value { overflow-wrap:anywhere; min-width:0; }
+.modal-close { min-width:44px; min-height:44px; }
+[data-client-draft-notice] { color:#78350f; background:#fff7e6; padding:.75rem; }
+@media (max-width:600px) { .client-notice:not([hidden]) { flex-direction:column; align-items:stretch; } }
 
 ::selection {
     background: #bfdbfe;

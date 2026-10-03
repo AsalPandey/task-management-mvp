@@ -24,7 +24,7 @@
         <a class="skip-link" href="#main-content">Skip to sign in</a>
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 guest-shell">
             <div class="auth-brand">
-                <a href="/" aria-label="{{ config('app.name', 'Task Management MVP') }} home">
+                <a href="{{ url('/') }}" aria-label="{{ config('app.name', 'Task Management MVP') }} home">
                     <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
                 </a>
                 <div>

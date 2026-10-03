@@ -190,12 +190,13 @@ document.addEventListener('DOMContentLoaded', function() {
             icon: success ? 'success' : 'error',
             title: success ? 'Success' : 'Error',
             text: msg,
-            timer: 2000,
-            showConfirmButton: false
+            timer: success ? 2000 : undefined,
+            showConfirmButton: !success
         });
     }
 
     function setLoading(isLoading) {
+        taskForm.setAttribute('aria-busy', String(isLoading));
         taskForm.dataset.pending = isLoading ? 'true' : 'false';
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = isLoading;
@@ -280,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const card = this.closest('.task-card');
             const taskId = card.dataset.taskId;
-            fetch(`/tasks/${taskId}/edit`, {
+            fetch(window.AppClient.appUrl(`/tasks/${taskId}/edit`), {
                 headers: { 'Accept': 'application/json' }
             })
             .then(r => r.json())
@@ -310,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!result.isConfirmed) return;
             const card = this.closest('.task-card');
             const id = card.dataset.taskId;
-                fetch(`/tasks/${id}`, {
+                fetch(window.AppClient.appUrl(`/tasks/${id}`), {
                     method: 'DELETE',
                     headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
                        'Accept': 'application/json',
@@ -403,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (latestTask) {
                             populateTaskEditForm(latestTask);
                         } else if (editTaskId) {
-                            fetch(`/tasks/${editTaskId}/edit`, { headers: { 'Accept': 'application/json' } })
+                            fetch(window.AppClient.appUrl(`/tasks/${editTaskId}/edit`), { headers: { 'Accept': 'application/json' } })
                                 .then(r => r.json())
                                 .then(latestData => {
                                     if (latestData.success && latestData.task) {
@@ -437,7 +438,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 const card = document.querySelector(`.task-card[data-task-id='${editTaskId}']`);
                 if (card) {
                     const titleEl = card.querySelector('.task-title');
-                    if (titleEl) titleEl.textContent = data.task.title;
+                    if (titleEl) {
+                        const opener = titleEl.querySelector('.task-open-btn');
+                        if (opener) { opener.textContent = data.task.title; opener.setAttribute('aria-label', 'Edit ' + data.task.title); }
+                        else titleEl.textContent = data.task.title;
+                    }
                     const projectEl = card.querySelector('.task-project');
                     if (projectEl) projectEl.textContent = 'Project: ' + (data.task.project ? data.task.project.name : '-');
                     const priorityBadge = card.querySelector('.priority-badge');
@@ -447,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     const statusBadge = card.querySelector('.status-badge');
                     if (statusBadge) {
-                        statusBadge.textContent = data.task.status;
+                        statusBadge.textContent = data.task.status_label || data.task.status.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
                         statusBadge.className = 'status-badge status-' + data.task.status.toLowerCase().replace(/ /g, '-');
                     }
                     const progressHeader = card.querySelector('.progress-header span:last-child');
@@ -546,14 +551,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const tasksGrid = document.getElementById('tasksGrid');
 
-    // Make task cards clickable
-    document.querySelectorAll('.task-card').forEach(card => {
-        card.addEventListener('click', function(e) {
-            // Prevent triggering when clicking an action button.
-            if (e.target.closest('.delete-btn, .execution-transition-btn, .management-action-btn, .timeline-btn, .progress-update-btn')) return;
-            if (card.dataset.genericEditable !== 'true') return;
+    // Native edit buttons preserve keyboard semantics without nesting card actions.
+    document.querySelectorAll('.task-open-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            const card = this.closest('.task-card');
             const taskId = card.dataset.taskId;
-            fetch(`/tasks/${taskId}/edit`, {
+            fetch(window.AppClient.appUrl(`/tasks/${taskId}/edit`), {
                 headers: { 'Accept': 'application/json' }
             })
             .then(r => r.json())
@@ -1046,7 +1049,7 @@ document.addEventListener('DOMContentLoaded', function() {
             confirmButtonText: 'Yes, delete them!'
         }).then((result) => {
             if (!result.isConfirmed) return;
-            fetch(`/tasks/bulk-delete`, {
+            fetch(window.AppClient.appUrl(`/tasks/bulk-delete`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1181,7 +1184,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 $activeRevisionCycle = $task->activeRevisionCycle;
                 $activeDeadline = $task->activeDeadline();
             @endphp
-            <div id="task-{{ $task->id }}" class="task-card" tabindex="0" style="cursor:pointer"
+            <div id="task-{{ $task->id }}" class="task-card" tabindex="-1"
                 data-task-id="{{ $task->id }}"
                 data-task-uid="{{ $task->task_uid }}"
                 data-assignee-id="{{ $task->assignee_id }}"
@@ -1205,15 +1208,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="task-actions">
                         <span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span>
-                        <span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span>
+                        <span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->machineState()->label() }}</span>
                         @if ($taskState === \App\Enums\TaskState::NotStarted)
                             @can('delete', $task)
-                                <button class="task-action-btn delete-btn" aria-label="Delete draft task">🗑️</button>
+                                <button class="task-action-btn delete-btn" aria-label="Delete draft task {{ $task->title }}">🗑️</button>
                             @endcan
                         @endif
                     </div>
                 </div>
-                <h3 class="task-title">{{ $task->title }}</h3>
+                <h3 class="task-title">@if(! $user->hasRole('team_member') && $user->can('update', $task) && ! $taskState->isFinal() && ! $task->submitted_at && ! $task->active_revision_cycle_id)<button type="button" class="task-open-btn" aria-label="Edit {{ $task->title }}">{{ $task->title }}</button>@else{{ $task->title }}@endif</h3>
                 <div class="task-details">
                     <span class="task-project">Project: {{ $task->project ? $task->project->name : '-' }}</span>
                     @php $user = auth()->user(); @endphp
@@ -1433,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </td>
                         <td>{{ $task->title }}</td>
                         <td>{{ $task->project ? $task->project->name : '-' }}</td>
-                        <td><span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->status }}</span></td>
+                        <td><span class="status-badge status-{{ str_replace(' ', '-', strtolower($task->status)) }}">{{ $task->machineState()->label() }}</span></td>
                         <td><span class="priority-badge priority-{{ strtolower($task->priority) }}">{{ $task->priority }}</span></td>
                         <td>
                             @if($user && $user->role && $user->role->name === 'team_member')

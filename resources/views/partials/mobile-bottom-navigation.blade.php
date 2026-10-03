@@ -30,7 +30,7 @@
                 </svg>
                 @php $mobileUnreadCount = $mobileUser->unreadNotifications()->count(); @endphp
                 @if ($mobileUnreadCount)
-                    <span class="mobile-nav-badge" aria-label="{{ $mobileUnreadCount }} unread notifications">
+                    <span class="mobile-nav-badge" data-unread-count="{{ $mobileUnreadCount }}" aria-label="{{ $mobileUnreadCount }} unread notifications">
                         {{ $mobileUnreadCount > 9 ? '9+' : $mobileUnreadCount }}
                     </span>
                 @endif

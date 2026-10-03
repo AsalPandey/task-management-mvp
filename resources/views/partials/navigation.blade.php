@@ -93,7 +93,7 @@
                         $recentNotifications = $user ? $user->notifications()->latest()->orderByDesc('id')->limit(8)->get() : collect();
                     @endphp
                     @if($unreadCount > 0)
-                        <span class="notification-badge">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
+                        <span class="notification-badge" data-unread-count="{{ $unreadCount }}">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>
                     @endif
                 </button>
                 <div id="notificationsDropdown" class="notifications-panel">
@@ -124,7 +124,7 @@
                                         <div class="notification-time">{{ $notification->created_at->diffForHumans() }}</div>
                                     </div>
                                     @if(!$notification->read_at)
-                                        <button class="mark-read-btn" onclick="markAsRead('{{ $notification->id }}')">
+                                        <button class="mark-read-btn" aria-label="Mark notification as read: {{ $notificationData['message'] ?? 'Task update' }}" onclick="markAsRead('{{ $notification->id }}')">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                 <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                             </svg>
@@ -216,68 +216,6 @@
                 }
             });
             
-            function markAsRead(notificationId) {
-                fetch(`/notifications/read/${notificationId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                        'Accept': 'application/json',
-                    },
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const notificationItem = document.querySelector(`[data-id="${notificationId}"]`);
-                        if (notificationItem) {
-                            notificationItem.classList.remove('unread');
-                            notificationItem.classList.add('read');
-                            const markReadBtn = notificationItem.querySelector('.mark-read-btn');
-                            if (markReadBtn) {
-                                markReadBtn.remove();
-                            }
-                            updateNotificationCount();
-                        }
-                    }
-                })
-                .catch(() => {});
-            }
-            
-            function markAllAsRead() {
-                fetch('/notifications/read-all', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                        'Accept': 'application/json',
-                    },
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        document.querySelectorAll('.notification-item.unread').forEach(item => {
-                            item.classList.remove('unread');
-                            item.classList.add('read');
-                            const markReadBtn = item.querySelector('.mark-read-btn');
-                            if (markReadBtn) {
-                                markReadBtn.remove();
-                            }
-                        });
-                        updateNotificationCount();
-                    }
-                })
-                .catch(() => {});
-            }
-            
-            function updateNotificationCount() {
-                const unreadCount = document.querySelectorAll('.notification-item.unread').length;
-                const badge = document.querySelector('.notification-badge');
-                if (badge) {
-                    if (unreadCount === 0) {
-                        badge.remove();
-                    } else {
-                        badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                    }
-                }
-            }
             </script>
             <!-- End Notifications Bell -->
             <div class="user-info">

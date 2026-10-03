@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<title>Offline — Task Management</title>
+<style>body{font:1rem/1.6 system-ui,sans-serif;color:#172033;background:#f4f7fb;margin:0;padding:1.5rem}main{max-width:34rem;margin:10vh auto;padding:2rem;background:white;border-radius:1rem}button{font:inherit;padding:.75rem 1rem;color:white;background:#2563eb;border:0;border-radius:.5rem;cursor:pointer}button:focus-visible{outline:3px solid #172033;outline-offset:3px}</style>
+<main><h1>You are offline</h1><p>Reconnect to load your current workspace. Task information is available online, and changes cannot be saved offline.</p><button type="button" onclick="location.reload()">Try again</button><p role="status" id="connection"></p></main>
+<script>addEventListener('online',()=>{document.getElementById('connection').textContent='Connection restored. Choose Try again to load current data.';});</script>
+</html>

@@ -63,8 +63,11 @@ document.addEventListener('DOMContentLoaded', function() {
             icon: success ? 'success' : 'error',
             title: success ? 'Success' : 'Error',
             text: message,
-            timer: 2200,
-            showConfirmButton: false,
+            timer: success ? 2200 : undefined,
+            showConfirmButton: !success,
+            returnFocus: !modal.classList.contains('active'),
+        }).then(() => {
+            if (!success && modal.classList.contains('active')) form.querySelector('[name="name"]')?.focus();
         });
     }
 
@@ -130,7 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonColor: '#d92d20',
             }).then(result => {
                 if (!result.isConfirmed) return;
-                fetch(`/projects/${card.dataset.projectId}`, {
+                fetch(window.AppClient.appUrl(`/projects/${card.dataset.projectId}`), {
                     method: 'DELETE',
                     headers: csrfHeaders(),
                 })
@@ -150,12 +153,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     form.addEventListener('submit', function(event) {
         event.preventDefault();
+        if (form.dataset.pending === 'true') return;
+        form.dataset.pending = 'true';
+        form.setAttribute('aria-busy', 'true');
+        const submit = form.querySelector('button[type="submit"]');
+        submit.disabled = true;
         const formData = new FormData(form);
         const payload = Object.fromEntries(formData.entries());
         const url = editingProjectId ? `/projects/${editingProjectId}` : '/projects';
         const method = editingProjectId ? 'PUT' : 'POST';
 
-        fetch(url, {
+        fetch(window.AppClient.appUrl(url), {
             method,
             headers: csrfHeaders(),
             body: JSON.stringify(payload),
@@ -169,7 +177,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 showMessage(data.message || 'Project could not be saved.', false);
             })
-            .catch(error => showMessage(error.message || 'Project could not be saved.', false));
+            .catch(error => showMessage(error.message || 'Project could not be saved.', false))
+            .finally(() => { form.dataset.pending = 'false'; form.removeAttribute('aria-busy'); submit.disabled = false; });
     });
 
     document.querySelectorAll('.member-add-form').forEach(memberForm => {
@@ -178,8 +187,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const projectId = this.dataset.projectId;
             const userId = this.querySelector('[name="user_id"]').value;
             if (!userId) return;
+            if (this.dataset.pending === 'true') return;
+            this.dataset.pending = 'true';
+            this.setAttribute('aria-busy', 'true');
+            const submit = this.querySelector('button[type="submit"]');
+            submit.disabled = true;
 
-            fetch(`/projects/${projectId}/add-member`, {
+            fetch(window.AppClient.appUrl(`/projects/${projectId}/add-member`), {
                 method: 'POST',
                 headers: csrfHeaders(),
                 body: JSON.stringify({ user_id: userId }),
@@ -193,7 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     showMessage(data.message || 'Member could not be added.', false);
                 })
-                .catch(error => showMessage(error.message || 'Member could not be added.', false));
+                .catch(error => showMessage(error.message || 'Member could not be added.', false))
+                .finally(() => { this.dataset.pending = 'false'; this.removeAttribute('aria-busy'); submit.disabled = false; });
         });
     });
 
@@ -210,7 +225,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonColor: '#d92d20',
             }).then(result => {
                 if (!result.isConfirmed) return;
-                fetch(`/projects/${projectId}/remove-member`, {
+                fetch(window.AppClient.appUrl(`/projects/${projectId}/remove-member`), {
                     method: 'DELETE',
                     headers: csrfHeaders(),
                     body: JSON.stringify({ user_id: userId }),
@@ -307,9 +322,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="member-list">
                             @forelse ($project->members as $member)
                                 <div class="member-row">
-                                    <span>{{ $member->name }} ({{ $member->role?->label ?: str_replace('_', ' ', $member->role?->name ?? 'member') }})</span>
+                                    <span>{{ $member->name }} ({{ \App\Support\Presentation::role($member->role?->name) }})</span>
                                     @can('manageMembers', $project)
-                                        <button type="button" class="member-remove-btn" data-project-id="{{ $project->id }}" data-user-id="{{ $member->id }}">Remove</button>
+                                        <button type="button" class="member-remove-btn" aria-label="Remove {{ $member->name }} from {{ $project->name }}" data-project-id="{{ $project->id }}" data-user-id="{{ $member->id }}">Remove</button>
                                     @endcan
                                 </div>
                             @empty
@@ -319,10 +334,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         @can('manageMembers', $project)
                             <form class="member-add-form member-add" data-project-id="{{ $project->id }}">
-                                <select name="user_id" required>
+                                <select name="user_id" aria-label="Add member to {{ $project->name }}" required>
                                     <option value="">Add member</option>
                                     @foreach ($teamMembers as $member)
-                                        <option value="{{ $member->id }}">{{ $member->name }} ({{ $member->role?->label ?: str_replace('_', ' ', $member->role?->name ?? 'member') }})</option>
+                                        <option value="{{ $member->id }}">{{ $member->name }} ({{ \App\Support\Presentation::role($member->role?->name) }})</option>
                                     @endforeach
                                 </select>
                                 <button type="submit" class="btn-secondary">Add</button>

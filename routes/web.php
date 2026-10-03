@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BrowserPushController;
+use App\Http\Controllers\ClientFreshnessController;
 use App\Http\Controllers\CompletedTasksController;
 use App\Http\Controllers\ManagerDashboardController;
 use App\Http\Controllers\NotificationController;
@@ -29,6 +30,7 @@ Route::get('/', function () {
 
 // Manager-provisioned internal accounts do not require email verification for access.
 Route::middleware(['auth', 'active'])->group(function () {
+    Route::get('/client/freshness', ClientFreshnessController::class)->middleware('throttle:client-freshness')->name('client.freshness');
     Route::get('/dashboard', function () {
         $user = auth()->user();
 

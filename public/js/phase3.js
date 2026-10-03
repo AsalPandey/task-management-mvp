@@ -144,6 +144,8 @@
         const modalReturnFocus = new WeakMap();
 
         document.querySelectorAll('.modal').forEach((modal, index) => {
+            let wasOpen = false;
+            const constrained = [];
             modal.setAttribute('role', 'dialog');
             modal.setAttribute('aria-modal', 'true');
             const heading = modal.querySelector('.modal-header h3, .modal-header h2');
@@ -156,8 +158,19 @@
             if (close && !close.getAttribute('aria-label')) close.setAttribute('aria-label', 'Close dialog');
 
             const observer = new MutationObserver(() => {
-                if (modal.classList.contains('active')) {
+                const open = modal.classList.contains('active');
+                if (open === wasOpen) return;
+                wasOpen = open;
+                if (open) {
                     modalReturnFocus.set(modal, document.activeElement);
+                    for (let branch = modal; branch.parentElement; branch = branch.parentElement) {
+                        Array.from(branch.parentElement.children).forEach(sibling => {
+                            if (sibling !== branch && !sibling.matches('script, style, [data-client-notice]') && !sibling.inert) {
+                                sibling.inert = true;
+                                constrained.push(sibling);
+                            }
+                        });
+                    }
                     requestAnimationFrame(() => {
                         const initialFocus = modal.querySelector(
                             'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)'
@@ -165,11 +178,18 @@
                         initialFocus?.focus();
                     });
                 } else {
+                    constrained.splice(0).forEach(element => { element.inert = false; });
                     const trigger = modalReturnFocus.get(modal);
                     if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
                 }
             });
             observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+            modal.addEventListener('click', event => {
+                if (modal.querySelector('[data-pending="true"], [aria-busy="true"]') && (event.target === modal || event.target.closest('.modal-close'))) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
         });
 
         document.addEventListener('keydown', (event) => {
@@ -177,6 +197,7 @@
             if (!activeModal) return;
 
             if (event.key === 'Escape') {
+                if (activeModal.querySelector('[aria-busy="true"], [data-pending="true"]')) return;
                 activeModal.querySelector('.modal-close')?.click();
 
                 return;

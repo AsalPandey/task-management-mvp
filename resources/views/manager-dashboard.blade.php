@@ -345,7 +345,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const id = card.dataset.taskId;
                 this.disabled = true;
                 this.textContent = '⏳';
-                fetch(`/tasks/${id}`, {
+                fetch(window.AppClient.appUrl(`/tasks/${id}`), {
                     method: 'DELETE',
                     headers: {
                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const id = row.dataset.taskId;
                 this.disabled = true;
                 this.textContent = '⏳';
-                fetch(`/tasks/${id}`, {
+                fetch(window.AppClient.appUrl(`/tasks/${id}`), {
                     method: 'DELETE',
                     headers: {
                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,

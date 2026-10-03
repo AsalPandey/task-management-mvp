@@ -88,6 +88,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     timezone: '{{ config('app.timezone') }}',
                 });
                 document.getElementById('profileName').textContent = data.user.name;
+                document.getElementById('profileAvatar').textContent = data.user.initials;
+                window.AppClient.markSaved(profileForm);
                 showMessage('profileMessage', 'Profile updated.');
             } catch (error) {
                 showMessage('profileMessage', error.message, 'error');
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     password_confirmation: document.getElementById('confirmPassword').value,
                 });
                 passwordForm.reset();
+                window.AppClient.markSaved(passwordForm);
                 showMessage('securityMessage', 'Password updated.');
             } catch (error) {
                 showMessage('securityMessage', error.message, 'error');
@@ -150,6 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 showMessage('notificationsMessage', 'Notification preferences saved.');
+                window.AppClient.markSaved(document.getElementById('notifications'));
             } catch (error) {
                 showMessage('notificationsMessage', error.message, 'error');
             } finally {
@@ -197,10 +201,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
                 <div id="profileMessage" class="message-container" style="display: none;"></div>
                 <div class="profile-avatar-section">
-                    <div class="profile-avatar" id="profileAvatar">{{ strtoupper(substr($user->name, 0, 2)) }}</div>
+                    <div class="profile-avatar" id="profileAvatar">{{ \App\Support\Presentation::initials($user->name) }}</div>
                     <div class="avatar-info">
                         <h3 id="profileName">{{ $user->name }}</h3>
-                        <p id="profileRole">{{ $user->role ? ucfirst($user->role->name) : '-' }}</p>
+                        <p id="profileRole">{{ \App\Support\Presentation::role($user->role?->name) }}</p>
                     </div>
                 </div>
                 <form id="profileForm" class="settings-form">

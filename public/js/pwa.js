@@ -16,6 +16,14 @@
     let serverStatus = null;
     let installPrompt = null;
     let automaticOfferTimer = null;
+    let installReturnFocus = null;
+    let hadController = Boolean(navigator.serviceWorker?.controller);
+    const initialController = hadController;
+    const storage = {
+        getItem: key => { try { return localStorage.getItem(key); } catch { return null; } },
+        setItem: (key, value) => { try { localStorage.setItem(key, value); } catch { /* optional preference */ } },
+        removeItem: key => { try { localStorage.removeItem(key); } catch { /* optional preference */ } },
+    };
     const installDismissedAtKey = 'task-management.install-dismissed-at';
     const installedAtKey = 'task-management.installed-at';
     const installCooldownMs = 30 * 24 * 60 * 60 * 1000;
@@ -62,19 +70,24 @@
     }
 
     async function api(url, method = 'GET', payload = null) {
-        const response = await fetch(url, {
-            method,
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrf(),
-            },
-            body: payload ? JSON.stringify(payload) : null,
-            credentials: 'same-origin',
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message || 'The notification request failed.');
-        return data;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf(),
+                },
+                body: payload ? JSON.stringify(payload) : null,
+                credentials: 'same-origin',
+                signal: controller.signal,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.message || 'The notification request failed.');
+            return data;
+        } finally { clearTimeout(timeout); }
     }
 
     function applicationServerKey(value) {
@@ -87,8 +100,17 @@
         registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, {
             scope: serviceWorkerScope,
         });
-        await navigator.serviceWorker.ready;
-        return registration.pushManager.getSubscription();
+        let timeout;
+        try {
+            await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => {
+                timeout = setTimeout(() => reject(new Error('Notifications are unavailable. Reload this page and try again.')), 3000);
+            })]);
+        } finally { clearTimeout(timeout); }
+        try {
+            return await Promise.race([registration.pushManager.getSubscription(), new Promise((_, reject) => {
+                timeout = setTimeout(() => reject(new Error('Notifications are unavailable. Reload this page and try again.')), 3000);
+            })]);
+        } finally { clearTimeout(timeout); }
     }
 
     function serialize(subscription) {
@@ -107,7 +129,7 @@
             return;
         }
 
-        registration ||= await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+        registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, { scope: serviceWorkerScope, updateViaCache: 'none' });
         if (!userId) return;
 
         serverStatus = await api(appUrl('push/status'));
@@ -126,13 +148,13 @@
             return;
         }
 
-        const previousUser = localStorage.getItem('task-management.push-user');
+        const previousUser = storage.getItem('task-management.push-user');
         if (previousUser !== userId) {
             render('stale');
             return;
         }
 
-        await api('/push/subscriptions', 'POST', serialize(subscription));
+        await api(appUrl('push/subscriptions'), 'POST', serialize(subscription));
         render('enabled');
     }
 
@@ -162,19 +184,27 @@
             applicationServerKey: applicationServerKey(serverStatus.public_key),
         });
         await api(appUrl('push/subscriptions'), 'POST', serialize(subscription));
-        localStorage.setItem('task-management.push-user', userId);
+        storage.setItem('task-management.push-user', userId);
         render('enabled');
         showMessage('Notifications are enabled for this browser and device.', 'success');
     }
 
     async function disable({ quiet = false } = {}) {
-        if (!supported) return;
+        if (!supported || Notification.permission !== 'granted') {
+            storage.removeItem('task-management.push-user');
+            return;
+        }
         const subscription = await currentSubscription();
         if (subscription) {
             await api(appUrl('push/subscriptions'), 'DELETE', { endpoint: subscription.endpoint });
-            await subscription.unsubscribe();
+            let timeout;
+            try {
+                await Promise.race([subscription.unsubscribe(), new Promise((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error('Device notifications could not be disabled. Try again.')), 3000);
+                })]);
+            } finally { clearTimeout(timeout); }
         }
-        localStorage.removeItem('task-management.push-user');
+        storage.removeItem('task-management.push-user');
         render('disabled');
         if (!quiet) showMessage('Notifications are disabled for this device.', 'success');
     }
@@ -202,14 +232,14 @@
     }
 
     function dismissalIsCoolingDown() {
-        const dismissedAt = Number(localStorage.getItem(installDismissedAtKey));
+        const dismissedAt = Number(storage.getItem(installDismissedAtKey));
         if (Number.isFinite(dismissedAt) && dismissedAt > 0) {
             return Date.now() - dismissedAt < installCooldownMs;
         }
 
-        if (localStorage.getItem('task-management.install-dismissed') === '1') {
-            localStorage.setItem(installDismissedAtKey, String(Date.now()));
-            localStorage.removeItem('task-management.install-dismissed');
+        if (storage.getItem('task-management.install-dismissed') === '1') {
+            storage.setItem(installDismissedAtKey, String(Date.now()));
+            storage.removeItem('task-management.install-dismissed');
             return true;
         }
 
@@ -217,7 +247,7 @@
     }
 
     function installationGuide() {
-        if (isStandalone() || localStorage.getItem(installedAtKey)) {
+        if (isStandalone() || storage.getItem(installedAtKey)) {
             return '<p><strong>Task Management MVP is already installed on this device.</strong></p>';
         }
 
@@ -239,7 +269,7 @@
         const installButton = document.querySelector('[data-pwa-install]');
         if (guide) guide.innerHTML = installationGuide();
         if (installButton) {
-            installButton.hidden = isStandalone() || Boolean(localStorage.getItem(installedAtKey));
+            installButton.hidden = isStandalone() || Boolean(storage.getItem(installedAtKey));
             installButton.textContent = installPrompt ? 'Install App' : 'View Installation Steps';
         }
     }
@@ -247,12 +277,14 @@
     function openInstallDialog({ automatic = false } = {}) {
         const dialog = document.querySelector('[data-pwa-dialog]');
         if (!dialog) return;
-        if (automatic && (!userId || !isMobileDevice() || isStandalone() || localStorage.getItem(installedAtKey) || dismissalIsCoolingDown())) return;
-        if (automatic && document.querySelector('.swal2-container, dialog[open], [role="dialog"]:not(.pwa-install-dialog__panel)')) return;
+        if (automatic && (!userId || !isMobileDevice() || isStandalone() || storage.getItem(installedAtKey) || dismissalIsCoolingDown())) return;
+        if (automatic && document.querySelector('.swal2-container, dialog[open], .modal.active')) return;
 
         renderInstallDialog();
         document.querySelector('[data-pwa-guide]').hidden = Boolean(installPrompt) && !isStandalone();
         dialog.hidden = false;
+        installReturnFocus = document.activeElement;
+        document.querySelector('.app-shell').inert = true;
         document.body.classList.add('pwa-install-dialog-open');
         dialog.querySelector('[data-pwa-install]:not([hidden]), [data-pwa-dismiss]')?.focus();
     }
@@ -260,7 +292,10 @@
     function closeInstallDialog({ remember = false } = {}) {
         document.querySelector('[data-pwa-dialog]')?.setAttribute('hidden', '');
         document.body.classList.remove('pwa-install-dialog-open');
-        if (remember) localStorage.setItem(installDismissedAtKey, String(Date.now()));
+        const shell = document.querySelector('.app-shell');
+        if (shell) shell.inert = false;
+        installReturnFocus?.focus();
+        if (remember) storage.setItem(installDismissedAtKey, String(Date.now()));
     }
 
     function scheduleAutomaticInstallOffer() {
@@ -269,7 +304,17 @@
     }
 
     function bindInstallExperience() {
-        if (isStandalone()) localStorage.setItem(installedAtKey, String(Date.now()));
+        document.addEventListener('keydown', event => {
+            const dialog = document.querySelector('[data-pwa-dialog]:not([hidden])');
+            if (!dialog) return;
+            if (event.key === 'Escape') { event.preventDefault(); closeInstallDialog({ remember: true }); }
+            if (event.key !== 'Tab') return;
+            const controls = Array.from(dialog.querySelectorAll('button:not(:disabled), a[href]')).filter(control => control.getClientRects().length);
+            const first = controls[0], last = controls.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        });
+        if (isStandalone()) storage.setItem(installedAtKey, String(Date.now()));
         document.querySelectorAll('[data-pwa-open]').forEach(button => {
             button.addEventListener('click', () => openInstallDialog());
         });
@@ -307,20 +352,33 @@
     });
 
     window.addEventListener('appinstalled', () => {
-        localStorage.removeItem(installDismissedAtKey);
-        localStorage.setItem(installedAtKey, String(Date.now()));
+        storage.removeItem(installDismissedAtKey);
+        storage.setItem(installedAtKey, String(Date.now()));
         installPrompt = null;
         closeInstallDialog();
     });
 
     document.addEventListener('DOMContentLoaded', async () => {
+        // Offline/update capability is independent of optional push support.
+        if ('serviceWorker' in navigator && secureContext) {
+            navigator.serviceWorker.addEventListener('message', event => {
+                if (event.data?.type === 'REVALIDATE') window.AppClient?.check();
+                if (event.data?.type === 'APP_UPDATED' && initialController) window.AppClient?.updateAvailable();
+            });
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (hadController) window.AppClient?.updateAvailable();
+                hadController = true;
+            });
+            registration = await navigator.serviceWorker.register(serviceWorkerUrl.pathname, { scope: serviceWorkerScope, updateViaCache: 'none' }).catch(() => null);
+            registration?.update().catch(() => {});
+        }
         document.querySelectorAll('[data-push-enable]').forEach(button => button.addEventListener('click', () => enable().catch(error => showMessage(error.message, 'error'))));
         document.querySelectorAll('[data-push-disable]').forEach(button => button.addEventListener('click', () => disable().catch(error => showMessage(error.message, 'error'))));
         document.querySelectorAll('[data-push-test]').forEach(button => button.addEventListener('click', () => testNotification().catch(error => showMessage(error.message, 'error'))));
         bindInstallExperience();
 
         if (supported && userId) {
-            const previousUser = localStorage.getItem('task-management.push-user');
+            const previousUser = storage.getItem('task-management.push-user');
             if (previousUser && previousUser !== userId) {
                 await disable({ quiet: true }).catch(() => {});
             }
@@ -330,7 +388,13 @@
             form.addEventListener('submit', async event => {
                 if (form.dataset.pushCleanupDone === 'true') return;
                 event.preventDefault();
-                await disable({ quiet: true }).catch(() => {});
+                // Optional browser push APIs must never prevent the authenticated logout request.
+                let timeout;
+                try {
+                    await Promise.race([disable({ quiet: true }).catch(() => {}), new Promise(resolve => {
+                        timeout = setTimeout(resolve, 6000);
+                    })]);
+                } finally { clearTimeout(timeout); }
                 form.dataset.pushCleanupDone = 'true';
                 form.submit();
             });

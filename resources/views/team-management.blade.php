@@ -8,34 +8,35 @@ body { background: #f7f8fa; }
 .team-container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; background: #fff; border-radius: 16px; box-shadow: 0 2px 16px 0 rgba(60,72,88,0.05); }
 .team-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 .team-header-content h1 { font-size: 2rem; font-weight: 700; color: #22223b; margin-bottom: 0.2rem; }
-.team-header-content p { color: #888; font-size: 1.1rem; }
-#addMemberBtn { background: #4f8cff; color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.5rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.team-header-content p { color: #475467; font-size: 1.1rem; }
+#addMemberBtn { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.5rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
 #addMemberBtn:hover { background: #2563eb; }
 #teamSearch { border: 1px solid #e5e7eb; border-radius: 8px; font-size: 1rem; padding: 0.6rem 1rem; margin-bottom: 1.5rem; }
 .team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
 .member-card { background: #f8fafc; border-radius: 10px; box-shadow: none; padding: 0.7rem 0.7rem; display: flex; flex-direction: column; align-items: flex-start; transition: box-shadow 0.2s, border 0.2s; border: 1px solid #e5e7eb; position: relative; min-height: 90px; min-width: 0; }
 .member-card:hover { box-shadow: 0 2px 8px 0 rgba(60,72,88,0.08); border: 1.5px solid #4f8cff33; }
 .member-header { display: flex; align-items: center; width: 100%; margin-bottom: 0.3rem; }
-.member-avatar { width: 32px; height: 32px; border-radius: 50%; background: #4f8cff22; color: #4f8cff; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 700; margin-right: 0.7rem; }
-.member-info h3 { font-size: 1rem; font-weight: 600; margin: 0; color: #22223b; }
-.member-info p { font-size: 0.92rem; color: #888; margin: 0; }
+.member-avatar { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: #4f8cff22; color: #4f8cff; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 700; margin-right: 0.7rem; }
+.member-info { min-width:0; display:block; }
+.member-info h3 { overflow-wrap:anywhere; font-size: 1rem; font-weight: 600; margin: 0; color: #22223b; }
+.member-info p { overflow-wrap:anywhere; font-size: 0.92rem; color: #475467; margin: 0; }
 .member-actions { margin-left: auto; display: flex; gap: 0.2rem; }
-.action-btn { background: none; border: none; font-size: 1rem; cursor: pointer; color: #4f8cff; transition: color 0.2s; padding: 0.1rem; }
+.action-btn { background: none; border: none; font-size: 1rem; cursor: pointer; color: #4f8cff; transition: color 0.2s; padding: 0.5rem; min-width: 40px; min-height: 40px; }
 .action-btn:hover { color: #2563eb; }
 .member-details { width: 100%; margin-top: 0.2rem; }
 .detail-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.92rem; margin-bottom: 0.1rem; color: #555; }
-.detail-label { color: #888; font-weight: 500; }
+.detail-label { color: #475467; font-weight: 500; }
 .status-badge { border-radius: 7px; padding: 1px 8px; font-size: 0.9rem; font-weight: 600; background: #e5e7eb; color: #555; margin-left: 0.3rem; }
-.status-active { background: #e0f7fa; color: #059669; }
+.status-active { background: #e0f7fa; color: #046c4e; }
 .status-inactive { background: #fbe9e7; color: #d32f2f; }
 .btn-small { font-size: 0.9rem; padding: 0.15rem 0.6rem; border-radius: 6px; border: none; cursor: pointer; margin-left: 0.3rem; transition: background 0.2s; }
-.btn-small.btn-primary { background: #4f8cff; color: #fff; }
-.btn-small.btn-danger { background: #ff6b6b; color: #fff; }
+.btn-small.btn-primary { background: #2563eb; color: #fff; }
+.btn-small.btn-danger { background: #b42318; color: #fff; }
 .btn-small.btn-primary:hover { background: #2563eb; }
 .btn-small.btn-danger:hover { background: #c62828; }
 .current-user { border: 2px solid #4f8cff !important; background: #e3f0ff; }
-.current-user::after { content: 'You'; position: absolute; top: 7px; right: 7px; background: #4f8cff; color: #fff; font-size: 0.8rem; padding: 1px 6px; border-radius: 7px; font-weight: 600; }
-.empty-state { text-align: center; color: #888; margin: 2rem 0; }
+.current-user::after { content: 'You'; position: absolute; top: 7px; right: 7px; background: #2563eb; color: #fff; font-size: 0.8rem; padding: 1px 6px; border-radius: 7px; font-weight: 600; }
+.empty-state { text-align: center; color: #475467; margin: 2rem 0; }
 .empty-icon { font-size: 2.5rem; margin-bottom: 0.7rem; }
 .pagination-wrapper { margin-top: 2rem; text-align: center; }
 .modal { background: rgba(60,72,88,0.13); }
@@ -119,29 +120,11 @@ document.addEventListener('DOMContentLoaded', function() {
             editMemberForm.querySelector('#editMemberId').value = editMemberId;
             editMemberForm.querySelector('#editMemberName').value = card.querySelector('h3').textContent;
             editMemberForm.querySelector('#editMemberEmail').value = card.querySelector('.member-info p').textContent;
-            // Set role in edit modal
-            const roleValue = card.querySelector('.detail-value').textContent.trim();
-            const editRoleSelect = editMemberForm.querySelector('#editMemberRole');
-            if (editRoleSelect) {
-                editRoleSelect.setAttribute('data-current-role', roleValue.toLowerCase());
-                for (let i = 0; i < editRoleSelect.options.length; i++) {
-                    if (editRoleSelect.options[i].textContent.trim().toLowerCase() === roleValue.toLowerCase()) {
-                        editRoleSelect.selectedIndex = i;
-                        break;
-                    }
-                }
-            }
+            editMemberForm.querySelector('#editMemberRole').value = card.dataset.roleId;
+            editMemberForm.querySelector('#editMemberRole').setAttribute('data-current-role', card.dataset.roleId);
         });
     });
-    // Make member cards clickable for analytics
-    document.querySelectorAll('.member-card').forEach(card => {
-        card.addEventListener('click', function(e) {
-            // Prevent click if edit/delete button is clicked
-            if (e.target.closest('.edit-btn') || e.target.closest('.delete-btn')) return;
-            const memberId = this.dataset.memberId;
-            window.location.href = `/team-management/${memberId}/analytics`;
-        });
-    });
+    // Analytics uses a native, keyboard-operable link.
     // Delete member
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
@@ -159,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'Yes, remove!'
             }).then((result) => {
                 if (!result.isConfirmed) return;
-                fetch(`/team-management/${deleteMemberId}`, {
+                fetch(window.AppClient.appUrl(`/team-management/${deleteMemberId}`), {
                     method: 'DELETE',
                     headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
                 })
@@ -220,13 +203,13 @@ document.addEventListener('DOMContentLoaded', function() {
             url: template.replace('__USER_ID__', encodeURIComponent(id)),
             method: 'PUT',
             payload: { name: form.get('editMemberName'), email: form.get('editMemberEmail'), password: form.get('editMemberPassword'), role_id: form.get('editMemberRole') },
-            confirm: currentRole && roleText.toLowerCase() !== currentRole.toLowerCase()
+            confirm: currentRole && form.get('editMemberRole') !== currentRole
                 ? confirmRole(`Change role to ${roleText}?`, `Change this member's role to ${roleText}?`, 'Yes, change!') : null,
         });
     });
     // Delete member (modal confirm)
     document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
-        fetch(`/team-management/${deleteMemberId}`, {
+        fetch(window.AppClient.appUrl(`/team-management/${deleteMemberId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
         })
@@ -256,7 +239,7 @@ document.querySelectorAll('.deactivate-btn').forEach(btn => {
             confirmButtonText: 'Yes, deactivate!'
         }).then((result) => {
             if (!result.isConfirmed) return;
-            fetch(`/team-management/${id}/deactivate`, {
+            fetch(window.AppClient.appUrl(`/team-management/${id}/deactivate`), {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
             })
@@ -285,7 +268,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             confirmButtonText: 'Yes, activate!'
         }).then((result) => {
             if (!result.isConfirmed) return;
-            fetch(`/team-management/${id}/activate`, {
+            fetch(window.AppClient.appUrl(`/team-management/${id}/activate`), {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
             })
@@ -322,26 +305,25 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
     <div id="teamGrid" class="team-grid">
         @forelse ($users as $user)
             <div class="member-card @if(auth()->id() === $user->id) current-user @endif"
-                data-member-id="{{ $user->id }}"
-                data-project-ids="{{ $user->projects->pluck('id')->implode(',') }}"
-                style="cursor:pointer;">
+                data-member-id="{{ $user->id }}" data-role-id="{{ $user->role_id }}"
+                data-project-ids="{{ $user->projects->pluck('id')->implode(',') }}">
                 <div class="member-header">
-                    <div class="member-avatar">{{ strtoupper(substr($user->name, 0, 2)) }}</div>
+                    <div class="member-avatar">{{ \App\Support\Presentation::initials($user->name) }}</div>
                     <div class="member-info">
-                        <h3>{{ $user->name }}</h3>
+                        <h3><a class="member-analytics-link" href="{{ route('team-management.analytics', $user) }}" aria-label="View analytics for {{ $user->name }}">{{ $user->name }}</a></h3>
                         <p>{{ $user->email }}</p>
                     </div>
                     <div class="member-actions">
                         @if(auth()->user()->hasRole('manager'))
-                        <button class="action-btn edit-btn" title="Edit Member">✏️</button>
-                        <button class="action-btn delete-btn" title="Delete Member">🗑️</button>
+                        <button class="action-btn edit-btn" aria-label="Edit {{ $user->name }}" title="Edit Member">✏️</button>
+                        <button class="action-btn delete-btn" aria-label="Delete {{ $user->name }}" title="Delete Member">🗑️</button>
                         @endif
                     </div>
                 </div>
                 <div class="member-details">
                     <div class="detail-item">
                         <span class="detail-label">Role:</span>
-                        <span class="detail-value">{{ $user->role ? $user->role->name : '-' }}</span>
+                        <span class="detail-value">{{ \App\Support\Presentation::role($user->role?->name) }}</span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Login ID:</span>
@@ -413,7 +395,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                     <select id="memberRole" data-error-field="role_id" name="memberRole" required>
                         <option value="">Select Role</option>
                         @foreach($roles as $role)
-                            <option value="{{ $role->id }}">{{ ucfirst($role->name) }}</option>
+                            <option value="{{ $role->id }}">{{ \App\Support\Presentation::role($role->name) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -450,7 +432,7 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
                     <select id="editMemberRole" data-error-field="role_id" name="editMemberRole" required>
                         <option value="">Select Role</option>
                         @foreach($roles as $role)
-                            <option value="{{ $role->id }}">{{ ucfirst($role->name) }}</option>
+                            <option value="{{ $role->id }}">{{ \App\Support\Presentation::role($role->name) }}</option>
                         @endforeach
                     </select>
                 </div>

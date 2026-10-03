@@ -49,7 +49,7 @@ body { background: #f7f8fa; }
     <p>Task metrics describe tasks created in the selected inclusive company-date range, at their current state. Completion events describe activity within that period.</p>
     <div class="page-header">
         <h2>Performance: {{ $user->name }}</h2>
-        <p>Role: {{ $user->role ? ucfirst($user->role->name) : '-' }}</p>
+        <p>Role: {{ \App\Support\Presentation::role($user->role?->name) }}</p>
     </div>
     <div class="metrics-grid">
         <div class="metric-card blue">

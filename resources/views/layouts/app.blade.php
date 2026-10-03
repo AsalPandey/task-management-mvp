@@ -22,6 +22,8 @@
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <script src="{{ asset('js/phase3.js') }}?v={{ filemtime(public_path('js/phase3.js')) }}" defer></script>
+        <script src="{{ asset('js/client.js') }}?v={{ filemtime(public_path('js/client.js')) }}" defer></script>
+        <script src="{{ asset('js/notifications.js') }}?v={{ filemtime(public_path('js/notifications.js')) }}" defer></script>
         <script src="{{ asset('js/pwa.js') }}?v={{ filemtime(public_path('js/pwa.js')) }}" defer></script>
     </head>
     <body
@@ -30,10 +32,15 @@
         data-user-role="{{ auth()->user()?->role?->name }}"
         data-page="{{ request()->route()?->getName() }}"
         data-ui-version="phase-3a"
+        data-client-version="{{ app(\App\Services\ClientFreshness::class)->version(auth()->user()) }}"
     >
         <a class="skip-link" href="#main-content">Skip to main content</a>
         <div class="min-h-screen bg-gray-100 app-shell">
             @include('partials.navigation')
+            <div class="client-notice" data-client-notice hidden>
+                <p data-client-message role="status" aria-live="polite"></p>
+                <button type="button" class="btn-secondary">Reload latest</button>
+            </div>
 
             <!-- Page Heading -->
             @isset($header)

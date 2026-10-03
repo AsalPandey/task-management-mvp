@@ -117,72 +117,7 @@
     @endif
 </div>
 
-@push('scripts')
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // AJAX mark as read
-    window.markAsRead = function(notificationId) {
-        fetch(`/notifications/read/${notificationId}`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-            })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const notificationItem = document.querySelector(`[data-id="${notificationId}"]`);
-                if (notificationItem) {
-                    notificationItem.classList.remove('unread');
-                    notificationItem.classList.add('read');
-                    const markReadBtn = notificationItem.querySelector('.mark-read-page-btn');
-                    if (markReadBtn) {
-                        markReadBtn.remove();
-                    }
-                }
-            }
-        })
-        .catch(() => {});
-    };
-    
-    // AJAX mark all as read
-    const markAllBtn = document.getElementById('markAllReadBtn');
-    if(markAllBtn) {
-        markAllBtn.addEventListener('click', function() {
-            this.disabled = true;
-            this.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Processing...';
-            
-            fetch('/notifications/read-all', {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                    'Accept': 'application/json',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    document.querySelectorAll('.notification-page-item.unread').forEach(item => {
-                        item.classList.remove('unread');
-                        item.classList.add('read');
-                        const markReadBtn = item.querySelector('.mark-read-page-btn');
-                        if (markReadBtn) {
-                            markReadBtn.remove();
-                        }
-                    });
-                    markAllBtn.remove();
-                }
-            })
-            .catch(() => {
-                markAllBtn.disabled = false;
-                markAllBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Mark all as read';
-            });
-        });
-    }
-});
-</script>
-@endpush
+
 
 <style>
 /* Notifications Page Styles */

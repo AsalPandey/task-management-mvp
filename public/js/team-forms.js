@@ -1,6 +1,11 @@
 /* Shared JSON request lifecycle for account create/edit. Authorization stays on the server. */
 window.TeamForms = (() => {
     function clearErrors(form) {
+        form.querySelectorAll('[data-error-field][aria-describedby]').forEach(input => {
+            const references = input.getAttribute('aria-describedby').split(' ').filter(id => !id.startsWith('account-error-'));
+            if (references.length) input.setAttribute('aria-describedby', references.join(' '));
+            else input.removeAttribute('aria-describedby');
+        });
         form.querySelectorAll('[data-form-error]').forEach(node => node.remove());
         form.querySelectorAll('[aria-invalid]').forEach(node => node.removeAttribute('aria-invalid'));
     }
@@ -16,10 +21,13 @@ window.TeamForms = (() => {
             if (!input || !Array.isArray(messages)) return;
             const error = document.createElement('p');
             error.dataset.formError = key;
+            error.id = `account-error-${form.id}-${key}`;
             error.textContent = messages.filter(value => typeof value === 'string').join(' ');
             input.setAttribute('aria-invalid', 'true');
+            input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), error.id].filter(Boolean).join(' '));
             input.insertAdjacentElement('afterend', error);
         });
+        form.querySelector('[aria-invalid="true"]')?.focus();
     }
 
     const statusMessages = {

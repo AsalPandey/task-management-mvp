@@ -33,7 +33,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        foreach (['setup' => [10, 1], 'task-create' => [30, 1], 'analytics-export' => [10, 1],
+        foreach (['client-freshness' => [60, 1], 'setup' => [10, 1], 'task-create' => [30, 1], 'analytics-export' => [10, 1],
             'profile-update' => [10, 1], 'push-subscribe' => [30, 1], 'push-test' => [3, 10],
             'password-forgot' => [10, 1], 'password-reset' => [10, 1], 'email-verification' => [6, 1],
             'password-confirm' => [10, 1], 'password-update' => [10, 1]] as $name => [$attempts, $minutes]) {

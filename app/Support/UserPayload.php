@@ -23,6 +23,6 @@ final class UserPayload
 
     public static function self(User $user): array
     {
-        return self::account($user) + ['timezone' => $user->timezone, 'notification_preferences' => $user->notification_preferences];
+        return self::account($user) + ['initials' => Presentation::initials($user->name), 'timezone' => $user->timezone, 'notification_preferences' => $user->notification_preferences];
     }
 }
