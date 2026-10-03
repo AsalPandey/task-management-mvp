@@ -7,6 +7,7 @@ use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
 use App\Support\AnalyticsFilters;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
@@ -38,8 +39,8 @@ class AnalyticsController extends Controller
             $writeRow(['Metric', 'Value']);
             $writeRow(['Active Tasks', $data['totalActiveTasks']]);
             $writeRow(['Completed Tasks', $data['totalCompletedTasks']]);
-            $writeRow(['Active Execution', $data['executionTasks']->count()]);
-            $writeRow(['Review Queue', $data['reviewQueueTasks']->count()]);
+            $writeRow(['Active Execution', $data['executionTaskCount']]);
+            $writeRow(['Review Queue', $data['reviewQueueTaskCount']]);
             $writeRow(['Cancelled Tasks', $data['cancelledTasks']]);
             $writeRow(['In Progress Tasks', $data['inProgressTasks']]);
             $writeRow(['Overdue Tasks', $data['overdueTasks']]);
@@ -96,11 +97,6 @@ class AnalyticsController extends Controller
             isset($validated['assignee']) ? (int) $validated['assignee'] : null,
             isset($validated['project']) ? (int) $validated['project'] : null,
         );
-        $days = collect(range(0, 29))->map(fn ($i) => now(config('app.timezone'))->subDays(29 - $i));
-        $overdueTrend = $days->mapWithKeys(fn ($date) => [
-            $date->format('M d') => $report['activeTasks']
-                ->filter(fn ($task) => $task->activeDeadline()?->lt($date) ?? false)->count(),
-        ]);
         $users = $this->visibleUsers()->with('role')->get();
         $selectedAssignee = isset($validated['assignee']) ? (int) $validated['assignee'] : null;
         $performanceByUser = $report['teamPerformance']->keyBy('id');
@@ -117,10 +113,10 @@ class AnalyticsController extends Controller
                     'completionRate' => 0.0,
                 ]);
             })->values();
+        $lastUpdated = $this->taskReads->activeVisibleTo($request->user())->latest('updated_at')->toBase()->value('updated_at');
 
         return array_merge($report, [
-            'productivity' => $report['completionTrend'],
-            'overdueTrend' => $overdueTrend,
+            'productivity' => $report['creationTrend'],
             'teamPerformance' => $teamPerformance,
             'achievements' => [
                 'Created '.$report['tasksCreated'].' tasks in selected period',
@@ -132,7 +128,7 @@ class AnalyticsController extends Controller
                 'Balance high-priority task distribution',
                 'Monitor team productivity trends',
             ],
-            'lastUpdated' => $this->taskReads->activeVisibleTo($request->user())->latest('updated_at')->value('updated_at'),
+            'lastUpdated' => $lastUpdated ? Carbon::parse($lastUpdated, config('app.timezone')) : null,
             'users' => $users,
         ]);
     }

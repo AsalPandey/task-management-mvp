@@ -466,7 +466,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="metric-value">{{ $currentActiveCount }}</div>
                     <div class="metric-label">Active Tasks</div>
-                    <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
+                    <div class="metric-subtitle">{{ $executionTaskCount }} execution, {{ $reviewQueueTaskCount }} review</div>
                 </div>
                 <div class="metric-card green">
                     <div class="metric-header">
@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </svg>
                         </div>
                     </div>
-                    <div class="metric-value">{{ $todayOverdueTasks->count() }}</div>
+                    <div class="metric-value">{{ $totalOverdueCount }}</div>
                     <div class="metric-label">Overdue</div>
                     <div class="metric-subtitle">Needs attention</div>
                 </div>
@@ -566,19 +566,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
                         <polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2"/>
                     </svg>
-                    Overdue Tasks (<span id="overdueCount">{{ $todayOverdueTasks->count() }}</span>)
+                    Overdue Tasks (<span id="overdueCount">{{ $totalOverdueCount }}</span>)
                 </h3>
                 <div class="overdue-tasks" id="overdueTasks">
                     @forelse ($todayOverdueTasks as $task)
                         <div class="overdue-task-item">
                             <span class="overdue-title">{{ $task->title }}</span>
                             <span class="overdue-assignee">{{ $task->assignee ? $task->assignee->name : '-' }}</span>
-                            <span class="overdue-due">Due: {{ $task->due_date }}</span>
+                            <span class="overdue-due">Due: {{ $task->activeDeadline()?->toDateString() }}</span>
                         </div>
                     @empty
                         <div>No overdue tasks</div>
                     @endforelse
                 </div>
+                <p>Showing up to 10 overdue tasks. <a href="{{ route('tasks') }}">View all tasks</a></p>
             </div>
 
             <!-- Notifications -->

@@ -279,7 +279,7 @@ class TeamManagementTest extends TestCase
         $this->actingAs($projectManager)
             ->get("/team-management/{$teamMember->id}/analytics")
             ->assertOk()
-            ->assertViewHas('allTasks', fn ($tasks) => $tasks->pluck('title')->all() === ['Scoped Task'])
+            ->assertViewHas('recentActivity', fn ($tasks) => $tasks->pluck('title')->all() === ['Scoped Task'])
             ->assertViewHas('totalTasks', 1);
     }
 

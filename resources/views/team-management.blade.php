@@ -242,14 +242,6 @@ document.addEventListener('DOMContentLoaded', function() {
         deleteModal.classList.remove('active');
     });
 });
-document.getElementById('teamSearch')?.addEventListener('input', function() {
-    const search = this.value.toLowerCase();
-    document.querySelectorAll('.member-card').forEach(card => {
-        const name = card.querySelector('h3').textContent.toLowerCase();
-        const email = card.querySelector('.member-info p').textContent.toLowerCase();
-        card.style.display = (!search || name.includes(search) || email.includes(search)) ? '' : 'none';
-    });
-});
 document.querySelectorAll('.deactivate-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -321,9 +313,11 @@ document.querySelectorAll('.activate-btn').forEach(btn => {
             <button id="addMemberBtn" class="btn-primary">➕ Add Team Member</button>
         @endif
     </div>
-    <div style="margin:1rem 0; max-width:400px;">
-        <input type="text" id="teamSearch" class="form-control" placeholder="Search team members by name or email..." style="width:100%; padding:0.5rem 1rem; border-radius:6px; border:1px solid #ccc;">
-    </div>
+    <form method="GET" action="{{ route('team-management') }}" style="margin:1rem 0; max-width:400px;">
+        <input type="search" id="teamSearch" name="search" value="{{ request('search') }}" maxlength="255" class="form-control" aria-label="Search team members" placeholder="Search team members by name or email..." style="width:100%; padding:0.5rem 1rem; border-radius:6px; border:1px solid #ccc;">
+        <button type="submit" class="btn-primary">Search</button>
+        <a href="{{ route('team-management') }}">Clear search</a>
+    </form>
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <div id="teamGrid" class="team-grid">
         @forelse ($users as $user)

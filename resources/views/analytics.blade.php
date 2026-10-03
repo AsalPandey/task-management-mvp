@@ -61,7 +61,7 @@ body { background: #f7f8fa; }
             </div>
             <div class="metric-value">{{ $totalActiveTasks }}</div>
             <div class="metric-label">Active Workflow</div>
-            <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
+            <div class="metric-subtitle">{{ $executionTaskCount }} execution, {{ $reviewQueueTaskCount }} review</div>
         </div>
         <div class="metric-card green">
             <div class="metric-header">

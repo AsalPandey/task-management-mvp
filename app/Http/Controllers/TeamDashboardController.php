@@ -2,132 +2,63 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TaskState;
 use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
+use App\Support\ReadLimits;
+use App\Support\TaskDeadlineSql;
 
 class TeamDashboardController extends Controller
 {
-    public function __construct(
-        private readonly TaskReadService $taskReads,
-        private readonly TaskAnalyticsService $analytics,
-    ) {}
+    public function __construct(private readonly TaskReadService $taskReads, private readonly TaskAnalyticsService $analytics) {}
 
     public function index()
     {
         $user = auth()->user();
         abort_unless($user && $user->hasRole('team_member'), 403);
-        $today = now()->toDateString();
-
-        // Today's tasks for this team member (created today OR currently active)
-        $todayTasks = $this->taskReads->activeVisibleTo($user)
-            ->with(['project', 'creator'])
-            ->get();
-
-        // Current active tasks for this team member
-        $currentTasks = $this->taskReads->activeVisibleTo($user)
-            ->with(['project', 'creator'])
-            ->get();
-        $executionTasks = $currentTasks
-            ->filter(fn ($task) => $task->machineState()->isExecutionState());
-        $reviewQueueTasks = $currentTasks
-            ->filter(fn ($task) => $task->machineState()->isReviewState());
-
-        // Today's completed tasks
-        $completedTasksQuery = $this->taskReads->completedVisibleTo($user);
-        $todayCompletedTasks = (clone $completedTasksQuery)
-            ->whereDate('completed_at', $today)
-            ->count();
-
-        // Today's metrics
-        $todayTotalTasks = $todayTasks->count();
-        $todayInProgressTasks = $todayTasks->where('status', 'In Progress')->count();
-        $todayOverdueTasks = $todayTasks
-            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false)
-            ->count();
-        $todayAvgProgress = $todayTotalTasks ? round($todayTasks->avg('progress')) : 0;
-
-        // Current workload metrics
-        $currentTotalTasks = $currentTasks->count();
-        $currentInProgressTasks = $currentTasks->where('status', 'In Progress')->count();
-        $currentOverdueTasks = $currentTasks
-            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false)
-            ->count();
-
-        // Completion rate (today's completed vs today's total)
+        $today = today(config('app.timezone'));
+        $scope = $this->taskReads->activeVisibleTo($user);
+        $summary = $this->analytics->summary($scope);
+        $completed = $this->taskReads->completedVisibleTo($user);
+        $todayCompletedTasks = (clone $completed)->whereDate('completed_at', $today)->count();
+        $todayTotalTasks = $currentTotalTasks = $summary['totalActiveTasks'];
+        $todayInProgressTasks = $currentInProgressTasks = $summary['inProgressTasks'];
+        $todayOverdueTasks = $currentOverdueTasks = $summary['overdueTasks'];
+        $todayAvgProgress = $summary['avgProgress'];
+        $executionTaskCount = $summary['executionTaskCount'];
+        $reviewQueueTaskCount = $summary['reviewQueueTaskCount'];
         $todayCompletionRate = $this->analytics->boundedCompletionRate($todayCompletedTasks, $todayTotalTasks);
+        $todayPriorityCounts = collect(['High', 'Medium', 'Low'])->mapWithKeys(fn ($priority) => [$priority => $summary['priorityCounts'][$priority] ?? 0])->all();
+        $todayStatusCounts = collect(TaskState::cases())->mapWithKeys(fn ($state) => [$state->label() => $summary['statusCounts'][$state->label()] ?? 0])
+            ->put('Completed', $todayCompletedTasks)->all();
+        $todayTasks = $currentTasks = (clone $scope)->with(['project', 'creator'])->latest('created_at')->orderByDesc('id')->limit(ReadLimits::MEMBER_NOTICES)->get();
+        $todayOverdueList = (clone $scope)->whereRaw(TaskDeadlineSql::date().' < ?', [$today->toDateString()])
+            ->with('project')->orderByRaw(TaskDeadlineSql::date())->orderBy('id')->limit(ReadLimits::DASHBOARD_TASKS)->get();
+        $upcoming = (clone $scope)->whereRaw(TaskDeadlineSql::date().' BETWEEN ? AND ?', [$today->toDateString(), $today->copy()->addDays(7)->toDateString()])
+            ->with('project')->orderByRaw(TaskDeadlineSql::date())->orderBy('id')->limit(ReadLimits::DASHBOARD_TASKS)->get();
+        $completionDates = (clone $completed)->where('completed_at', '>=', $today->copy()->subDays(6))
+            ->toBase()->selectRaw('DATE(completed_at) AS day, COUNT(*) AS aggregate')->groupByRaw('DATE(completed_at)')->pluck('aggregate', 'day');
+        $productivity = collect(range(0, 6))->mapWithKeys(function ($i) use ($today, $completionDates): array {
+            $date = $today->copy()->subDays(6 - $i);
 
-        // Today's priority breakdown
-        $todayPriorityCounts = [
-            'High' => $todayTasks->where('priority', 'High')->count(),
-            'Medium' => $todayTasks->where('priority', 'Medium')->count(),
-            'Low' => $todayTasks->where('priority', 'Low')->count(),
-        ];
-
-        // Today's status breakdown
-        $todayStatusCounts = [
-            'Not Started' => $todayTasks->where('status', 'Not Started')->count(),
-            'In Progress' => $todayInProgressTasks,
-            'On Hold' => $todayTasks->where('status', 'On Hold')->count(),
-            'Submitted' => $todayTasks->where('status', 'Submitted')->count(),
-            'In Review' => $todayTasks->where('status', 'In Review')->count(),
-            'Revision Requested' => $todayTasks->where('status', 'Revision Requested')->count(),
-            'Completed' => $todayCompletedTasks,
-        ];
-
-        // Today's overdue list
-        $todayOverdueList = $todayTasks
-            ->filter(fn ($task) => $task->activeDeadlineGeneration()?->isOverdue() ?? false);
-
-        // Today's productivity (last 7 days for context)
-        $days = collect(range(0, 6))->map(function ($i) {
-            return now()->subDays(6 - $i)->format('Y-m-d');
+            return [$date->format('D') => (int) ($completionDates[$date->toDateString()] ?? 0)];
         });
-        $productivity = $days->mapWithKeys(function ($date) use ($completedTasksQuery) {
-            $count = (clone $completedTasksQuery)
-                ->whereDate('completed_at', $date)
-                ->count();
-
-            return [now()->parse($date)->format('D') => $count];
-        });
-
-        // Recent completed tasks (last 7 days)
-        $recentCompletedHistory = (clone $completedTasksQuery)
-            ->with('project')
-            ->where('completed_at', '>=', now()->subDays(7))
-            ->orderBy('completed_at', 'desc')
-            ->get();
-
-        // Today's notifications
-        $notifications = collect();
-        foreach ($todayTasks->sortByDesc('created_at')->take(5) as $task) {
-            if ($task->status === 'Completed') {
-                $notifications->push(['type' => 'completed', 'text' => "Task '{$task->title}' was completed."]);
-            } elseif ($task->activeDeadlineGeneration()?->isOverdue()) {
-                $notifications->push(['type' => 'overdue', 'text' => "Task '{$task->title}' is overdue."]);
-            } else {
-                $notifications->push(['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."]);
+        $recentCompletedHistory = (clone $completed)->with('project')->where('completed_at', '>=', now()->subDays(7))
+            ->latest('completed_at')->orderByDesc('id')->limit(ReadLimits::DASHBOARD_TASKS)->get();
+        $notifications = $todayTasks->map(function ($task): array {
+            if ($task->activeDeadlineGeneration()?->isOverdue()) {
+                return ['type' => 'overdue', 'text' => "Task '{$task->title}' is overdue."];
             }
-        }
 
-        // Today's insights
-        $achievements = [
-            'Completed '.$todayCompletedTasks.' tasks today',
-            'Currently working on '.$currentInProgressTasks.' tasks',
-            'Today\'s progress: '.$todayAvgProgress.'%',
-        ];
-        $improvements = [
-            'Focus on '.$todayOverdueTasks.' overdue task(s)',
-            'Maintain steady progress on current tasks',
-            'Prioritize high-priority tasks',
-        ];
+            return ['type' => 'assigned', 'text' => "Task '{$task->title}' was assigned to you."];
+        });
+        $achievements = ['Completed '.$todayCompletedTasks.' tasks today', 'Currently working on '.$currentInProgressTasks.' tasks', "Today's progress: ".$todayAvgProgress.'%'];
+        $improvements = ['Focus on '.$todayOverdueTasks.' overdue task(s)', 'Maintain steady progress on current tasks', 'Prioritize high-priority tasks'];
 
-        return view('team-dashboard', compact(
-            'user', 'todayTasks', 'currentTasks', 'todayTotalTasks', 'todayCompletedTasks',
-            'todayInProgressTasks', 'todayOverdueTasks', 'todayAvgProgress', 'todayCompletionRate',
-            'currentTotalTasks', 'currentInProgressTasks', 'currentOverdueTasks',
-            'executionTasks', 'reviewQueueTasks',
-            'todayPriorityCounts', 'todayStatusCounts', 'todayOverdueList', 'productivity',
-            'notifications', 'achievements', 'improvements', 'recentCompletedHistory'
-        ));
+        return view('team-dashboard', compact('user', 'todayTasks', 'currentTasks', 'todayTotalTasks', 'todayCompletedTasks',
+            'todayInProgressTasks', 'todayOverdueTasks', 'todayAvgProgress', 'todayCompletionRate', 'currentTotalTasks',
+            'currentInProgressTasks', 'currentOverdueTasks', 'executionTaskCount', 'reviewQueueTaskCount',
+            'todayPriorityCounts', 'todayStatusCounts', 'todayOverdueList', 'productivity', 'notifications',
+            'achievements', 'improvements', 'recentCompletedHistory', 'upcoming'));
     }
 }

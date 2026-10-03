@@ -9,8 +9,10 @@ use App\Notifications\AccountStatusChangedNotification;
 use App\Rules\AccountEmailAvailable;
 use App\Services\AccountLifecycleService;
 use App\Services\TaskAnalyticsService;
+use App\Services\TaskReadService;
 use App\Support\AnalyticsFilters;
 use App\Support\InputContracts;
+use App\Support\ReadLimits;
 use App\Support\UserPayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,12 +30,14 @@ class TeamManagementController extends Controller
         $users = $this->manageableUsers()
             ->with(['role', 'projects:id,name'])
             ->when($filters['search'] ?? null, function ($query, string $search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%");
+                $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], trim($search)).'%';
+                $query->where(function ($subQuery) use ($pattern) {
+                    $subQuery->whereRaw("name LIKE ? ESCAPE '!'", [$pattern])
+                        ->orWhereRaw("email LIKE ? ESCAPE '!'", [$pattern]);
                 });
             })
             ->latest()
+            ->orderByDesc('id')
             ->paginate(12)
             ->withQueryString();
 
@@ -168,37 +172,27 @@ class TeamManagementController extends Controller
         $dateFrom = $filters['dateFrom'] ?? now(config('app.timezone'))->subDays(7)->toDateString();
         $dateTo = $filters['dateTo'] ?? now(config('app.timezone'))->toDateString();
         $report = $analytics->report($authUser, $dateFrom, $dateTo, $user->id);
-        $allTasks = $report['activeTasks'];
-        $allCompletedTasks = $report['completedTasks'];
         $totalTasks = $report['totalTasks'];
         $totalCompletedTasks = $report['totalCompletedTasks'];
         $overallCompletionRate = $report['completionRate'];
-        $currentActiveTasks = $allTasks;
+        $currentActiveCount = $report['totalActiveTasks'];
         $currentInProgressTasks = $report['inProgressTasks'];
         $currentOverdueTasks = $report['overdueTasks'];
         $currentAvgProgress = $report['avgProgress'];
         $priorityCounts = [
-            'High' => $allTasks->where('priority', 'High')->count(),
-            'Medium' => $allTasks->where('priority', 'Medium')->count(),
-            'Low' => $allTasks->where('priority', 'Low')->count(),
+            'High' => $report['priorityCounts']['High'] ?? 0,
+            'Medium' => $report['priorityCounts']['Medium'] ?? 0,
+            'Low' => $report['priorityCounts']['Low'] ?? 0,
         ];
         $statusCounts = $report['statusCounts'];
         $dailyCompletionTrend = $report['completionTrend'];
         $dailyTaskCreationTrend = $report['creationTrend'];
-        $monthlyPerformance = collect(range(0, 5))->mapWithKeys(function ($i) use ($analytics, $authUser, $user) {
-            $start = now()->subMonths(5 - $i)->startOfMonth();
-            $end = $start->copy()->endOfMonth();
-            $month = $analytics->report($authUser, $start->toDateString(), $end->toDateString(), $user->id);
-
-            return [$start->format('M Y') => [
-                'created' => $month['tasksCreated'],
-                'completed' => $month['completionEvents'],
-                'rate' => $month['completionRate'],
-            ]];
-        });
-        $recentActivity = $report['cohortTasks']->sortByDesc('updated_at')->take(10)
+        $recentActivity = app(TaskReadService::class)->visibleTo($authUser)
+            ->where('assignee_id', $user->id)
+            ->whereBetween('created_at', [$report['dateFrom'], $report['dateTo']])
+            ->with(['assignee', 'project'])->latest('updated_at')->orderByDesc('id')->limit(ReadLimits::DASHBOARD_TASKS)->get()
             ->sortByDesc(fn ($task) => $task->completed_at ?? $task->created_at)
-            ->take(10);
+            ->take(ReadLimits::DASHBOARD_TASKS);
         $achievements = [
             'Completed '.$totalCompletedTasks.' tasks in the selected creation cohort',
             'Current completion rate: '.$overallCompletionRate.'%',
@@ -215,12 +209,10 @@ class TeamManagementController extends Controller
             'user',
             'dateFrom',
             'dateTo',
-            'allTasks',
-            'allCompletedTasks',
             'totalTasks',
             'totalCompletedTasks',
             'overallCompletionRate',
-            'currentActiveTasks',
+            'currentActiveCount',
             'currentInProgressTasks',
             'currentOverdueTasks',
             'currentAvgProgress',
@@ -228,7 +220,6 @@ class TeamManagementController extends Controller
             'statusCounts',
             'dailyCompletionTrend',
             'dailyTaskCreationTrend',
-            'monthlyPerformance',
             'recentActivity',
             'achievements',
             'improvements',

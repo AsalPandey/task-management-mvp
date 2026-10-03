@@ -190,7 +190,7 @@ body { background: #f7f8fa; }
                     <div class="metric-icon">📊</div>
                     <div class="metric-value" id="myTotalTasks">{{ $todayTotalTasks }}</div>
                     <div class="metric-label">Today's Tasks</div>
-                    <div class="metric-subtitle">{{ $executionTasks->count() }} execution, {{ $reviewQueueTasks->count() }} review</div>
+                    <div class="metric-subtitle">{{ $executionTaskCount }} execution, {{ $reviewQueueTaskCount }} review</div>
                 </div>
                 <div class="metric-card green">
                     <div class="metric-icon">✅</div>
@@ -305,7 +305,7 @@ body { background: #f7f8fa; }
                                 <p>Project: {{ $task->project ? $task->project->name : '-' }}</p>
                             </div>
                             <div class="task-meta">
-                                <p>Due: {{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</p>
+                                <p>Due: {{ $task->activeDeadline()?->format('m/d/Y') ?? '-' }}</p>
                                 <p class="priority">{{ $task->priority }} priority</p>
                             </div>
                             <div class="task-actions">
@@ -317,13 +317,11 @@ body { background: #f7f8fa; }
                     @endforelse
                 </div>
             </div>
+            <p>Showing up to 10 overdue tasks. <a href="{{ route('tasks') }}">View all tasks</a></p>
             <!-- Upcoming Deadlines -->
             <div class="deadlines-card full-width">
                 <h3>📅 Upcoming Deadlines</h3>
                 <div class="deadlines-list">
-                    @php
-                        $upcoming = $todayTasks->where('due_date', '>=', now()->toDateString())->where('due_date', '<=', now()->addDays(7)->toDateString())->sortBy('due_date');
-                    @endphp
                     @forelse($upcoming as $task)
                         <div class="deadline-task">
                             <div class="task-info">
@@ -331,7 +329,7 @@ body { background: #f7f8fa; }
                                 <p>Project: {{ $task->project ? $task->project->name : '-' }}</p>
                             </div>
                             <div class="task-meta">
-                                <p>Due: {{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->format('m/d/Y') : '-' }}</p>
+                                <p>Due: {{ $task->activeDeadline()?->format('m/d/Y') ?? '-' }}</p>
                                 <p class="priority">{{ $task->priority }} priority</p>
                             </div>
                         </div>
@@ -340,6 +338,7 @@ body { background: #f7f8fa; }
                     @endforelse
                 </div>
             </div>
+            <p>Showing up to 10 upcoming tasks. <a href="{{ route('tasks') }}">View all tasks</a></p>
             <!-- Performance Insights -->
             <div class="insights-card">
                 <h3>✨ Performance Insights</h3>
@@ -365,6 +364,7 @@ body { background: #f7f8fa; }
         </div>
     </main>
 <!-- Completed Tasks History (last 7 days) -->
+<p>Showing up to 10 recent completions. <a href="{{ route('completed-tasks') }}">View completed history</a></p>
 @if($recentCompletedHistory->count())
 <div class="completed-history-card" style="margin: 3rem auto 0 auto; max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 1px 6px 0 rgba(60,72,88,0.06); padding: 1.5rem 1.2rem;">
     <h3 style="font-weight:600; color:#4f8cff; display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">

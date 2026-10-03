@@ -227,8 +227,8 @@ class CanonicalTaskReadPathTest extends TestCase
         $this->assertSame(1, $analytics->viewData('totalActiveTasks'));
         $this->assertSame(1, $analytics->viewData('totalCompletedTasks'));
         $this->assertSame(50.0, $analytics->viewData('completionRate'));
-        $this->assertSame([$active->id], $analytics->viewData('activeTasks')->pluck('id')->all());
-        $this->assertSame([$completed->id], $analytics->viewData('completedTasks')->pluck('id')->all());
+        $this->assertSame(1, $analytics->viewData('statusCounts')['In Progress']);
+        $this->assertSame(1, $analytics->viewData('statusCounts')['Completed']);
 
         $memberAnalytics = $this->actingAs($manager)
             ->get(route('team-management.analytics', $assignee))
