@@ -41,7 +41,7 @@ class PwaWebPushFrontendTest extends TestCase
         $this->assertStringContainsString("request.method !== 'GET'", $worker);
         $this->assertStringContainsString("['style', 'script', 'image', 'font']", $worker);
         $this->assertStringNotContainsString("'document'", $worker);
-        $this->assertStringContainsString('key.startsWith(CACHE_PREFIX)', $worker);
+        $this->assertStringContainsString('key.startsWith(CACHE_NAMESPACE)', $worker);
         $this->assertStringNotContainsString('keys.filter(key => key !== CACHE_VERSION)', $worker);
         $this->assertStringContainsString('candidate.origin === self.location.origin', $worker);
         $this->assertStringContainsString("appPath('notifications/all')", $worker);

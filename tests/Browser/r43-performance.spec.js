@@ -16,7 +16,7 @@ test('R43 server search reaches an off-page account created through the real Tea
         const email = `search${i}@r43-ui.example.invalid`;
         await page.locator('#addMemberBtn').click(); await page.locator('#memberName').fill(i === 0 ? 'पुरानो Search Target' : `R43 Search Member ${i}`);
         await page.locator('#memberEmail').fill(email); await page.locator('#memberPassword').fill(password);
-        await page.locator('#memberRole').selectOption({ label: 'Team_member' }); await page.locator('#createAccountBtn').click();
+        await page.locator('#memberRole').selectOption({ label: 'Team Member' }); await page.locator('#createAccountBtn').click();
         await expect(page.locator('.member-card').filter({ hasText: email })).toBeVisible();
     }
     await page.reload(); await expect(page.locator('.member-card').filter({ hasText: 'search0@r43-ui.example.invalid' })).toHaveCount(0);

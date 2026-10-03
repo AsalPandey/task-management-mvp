@@ -76,6 +76,12 @@ async function createTask(page, title, reviewer = 'R41 PM') {
 }
 
 test('clean company onboarding, team creation, project and membership through UI', async ({ page }) => {
+    for (const [width, height] of [[320,568],[375,667],[390,844],[430,932],[768,1024],[844,390],[1280,720],[1440,900]]) {
+        await page.setViewportSize({ width, height }); await page.goto('/setup');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        await page.getByRole('button', { name: 'Install', exact: true }).scrollIntoViewIfNeeded();
+    }
+    await page.setViewportSize({ width:1280, height:900 });
     await page.goto('/setup');
     await page.locator('#setup_token').fill(process.env.APP_SETUP_TOKEN || 'r41-disposable-installer-token');
     await page.locator('#company_name').fill('R41 Clean Company');
@@ -87,9 +93,9 @@ test('clean company onboarding, team creation, project and membership through UI
     await expect(page).toHaveURL(/\/login$/);
     await login(page);
     await page.goto('/team-management');
-    await addMember(page, 'R41 PM', pmEmail, 'Project_manager');
-    await addMember(page, 'R41 Member A', memberEmail, 'Team_member');
-    await addMember(page, 'R41 Member B', 'b@r41.example.invalid', 'Team_member');
+    await addMember(page, 'R41 PM', pmEmail, 'Project Manager');
+    await addMember(page, 'R41 Member A', memberEmail, 'Team Member');
+    await addMember(page, 'R41 Member B', 'b@r41.example.invalid', 'Team Member');
     await page.goto('/projects');
     await page.locator('#newProjectBtn').click();
     await page.locator('#projectName').fill('R41 Core Project');
@@ -131,7 +137,7 @@ test('duplicate email retains modal and values, correction creates exactly once'
     await page.locator('#memberName').fill('R41 Validation Recovery');
     await page.locator('#memberEmail').fill(memberEmail);
     await page.locator('#memberPassword').fill(password);
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
     const response = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/team-management');
     await page.locator('#createAccountBtn').click();
     expect((await response).status()).toBe(422);
@@ -222,7 +228,7 @@ test('basic approval and full revision lifecycle use the current deadline action
 test('two tabs reject a stale task edit and Reload latest recovers', async ({ page, context }) => {
     await login(page); await createTask(page, 'R41 Conflict Task');
     const other = await context.newPage();
-    for (const p of [page, other]) { await p.goto('/tasks'); await card(p, 'R41 Conflict Task').click(); await expect(p.locator('#taskModal')).toHaveClass(/active/); }
+    for (const p of [page, other]) { await p.goto('/tasks'); await card(p, 'R41 Conflict Task').getByRole('button', { name: 'Edit R41 Conflict Task', exact: true }).click(); await expect(p.locator('#taskModal')).toHaveClass(/active/); }
     await page.locator('#taskTitle').fill('R41 Conflict Task Updated');
     await page.locator('#taskForm button[type=submit]').click();
     await expect(card(page, 'R41 Conflict Task Updated')).toBeVisible();
@@ -241,12 +247,12 @@ test('Team role confirmation changes permissions after a fresh login', async ({ 
     const member = page.locator('.member-card').filter({ hasText: 'b@r41.example.invalid' });
     const id = await member.getAttribute('data-member-id');
     await member.locator('.edit-btn').click();
-    await page.locator('#editMemberRole').selectOption({ label: 'Project_manager' });
+    await page.locator('#editMemberRole').selectOption({ label: 'Project Manager' });
     const response = page.waitForResponse(r => r.request().method() === 'PUT' && new URL(r.url()).pathname === '/team-management/' + id);
     await page.locator('#editMemberForm button[type=submit]').click();
     await page.getByRole('button', { name: 'Yes, change!', exact: true }).click();
     expect((await response).status()).toBe(200);
-    await expect(member).toContainText('project_manager');
+    await expect(member).toContainText('Project Manager');
     const context = await browser.newContext(); const changed = await context.newPage();
     await login(changed, 'b@r41.example.invalid');
     await changed.goto('/projects');
@@ -264,19 +270,19 @@ test('Team invalid inputs and transport failures retain form and recover control
     await page.locator('#memberName').fill('R41 Safe Recovery');
     await page.locator('#memberEmail').fill('safe@r41.example.invalid');
     await page.locator('#memberPassword').fill('weak');
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
     await expect(page.locator('#createAccountBtn')).toBeDisabled();
     await expect(page.locator('#addMemberModal')).toHaveClass(/active/);
     await page.locator('#memberPassword').fill(password);
     await page.locator('#memberRole').selectOption('');
     await expect(page.locator('#createAccountBtn')).toBeDisabled();
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
     // Adversarial form identity comes from the actual rendered control; server validates it.
     await page.locator('#memberRole').evaluate(select => select.appendChild(new Option('Invalid role', '999999')));
     await page.locator('#memberRole').selectOption('999999');
     await page.locator('#createAccountBtn').click();
     await expect(page.locator('[data-form-error="role_id"]')).toBeVisible();
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
     const endpoint = '**/team-management';
     await page.route(endpoint, route => route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), password: 'weak' }) }));
     await page.locator('#createAccountBtn').click();
@@ -315,7 +321,7 @@ test('pending Team and task form submissions send one request', async ({ page })
     await page.locator('#memberName').fill('R41 Pending');
     await page.locator('#memberEmail').fill('pending@r41.example.invalid');
     await page.locator('#memberPassword').fill(password);
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
     let calls = 0; let release;
     const wait = new Promise(resolve => { release = resolve; });
     await page.route('**/team-management', async route => { calls++; await wait; await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }); });

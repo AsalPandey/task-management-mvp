@@ -178,11 +178,12 @@ jobs:
     name: Clean-company browser critical path
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       APP_ENV: production
       APP_DEBUG: "false"
       APP_URL: http://127.0.0.1:8046
+      R44_SUBPATH_URL: http://127.0.0.1:8047/qualification/task-management
       APP_TIMEZONE: Asia/Kathmandu
       APP_SETUP_TOKEN: r41-disposable-installer-token
       DB_CONNECTION: mysql
@@ -225,7 +226,7 @@ jobs:
         with:
           name: vite-${{ github.sha }}
           path: public/build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - name: Prepare empty production-like company
         run: |
           cp .env.example .env
@@ -234,6 +235,7 @@ jobs:
       - name: Exercise the real rendered critical path
         run: |
           (cd public && php -d memory_limit=128M -S 127.0.0.1:8046 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php) > /tmp/r41-browser-server.log 2>&1 &
+          php -d memory_limit=128M -S 127.0.0.1:8047 tests/Support/r44_subdirectory_router.php > /tmp/r44-subpath-server.log 2>&1 &
           for attempt in {1..30}; do curl --fail --silent http://127.0.0.1:8046/up && break || sleep 1; done
           curl --fail --silent http://127.0.0.1:8046/up
           npm run test:browser
@@ -253,7 +255,9 @@ jobs:
         if: always()
         with:
           name: browser-${{ github.sha }}
-          path: output/playwright
+          path: |
+            output/playwright
+            output/r44
           retention-days: 7
 
   deploy:

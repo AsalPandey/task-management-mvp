@@ -1,0 +1,49 @@
+# R4.4 client, PWA and accessibility contract
+
+This contract applies to one isolated company/application/database. Laravel/Blade, database sessions/cache/queue and server authorization remain authoritative. No realtime server, offline write queue or additional tenant model is required.
+
+## Freshness
+
+Authenticated pages embed an authorization-scoped snapshot. A successful JSON business mutation publishes only `{type: 'INVALIDATE', user, source, at}` through a same-origin, application-path-specific BroadcastChannel and storage-event fallback. Receiving pages verify their current authenticated session with the server before displaying a signal. Messages contain no task contents, resource identifiers, CSRF tokens, session identifiers or personal names/emails. Optional browser storage failure does not break server revalidation.
+
+Visible pages check `GET /client/freshness` every 60 seconds. Returning focus/visibility schedules a trailing check, throttled to one every five seconds; online and worker-push events also revalidate. Hidden pages pause periodic checks; returning pages restart them. Local invalidations are coalesced and separated by at least one second. Checks are single-flight and abort after eight seconds. These are scheduling bounds, not guarantees against slow networks, suspended devices or OS timer throttling. Different profiles/devices learn of changes within the next successful visible check; there is no sub-second cross-device promise.
+
+The response is a private/no-store JSON object containing current user ID and a 64-character keyed opaque version. Authentication, active-account/session validation and a separate 60-per-minute-per-user rate budget apply. Task visibility follows TaskReadService. Projects, memberships and roster fingerprints follow the authorized actor scope. Notification aggregates belong only to the authenticated user. Same-second task writes are detected through existing monotonic lock versions; creation/deletion and visibility changes affect identities/counts. Project/member presentation uses exact scoped scalar values, not timestamp-only guesses.
+
+The version service performs six SQL reads and hydrates no business Eloquent models. Task and notification cohorts use aggregate reads. Authorized project/roster/pivot scalar rows grow with company projects/staff, not with the task cohort; this is not an unlimited-company bound. The 10,000-task/20-project/40-member fixture is measured at 128 MB. Fifty visible pages generate about 50 periodic requests and 300 version-service SQL statements per minute, plus session middleware and actual focus/mutation activity. Multiple visible windows count separately. No page HTML is repeatedly downloaded for polling. Query count alone does not eliminate aggregate-table scan cost; production load/soak remains an external acceptance obligation.
+
+## Safe refresh and conflicts
+
+Changed pages show an explicit newer-data banner and Reload latest action. They do not automatically overwrite input or reload. Open forms also receive a status message inside the dialog. Known-stale lifecycle/destructive controls are disabled until reload. Task edits retain the server's lock_version/409 contract and the existing explicit latest-task recovery. A reload with dirty or open forms requires a discard confirmation; cancelling preserves input. A network check failure explains retry/reload, and a later healthy check clears its temporary warning.
+
+An account change/expired or forbidden session clears the old workspace/header/navigation DOM and links to the current login. Channels are scoped by application path and authenticated user metadata; they never authorize a mutation. Back-forward restored pages revalidate and recreate their channel. Server policies continue to validate every read/write independently.
+
+## Worker and offline boundary
+
+Worker cache names include encoded registration scope and explicit version. v3 supersedes the old unscoped v2 cache. Installation precaches only public static assets and a generic offline information page. Activation removes superseded caches of this application namespace, claims clients and sends APP_UPDATED. Other application-scope caches are preserved. A retired fetch handler holds its original cache handle before awaiting the network, avoiding resurrection of a removed cache.
+
+Authenticated documents, business JSON and mutations are not cached or queued. Navigation uses the network and falls back only on network failure to the generic offline page. Static scripts/styles/images/fonts use network-first with a cached fallback. An HTTP authorization/server error is not silently replaced with cached business data. The offline page contains no user/company/task information and provides retry/online feedback. Offline writes fail visibly and leave the draft on the current page; unsaved drafts are not persisted across a manual reload or browser crash.
+
+Registration works independently of optional PushManager/Notification support and uses updateViaCache:none plus an update check. Existing controlled pages receive an application-update notice without forced navigation, preserving drafts. Reload when ready loads current HTML/assets. Future releases must bump the worker cache version whenever the precached shell contract changes; clients that remain open can deliberately postpone reload.
+
+Push and notification-click destinations are checked for same origin, application scope and allowed business routes at both receipt and click. Payload sizes are limited and extra arbitrary notification data is dropped. A click focuses an exact matching destination or opens a new window rather than navigating a different page over its draft. Worker revalidation messages contain no notification contents. Browser subscription/transport waits are bounded; optional cleanup cannot indefinitely prevent authenticated logout. Browsers without granted notification permission skip unnecessary subscription cleanup. Real provider/device delivery and shared-computer push acceptance remain R4.5 work.
+
+## URL and deployment-path behavior
+
+Blade helpers produce server URLs. Browser mutation/PWA helpers derive the canonical base from the page's manifest URL. Registration, scope, subscription endpoints, static/offline URLs and guest navigation honor that base. The locally exercised alternate path is `/qualification/task-management/`, using a narrowly scoped qualification router; this proves client/path behavior, not a production webserver rewrite configuration. Hosted HTTPS, webroot/scope headers and physical installation require separate acceptance.
+
+## Presentation and accessibility
+
+Presentation::initials trims Unicode whitespace, selects the first two name parts, takes complete `\X` graphemes and uppercases through mbstring. Empty/null names produce `?`. Presentation::role maps stored manager/project_manager/team_member keys to Manager/Project Manager/Team Member; stored keys, IDs and authorization semantics remain unchanged. Task-state text uses existing canonical TaskState labels.
+
+Task editing uses a native button in the title; Team analytics uses a native link. Cards are containers and do not trap clicks from nested actions. Icon actions and project membership selects have contextual accessible names. Native form labels, table headers and pagination links remain intact. Disabled pagination spans expose disabled-link semantics so their names are valid.
+
+Shared modal enhancement sets named dialog semantics, enters focus, constrains background interaction, wraps Tab/Shift+Tab, guards Escape/backdrop close during pending saves and returns focus to the launcher. Installation guidance has equivalent keyboard/focus behavior. Errors use visible dialogs/alerts/live regions; Team field errors associate descriptions and invalid state. Notification/project controls recover after failed transport; project/task forms prevent duplicate pending submissions. New status notices use restrained polite announcements.
+
+Normal Team secondary text now uses #475467 on white (7.69:1; previous #888 was 3.54:1). Specific nearby failing tokens were corrected after rendered scans. State/priority retain textual meanings alongside color. Shared visible focus, sensible touch targets, wrapping, safe-area/bottom-navigation spacing and existing reduced-motion handling remain required. Qualification covers the eight requested viewports plus a 720×450 effective viewport for a 1440×900 display at 200% zoom. Effective viewport reflow is not a claim of native browser-zoom or screen-reader certification.
+
+## Maintained verification
+
+Run the maintained SQLite/MariaDB suites, isolated concurrency gates, R43 10k resource gate and scripts/r44-check-freshness.php for manager/PM/member. Run all tests/Browser files against a new disposable production-like company prepared with scripts/r41-browser-prepare.php; normal onboarding and customer-state creation occur through the UI. R44 tests cover the six findings, cross-user full review/revision lifecycle, storage fallback, account change, offline/reconnect, real worker replacement, subdirectory mutations, selected transport failures, axe and responsive reflow. Worker replacement restores its source in finally; tests run serially.
+
+Chromium and WebKit are locally executable. Firefox's installed binary reports an incorrect Windows side-by-side configuration on this host; the recognized Windows spawn UNKNOWN launch failure is recorded as a skip, not a browser pass. CI installs all three engines, cannot take that Windows-only branch on Linux, and does not suppress other launch failures. Physical Safari/Android/iOS, genuinely installed PWA, real push and remote CI remain unqualified here. Dependency-audit failures remain failures; no advisories or release gates are ignored by this contract.

@@ -13,7 +13,7 @@ async function login(page, identity = managerEmail) {
 async function fillAccount(page, name, identity) {
     await page.locator('#addMemberBtn').click(); await page.locator('#memberName').fill(name);
     await page.locator('#memberEmail').fill(identity); await page.locator('#memberPassword').fill(password);
-    await page.locator('#memberRole').selectOption({ label: 'Team_member' });
+    await page.locator('#memberRole').selectOption({ label: 'Team Member' });
 }
 async function saveAccount(page, identity) {
     await page.locator('#createAccountBtn').click();

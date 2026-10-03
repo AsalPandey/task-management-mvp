@@ -137,7 +137,7 @@ class ScalabilityBudgetTest extends TestCase
         $this->assertSame(20, $response->viewData('notifications')->count());
         $this->assertSame(1000, $response->viewData('notifications')->total());
         $this->assertSame(28, $hydrated);
-        $response->assertSee('class="notification-badge">99+</span>', false);
+        $response->assertSee('class="notification-badge" data-unread-count="1000">99+</span>', false);
     }
 
     public function test_member_dashboard_bounds_all_previews_and_preserves_complete_totals(): void
