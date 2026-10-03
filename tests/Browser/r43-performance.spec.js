@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 
 const large = process.env.R43_LARGE_BROWSER === '1';
 const password = large ? 'R43-disposable-browser-secret-123!' : 'R41-browser-unique-secret-123!';
@@ -43,7 +44,15 @@ test('R43 large manager pages retain totals with bounded previews and paginated 
     await login(page); await page.goto('/manager');
     await expect(metric(page, 'Active Tasks')).toHaveText('7500');
     expect(await page.locator('.overdue-task-item').count()).toBeLessThanOrEqual(10);
-    await expect(page.locator('#overdueCount')).toHaveText('2142');
+    const companyDay = execFileSync(process.env.PHP_BINARY || 'php', ['tests/Support/r43_browser_clock.php'], { encoding: 'utf8' }).trim();
+    const elapsedDays = (Date.parse(`${companyDay}T00:00:00Z`) - Date.UTC(2026, 9, 3)) / 86_400_000;
+    // The synthetic fixture cycles through eight states and seven due dates.
+    // Completed/cancelled rows are final; all other rows use the active deadline.
+    let overdue = 0;
+    for (let index = 0; index < 10_000; index++) {
+        if (index % 8 < 6 && index % 7 - 2 < elapsedDays) overdue++;
+    }
+    await expect(page.locator('#overdueCount')).toHaveText(String(overdue));
     await page.screenshot({ path: 'output/playwright/r43-large-dashboard.png', fullPage: true });
     await page.goto('/projects'); await expect(page.locator('.project-card')).toHaveCount(12);
     await page.goto('/tasks'); await expect(page.locator('#tasksGrid .task-card')).toHaveCount(24);
