@@ -68,6 +68,7 @@ class TaskLifecycleService
         unset($data['reviewer_id']);
 
         return DB::transaction(function () use ($data, $actor, $context, $reviewerId) {
+            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) $data['assignee_id']]);
             $data['status'] = TaskState::NotStarted;
             $data['progress'] = 0;
             $data['created_by'] = $actor->id;
@@ -130,11 +131,20 @@ class TaskLifecycleService
         $context ??= TaskOperationContext::system($actor->id);
 
         return DB::transaction(function () use ($task, $data, $actor, $context) {
+            $snapshot = Task::query()->findOrFail($task->getKey());
+            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) ($data['assignee_id'] ?? $snapshot->assignee_id)]);
+            $projects = Project::query()->whereIn('id', array_unique([(int) $snapshot->project_id, (int) ($data['project_id'] ?? $snapshot->project_id)]))
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $lockedTask = Task::query()
                 ->whereKey($task->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            if ((int) $lockedTask->project_id !== (int) $snapshot->project_id
+                || (int) $lockedTask->assignee_id !== (int) $snapshot->assignee_id) {
+                throw new StaleTaskEditException($lockedTask, (int) $snapshot->lock_version, (int) $lockedTask->lock_version);
+            }
+            $lockedTask->setRelation('project', $projects->get($lockedTask->project_id));
             Gate::forUser($actor)->authorize('update', $lockedTask);
 
             $expectedVersion = $data['expected_version'] ?? $data['lock_version'] ?? $data['version'] ?? $context?->expectedVersion;
@@ -152,7 +162,7 @@ class TaskLifecycleService
 
             $this->assertGenericUpdateAllowed($lockedTask, $data, $actor);
 
-            $lockedTask->load(['project', 'assignee', 'reviewer']);
+            $lockedTask->load(['assignee', 'reviewer']);
             $old = $lockedTask->toArray();
             $beforeEventValues = $this->taskEventValues($lockedTask);
             $merged = array_merge($lockedTask->only(self::TASK_EVENT_FIELDS), $data);
@@ -245,7 +255,7 @@ class TaskLifecycleService
             throw ValidationException::withMessages(['project_id' => 'A project is required.']);
         }
 
-        $project = Project::query()->findOrFail($projectId);
+        $project = Project::query()->whereKey($projectId)->lockForUpdate()->firstOrFail();
         if (! $actor->can('view', $project)) {
             abort(403, 'Unauthorized project access.');
         }
@@ -277,10 +287,8 @@ class TaskLifecycleService
             ]);
         }
 
-        $isMember = Project::query()
-            ->whereKey($projectId)
-            ->whereHas('members', fn ($query) => $query->whereKey($assigneeId))
-            ->exists();
+        $isMember = DB::table('project_user')->where('project_id', $projectId)
+            ->where('user_id', $assigneeId)->lockForUpdate()->exists();
 
         if (! $isMember) {
             throw ValidationException::withMessages([

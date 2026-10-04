@@ -49,6 +49,11 @@ final readonly class TaskOperationContext
         $this->expectedVersion = $expectedVersion;
     }
 
+    public function withExpectedVersion(int $version): self
+    {
+        return new self($this->actorId, $this->source, $this->correlationId, $this->occurredAt, $version);
+    }
+
     public static function web(User $actor, ?string $correlationId = null, ?CarbonInterface $occurredAt = null, ?int $expectedVersion = null): self
     {
         return new self($actor->id, self::SOURCE_WEB, $correlationId, $occurredAt, $expectedVersion);

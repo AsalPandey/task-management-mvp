@@ -2,10 +2,9 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class ChangeTaskDeadlineRequest extends FormRequest
+class ChangeTaskDeadlineRequest extends TaskTransitionRequest
 {
     public function authorize(): bool
     {
@@ -16,7 +15,7 @@ class ChangeTaskDeadlineRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'deadline_type' => ['required', Rule::in(['execution', 'review', 'revision'])],
             'due_date' => ['required', 'date_format:Y-m-d', 'after:today'],
             'reason' => ['nullable', 'string', 'max:1000'],

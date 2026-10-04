@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class StartTaskReviewRequest extends FormRequest
+class StartTaskReviewRequest extends TaskTransitionRequest
 {
     public function authorize(): bool
     {
@@ -13,7 +11,7 @@ class StartTaskReviewRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'status' => ['prohibited'],
             'reviewer_id' => ['prohibited'],
             'source_state' => ['prohibited'],

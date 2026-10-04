@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class ApproveTaskRequest extends FormRequest
+class ApproveTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -21,7 +19,7 @@ class ApproveTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'approval_comment' => ['nullable', 'string', 'max:2000'],
             'status' => ['prohibited'],
             'progress' => ['prohibited'],

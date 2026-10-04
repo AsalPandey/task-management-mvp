@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class CancelTaskRequest extends FormRequest
+class CancelTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -20,7 +18,7 @@ class CancelTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'cancellation_reason' => ['required', 'string', 'max:5000'],
             'status' => ['prohibited'],
             'progress' => ['prohibited'],

@@ -4,14 +4,17 @@ namespace App\Services;
 
 use App\Contracts\TaskTransitionCommand;
 use App\Exceptions\StaleTaskEditException;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
+use App\TaskTransitions\ReopenApprovedTask;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionEffects;
 use App\ValueObjects\TaskTransitionResult;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class TaskTransitionExecutor
 {
@@ -25,22 +28,29 @@ class TaskTransitionExecutor
         TaskTransitionCommand $command,
         ?TaskOperationContext $context = null,
     ): TaskTransitionResult {
-        $context ??= TaskOperationContext::system($actor->id);
+        if ($context?->expectedVersion === null || $context->expectedVersion < 1) {
+            throw ValidationException::withMessages(['expected_version' => 'A positive task version is required.']);
+        }
         $taskId = (int) $task->getKey();
 
         return DB::transaction(function () use ($taskId, $actor, $command, $context) {
+            $snapshot = Task::withTrashed()->findOrFail($taskId);
+            $actor = app(ProjectWriterLocks::class)->actor($actor, $command instanceof ReopenApprovedTask ? $command->accountLockIds() : []);
+            $project = Project::query()->whereKey($snapshot->project_id)->lockForUpdate()->firstOrFail();
             $lockedTask = Task::withTrashed()
                 ->whereKey($taskId)
                 ->lockForUpdate()
                 ->firstOrFail();
-            $lockedTask->load(['project', 'assignee', 'reviewer']);
+            $lockedTask->load(['assignee', 'reviewer']);
+            $lockedTask->setRelation('project', $project);
 
             Gate::forUser($actor)->authorize($command->ability(), $lockedTask);
-            $command->validate($lockedTask, $actor);
 
-            if ($context?->expectedVersion !== null && (int) $context->expectedVersion !== (int) $lockedTask->lock_version) {
+            if ((int) $snapshot->project_id !== (int) $lockedTask->project_id || (int) $context->expectedVersion !== (int) $lockedTask->lock_version) {
                 throw new StaleTaskEditException($lockedTask, (int) $context->expectedVersion, (int) $lockedTask->lock_version);
             }
+
+            $command->validate($lockedTask, $actor);
 
             $effects = $command->apply($lockedTask, $actor, $context);
             $lockedTask->forceFill(['lock_version' => ((int) $lockedTask->lock_version) + 1])->save();

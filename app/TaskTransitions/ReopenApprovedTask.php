@@ -29,6 +29,11 @@ final class ReopenApprovedTask implements TaskTransitionCommand
 
     private ?User $replacementReviewer = null;
 
+    public function accountLockIds(): array
+    {
+        return $this->reviewerId === null ? [] : [$this->reviewerId];
+    }
+
     public function ability(): string
     {
         return 'reopen';

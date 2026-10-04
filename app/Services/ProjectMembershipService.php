@@ -17,8 +17,9 @@ final class ProjectMembershipService
     public function change(Project $project, int $memberId, User $actor, bool $add): bool
     {
         return DB::transaction(function () use ($project, $memberId, $actor, $add): bool {
+            $actor = app(ProjectWriterLocks::class)->actor($actor, [$memberId]);
             $locked = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
-            Gate::forUser($actor->fresh())->authorize('manageMembers', $locked);
+            Gate::forUser($actor)->authorize('manageMembers', $locked);
             $member = User::query()->with('role')->whereKey($memberId)->lockForUpdate()->firstOrFail();
             if ($add) {
                 if (! $member->isActive() || ! $member->hasAnyRole(['project_manager', 'team_member'])) {

@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class HoldTaskRequest extends FormRequest
+class HoldTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -20,7 +18,7 @@ class HoldTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'reason' => ['required', 'string', 'max:1000'],
             'status' => ['prohibited'],
             'source_state' => ['prohibited'],

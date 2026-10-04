@@ -3,9 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Support\InputContracts;
-use Illuminate\Foundation\Http\FormRequest;
 
-class ReopenApprovedTaskRequest extends FormRequest
+class ReopenApprovedTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -24,7 +23,7 @@ class ReopenApprovedTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'reopen_reason' => ['required', 'string', 'max:5000'],
             'revision_due_date' => ['required', 'date', 'after:today'],
             'rework_instructions' => ['nullable', 'string', 'max:5000'],

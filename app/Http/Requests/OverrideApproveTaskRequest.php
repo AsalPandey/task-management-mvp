@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class OverrideApproveTaskRequest extends FormRequest
+class OverrideApproveTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -23,7 +21,7 @@ class OverrideApproveTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'override_reason' => ['required', 'string', 'max:5000'],
             'approval_comment' => ['nullable', 'string', 'max:2000'],
             'status' => ['prohibited'],

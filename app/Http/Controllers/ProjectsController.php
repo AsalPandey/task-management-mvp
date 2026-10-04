@@ -8,11 +8,13 @@ use App\Models\ProjectHistory;
 use App\Models\User;
 use App\Services\ProjectManagerReplacementService;
 use App\Services\ProjectMembershipService;
+use App\Services\ProjectWriterLocks;
 use App\Support\InputContracts;
 use App\Support\UserPayload;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 class ProjectsController extends Controller
@@ -80,13 +82,14 @@ class ProjectsController extends Controller
     {
         $this->authorize('update', $project);
 
-        $data = $this->validatedProjectData($request, $project);
-        if (auth()->user()->hasRole('project_manager') && ! auth()->user()->hasRole('manager')) {
-            $data['project_manager_id'] = auth()->id();
-        }
-
-        DB::transaction(function () use ($project, $data, $pmReplacementService) {
+        DB::transaction(function () use ($project, $request, $pmReplacementService) {
+            $actor = app(ProjectWriterLocks::class)->actor(auth()->user());
             $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+            Gate::forUser($actor)->authorize('update', $lockedProject);
+            $data = $this->validatedProjectData($request, $lockedProject);
+            if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
+                $data['project_manager_id'] = $actor->id;
+            }
             $oldPmId = $lockedProject->project_manager_id ? (int) $lockedProject->project_manager_id : null;
             $newPmId = array_key_exists('project_manager_id', $data) && $data['project_manager_id'] !== null
                 ? (int) $data['project_manager_id']
@@ -97,7 +100,7 @@ class ProjectsController extends Controller
                     project: $lockedProject,
                     oldPmId: $oldPmId,
                     newPmId: $newPmId,
-                    actor: auth()->user(),
+                    actor: $actor,
                 );
             }
 
@@ -123,15 +126,16 @@ class ProjectsController extends Controller
     {
         $this->authorize('delete', $project);
 
-        if ($project->tasks()->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot delete a project with assigned tasks. Complete, delete, or reassign its tasks first.',
-            ], 409);
-        }
-
-        $this->recordHistory($project, 'deleted', $project->toArray());
-        $project->delete();
+        DB::transaction(function () use ($project) {
+            $actor = app(ProjectWriterLocks::class)->actor(auth()->user());
+            $locked = Project::query()->whereKey($project->id)->lockForUpdate()->firstOrFail();
+            Gate::forUser($actor)->authorize('delete', $locked);
+            if ($locked->tasks()->lockForUpdate()->exists()) {
+                abort(409, 'Cannot delete a project with assigned tasks. Complete, delete, or reassign its tasks first.');
+            }
+            $this->recordHistory($locked, 'deleted', $locked->toArray());
+            $locked->delete();
+        }, 3);
 
         return response()->json(['success' => true]);
     }

@@ -38,6 +38,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     headers: { 'Accept': 'application/json' },
                 });
                 const data = await response.json();
+                if (response.status === 409) {
+                    const choice = await Swal.fire({ icon: 'warning', title: 'Task changed', text: 'The task changed. Your reopen action was not applied.', showCancelButton: true, confirmButtonText: 'Reload latest task', cancelButtonText: 'Keep this page' });
+                    if (choice.isConfirmed) window.location.reload();
+                    button.disabled = false;
+                    button.textContent = originalText;
+                    return;
+                }
                 if (!response.ok || !data.success) {
                     throw new Error(data.message || 'The timeline could not be loaded.');
                 }
@@ -113,6 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Accept': 'application/json',
                     },
                     body: JSON.stringify({
+                        expected_version: Number(button.dataset.taskVersion),
                         reopen_reason: reason.value.trim(),
                         rework_instructions: instructions.value.trim() || null,
                         revision_due_date: deadline.value,
@@ -120,6 +128,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     }),
                 });
                 const data = await response.json().catch(() => ({}));
+                if (response.status === 409) {
+                    const choice = await Swal.fire({ icon: 'warning', title: 'Task changed', text: 'The task changed. Your reopen action was not applied.', showCancelButton: true, confirmButtonText: 'Reload latest task', cancelButtonText: 'Keep this page' });
+                    if (choice.isConfirmed) window.location.reload();
+                    button.disabled = false;
+                    button.textContent = originalText;
+                    return;
+                }
                 if (!response.ok || !data.success) {
                     throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Failed to reopen the task.');
                 }
@@ -175,7 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         @else
                         @can('reopen', $task)
                             <button class="btn-small btn-primary reopen-revision-btn"
-                                data-url="{{ route('tasks.reopen', $task) }}"
+                                data-task-version="{{ $task->lock_version }}" data-url="{{ route('tasks.reopen', $task) }}"
                                 data-reviewer-id="{{ $task->reviewer?->isActive() ? $task->reviewer_id : '' }}">Reopen for Revision</button>
                         @else
                             <span aria-label="Reopen unavailable">&mdash;</span>

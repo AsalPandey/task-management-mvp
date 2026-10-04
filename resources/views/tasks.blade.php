@@ -572,6 +572,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     async function postExecutionTransition(button, payload = {}) {
+        payload.expected_version = Number(button.dataset.taskVersion);
         button.disabled = true;
 
         try {
@@ -586,6 +587,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const data = await response.json().catch(() => ({}));
 
+            if (response.status === 409) {
+                const choice = await Swal.fire({ icon: 'warning', title: 'Task changed',
+                    text: 'This task changed after this page was loaded. Your action was not applied. Reload the latest task to review it.',
+                    showCancelButton: true, confirmButtonText: 'Reload latest task', cancelButtonText: 'Keep this page' });
+                if (choice.isConfirmed) window.location.reload();
+                return;
+            }
             if (!response.ok || !data.success) {
                 throw new Error(firstErrorMessage(data, 'The task state could not be changed.'));
             }
@@ -598,6 +606,8 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.reload();
         } catch (error) {
             showMessage(error.message || 'The task state could not be changed.', false);
+            button.disabled = false;
+        } finally {
             button.disabled = false;
         }
     }
@@ -1278,33 +1288,33 @@ document.addEventListener('DOMContentLoaded', function() {
                         @if ($taskState === \App\Enums\TaskState::NotStarted)
                             @can('start', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                    data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
                             @endcan
                         @elseif ($taskState === \App\Enums\TaskState::InProgress)
                             @can('hold', $task)
                                 <button type="button" class="btn-small btn-secondary execution-transition-btn"
-                                    data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                             @endcan
                             @if ($activeRevisionCycle)
                                 @can('resubmit', $task)
                                     <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                        data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
+                                        data-task-version="{{ $task->lock_version }}" data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
                                 @endcan
                             @else
                                 @can('submit', $task)
                                     <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                        data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                                        data-task-version="{{ $task->lock_version }}" data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
                                 @endcan
                             @endif
                         @elseif ($taskState === \App\Enums\TaskState::OnHold)
                             @can('resume', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                    data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
                             @endcan
                         @elseif ($taskState === \App\Enums\TaskState::RevisionRequested)
                             @can('startRevision', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                    data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
                             @endcan
                         @endif
                     </div>
@@ -1313,18 +1323,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="execution-actions">
                         @can('requestRevision', $task)
                             <button type="button" class="btn-small btn-secondary execution-transition-btn"
-                                data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
+                                data-task-version="{{ $task->lock_version }}" data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
                         @endcan
                         @if ((int) $task->assignee_id !== (int) $user->id)
                             @can('approve', $task)
                                 <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                    data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
                             @endcan
                         @endif
                         @if ($user->hasRole('manager') && (int) $task->reviewer_id !== (int) $user->id)
                             @can('overrideApprove', $task)
                                 <button type="button" class="btn-small btn-danger execution-transition-btn"
-                                    data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
+                                    data-task-version="{{ $task->lock_version }}" data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
                             @endcan
                         @endif
                     </div>
@@ -1333,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     @can('startReview', $task)
                         <div class="execution-actions">
                             <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
+                                data-task-version="{{ $task->lock_version }}" data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
                         </div>
                     @endcan
                 @endif
@@ -1341,7 +1351,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     @can('cancel', $task)
                         <div class="execution-actions">
                             <button type="button" class="btn-small btn-danger execution-transition-btn"
-                                data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
+                                data-task-version="{{ $task->lock_version }}" data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
                         </div>
                     @endcan
                 @endif
@@ -1359,7 +1369,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     @if (! $taskState->isFinal())
                         @can('reassignReviewer', $task)
                             <button type="button" class="btn-small btn-secondary management-action-btn"
-                                data-action="reassign-reviewer"
+                                data-task-version="{{ $task->lock_version }}" data-action="reassign-reviewer"
                                 data-reason-required="{{ $task->submitted_at || $task->active_revision_cycle_id ? 'true' : 'false' }}"
                                 data-url="{{ route('tasks.reviewer.reassign', $task) }}">Reassign Reviewer</button>
                         @endcan
@@ -1368,7 +1378,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         @endphp
                         @if ($deadlineAction)
                             <button type="button" class="btn-small btn-secondary management-action-btn"
-                                data-action="change-deadline"
+                                data-task-version="{{ $task->lock_version }}" data-action="change-deadline"
                                 data-deadline-type="{{ $deadlineAction['type'] }}"
                                 data-reason-required="{{ $deadlineAction['reason_required'] ? 'true' : 'false' }}"
                                 data-url="{{ $deadlineAction['url'] }}">
@@ -1460,64 +1470,64 @@ document.addEventListener('DOMContentLoaded', function() {
                                 @if ($taskState === \App\Enums\TaskState::NotStarted)
                                     @can('start', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                            data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="start" data-url="{{ route('tasks.start', $task) }}">Start Work</button>
                                     @endcan
                                 @elseif ($taskState === \App\Enums\TaskState::InProgress)
                                     @can('hold', $task)
                                         <button type="button" class="btn-small btn-secondary execution-transition-btn"
-                                            data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="hold" data-url="{{ route('tasks.hold', $task) }}">Put On Hold</button>
                                     @endcan
                                     @if ($activeRevisionCycle)
                                         @can('resubmit', $task)
                                             <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                                data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
+                                                data-task-version="{{ $task->lock_version }}" data-transition="resubmit" data-url="{{ route('tasks.resubmit', $task) }}">Resubmit</button>
                                         @endcan
                                     @else
                                         @can('submit', $task)
                                             <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                                data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
+                                                data-task-version="{{ $task->lock_version }}" data-transition="submit" data-url="{{ route('tasks.submit', $task) }}">Submit for Review</button>
                                         @endcan
                                     @endif
                                 @elseif ($taskState === \App\Enums\TaskState::OnHold)
                                     @can('resume', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                            data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="resume" data-url="{{ route('tasks.resume', $task) }}">Resume</button>
                                     @endcan
                                 @elseif ($taskState === \App\Enums\TaskState::RevisionRequested)
                                     @can('startRevision', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                            data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="revision-start" data-url="{{ route('tasks.revision.start', $task) }}">Begin Revision</button>
                                     @endcan
                                 @endif
                             @endif
                             @if ($taskState === \App\Enums\TaskState::InReview)
                                 @can('requestRevision', $task)
                                     <button type="button" class="btn-small btn-secondary execution-transition-btn"
-                                        data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
+                                        data-task-version="{{ $task->lock_version }}" data-transition="revision-request" data-url="{{ route('tasks.revision.request', $task) }}">Request Revision</button>
                                 @endcan
                                 @if ((int) $task->assignee_id !== (int) $user->id)
                                     @can('approve', $task)
                                         <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                            data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="approve" data-url="{{ route('tasks.approve', $task) }}">Approve and Complete</button>
                                     @endcan
                                 @endif
                                 @if ($user->hasRole('manager') && (int) $task->reviewer_id !== (int) $user->id)
                                     @can('overrideApprove', $task)
                                         <button type="button" class="btn-small btn-danger execution-transition-btn"
-                                            data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
+                                            data-task-version="{{ $task->lock_version }}" data-transition="override-approve" data-url="{{ route('tasks.approve.override', $task) }}">Emergency Override Approval</button>
                                     @endcan
                                 @endif
                             @endif
                             @if ($taskState === \App\Enums\TaskState::Submitted)
                                 @can('startReview', $task)
                                     <button type="button" class="btn-small btn-primary execution-transition-btn"
-                                        data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
+                                        data-task-version="{{ $task->lock_version }}" data-transition="review" data-url="{{ route('tasks.review.start', $task) }}">Start Review</button>
                                 @endcan
                             @endif
                             @if (! $taskState->isFinal())
                                 @can('cancel', $task)
                                     <button type="button" class="btn-small btn-danger execution-transition-btn"
-                                        data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
+                                        data-task-version="{{ $task->lock_version }}" data-transition="cancel" data-url="{{ route('tasks.cancel', $task) }}">Cancel Task</button>
                                 @endcan
                             @endif
                             @if ($taskState === \App\Enums\TaskState::Cancelled)

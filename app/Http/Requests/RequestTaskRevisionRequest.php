@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class RequestTaskRevisionRequest extends FormRequest
+class RequestTaskRevisionRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -20,7 +18,7 @@ class RequestTaskRevisionRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'formal_feedback' => ['required', 'string', 'max:5000'],
             'revision_due_date' => ['required', 'date', 'after:today'],
             'status' => ['prohibited'],

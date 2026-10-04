@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class ResubmitTaskRequest extends FormRequest
+class ResubmitTaskRequest extends TaskTransitionRequest
 {
     protected function prepareForValidation(): void
     {
@@ -21,7 +19,7 @@ class ResubmitTaskRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        return $this->lifecycleVersionRules() + [
             'submission_note' => ['nullable', 'string', 'max:2000'],
             'status' => ['prohibited'],
             'reviewer_id' => ['prohibited'],

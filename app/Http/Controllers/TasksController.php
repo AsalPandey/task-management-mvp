@@ -230,7 +230,7 @@ class TasksController extends Controller
                     $request->user(),
                     $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
                     null,
-                    $expectedVersion !== null ? (int) $expectedVersion : null,
+                    (int) $expectedVersion,
                 ),
             );
 
@@ -642,13 +642,13 @@ class TasksController extends Controller
 
     private function operationContext(Request $request): TaskOperationContext
     {
-        $expectedVersion = $request->input('expected_version') ?? $request->input('lock_version') ?? $request->input('version');
+        $expectedVersion = $request->validated()['expected_version'];
 
         return TaskOperationContext::web(
             $request->user(),
             $request->attributes->get(EnsureTaskCorrelationId::REQUEST_ATTRIBUTE),
             null,
-            $expectedVersion !== null ? (int) $expectedVersion : null,
+            (int) $expectedVersion,
         );
     }
 
