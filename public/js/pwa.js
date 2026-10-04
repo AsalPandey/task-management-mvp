@@ -13,6 +13,21 @@
     const statusElements = () => document.querySelectorAll('[data-push-status]');
     const messageElements = () => document.querySelectorAll('[data-push-message]');
     let registration = null;
+    let pageLeaving = false;
+    const pendingRequests = new Set();
+    const leavingError = () => new DOMException('The page is leaving.', 'AbortError');
+    const stopPageRequests = () => {
+        pageLeaving = true;
+        pendingRequests.forEach(controller => controller.abort());
+    };
+    window.addEventListener('beforeunload', stopPageRequests);
+    window.addEventListener('pagehide', stopPageRequests);
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) {
+            pageLeaving = false;
+            refresh().catch(() => render('stale'));
+        }
+    });
     let serverStatus = null;
     let installPrompt = null;
     let automaticOfferTimer = null;
@@ -32,7 +47,9 @@
         || ['localhost', '127.0.0.1'].includes(window.location.hostname);
     const supported = 'serviceWorker' in navigator
         && 'PushManager' in window
-        && 'Notification' in window;
+        && 'Notification' in window
+        && 'ServiceWorkerRegistration' in window
+        && typeof ServiceWorkerRegistration.prototype.showNotification === 'function';
 
     function showMessage(message, state = 'info') {
         messageElements().forEach(element => {
@@ -70,7 +87,9 @@
     }
 
     async function api(url, method = 'GET', payload = null) {
+        if (pageLeaving) throw leavingError();
         const controller = new AbortController();
+        pendingRequests.add(controller);
         const timeout = setTimeout(() => controller.abort(), 8000);
         try {
             const response = await fetch(url, {
@@ -87,7 +106,19 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.message || 'The notification request failed.');
             return data;
-        } finally { clearTimeout(timeout); }
+        } finally {
+            clearTimeout(timeout);
+            pendingRequests.delete(controller);
+        }
+    }
+
+    async function registerWorker() {
+        if (pageLeaving) throw leavingError();
+        registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, {
+            scope: serviceWorkerScope, updateViaCache: 'none',
+        });
+        if (pageLeaving) throw leavingError();
+        return registration;
     }
 
     function applicationServerKey(value) {
@@ -97,9 +128,7 @@
     }
 
     async function currentSubscription() {
-        registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, {
-            scope: serviceWorkerScope,
-        });
+        await registerWorker();
         let timeout;
         try {
             await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => {
@@ -129,8 +158,8 @@
             return;
         }
 
-        registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, { scope: serviceWorkerScope, updateViaCache: 'none' });
-        if (!userId) return;
+        // Startup owns registration. Do not retry a failed registration in a departing document.
+        if (pageLeaving || !registration || !userId) return;
 
         serverStatus = await api(appUrl('push/status'));
         if (!serverStatus.configured || !serverStatus.public_key) {
@@ -175,9 +204,7 @@
             return;
         }
 
-        registration ||= await navigator.serviceWorker.register(serviceWorkerUrl.pathname, {
-            scope: serviceWorkerScope,
-        });
+        await registerWorker();
         let subscription = await registration.pushManager.getSubscription();
         subscription ||= await registration.pushManager.subscribe({
             userVisibleOnly: true,
@@ -369,8 +396,16 @@
                 if (hadController) window.AppClient?.updateAvailable();
                 hadController = true;
             });
-            registration = await navigator.serviceWorker.register(serviceWorkerUrl.pathname, { scope: serviceWorkerScope, updateViaCache: 'none' }).catch(() => null);
-            registration?.update().catch(() => {});
+            try {
+                // register() already checks for a changed script; a second update fetch is redundant.
+                await registerWorker();
+            } catch (error) {
+                if (!pageLeaving) showMessage('Offline features are unavailable. Reload this page to try again.', 'error');
+            }
+        }
+        if (pageLeaving) return;
+        if (!registration && 'serviceWorker' in navigator && secureContext) {
+            render('stale');
         }
         document.querySelectorAll('[data-push-enable]').forEach(button => button.addEventListener('click', () => enable().catch(error => showMessage(error.message, 'error'))));
         document.querySelectorAll('[data-push-disable]').forEach(button => button.addEventListener('click', () => disable().catch(error => showMessage(error.message, 'error'))));
@@ -401,7 +436,7 @@
         });
 
         await refresh().catch(() => {
-            if (userId) render('stale');
+            if (!pageLeaving && userId) render('stale');
         });
     });
 })();

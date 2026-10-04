@@ -37,5 +37,19 @@ test('users can logout', function () {
     $response = $this->actingAs($user)->post('/logout');
 
     $this->assertGuest();
-    $response->assertRedirect('/');
+    $response->assertRedirect(route('login'));
+});
+
+test('logout returns to login inside the mounted application', function () {
+    $prefix = '/qualification/task-management';
+    $user = User::factory()->create();
+    $response = $this->actingAs($user)->withServerVariables([
+        'SCRIPT_NAME' => $prefix.'/index.php',
+        'PHP_SELF' => $prefix.'/index.php',
+        'SCRIPT_FILENAME' => public_path('index.php'),
+    ])->post($prefix.'/logout');
+
+    $this->assertGuest();
+    $response->assertRedirect();
+    $this->assertSame($prefix.'/login', parse_url($response->headers->get('Location'), PHP_URL_PATH));
 });
