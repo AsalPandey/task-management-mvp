@@ -1,6 +1,6 @@
 # Required browser qualification
 
-Run `npm ci`, `npx playwright install chromium`, and `npm run test:browser` against an **empty disposable MariaDB schema**. The CI `browser` job is a required release dependency alongside `quality` and `mariadb`.
+Run `npm ci`, `npx playwright install chromium webkit`, and `npm run test:browser` against an **empty disposable MariaDB schema**. Install Firefox as well when the host supports its maintained smoke. The CI `browser` job installs all three engines and is a required release dependency alongside `quality` and `mariadb`.
 
 The suite performs setup, login, account provisioning, project creation/membership, task creation, work/review/revision/approval, deadline changes, account edit/role confirmation, validation/transport recovery, duplicate submit protection, stale edit recovery, logout/login and timeline inspection through Chromium and the real rendered pages. No task or final workflow state is inserted by setup code. A separate read-only PHP oracle checks persistence and event sequences.
 
