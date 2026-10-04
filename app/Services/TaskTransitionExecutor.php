@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
+use App\TaskTransitions\ReassignTaskReviewer;
 use App\TaskTransitions\ReopenApprovedTask;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionEffects;
@@ -35,7 +36,11 @@ class TaskTransitionExecutor
 
         return DB::transaction(function () use ($taskId, $actor, $command, $context) {
             $snapshot = Task::withTrashed()->findOrFail($taskId);
-            $actor = app(ProjectWriterLocks::class)->actor($actor, $command instanceof ReopenApprovedTask ? $command->accountLockIds() : []);
+            $accountIds = $command instanceof ReopenApprovedTask || $command instanceof ReassignTaskReviewer ? $command->accountLockIds() : [];
+            if ($command instanceof ReopenApprovedTask) {
+                $accountIds = [...$accountIds, $snapshot->assignee_id, $snapshot->reviewer_id];
+            }
+            $actor = app(ProjectWriterLocks::class)->actor($actor, array_filter($accountIds));
             $project = Project::query()->whereKey($snapshot->project_id)->lockForUpdate()->firstOrFail();
             $lockedTask = Task::withTrashed()
                 ->whereKey($taskId)
@@ -76,17 +81,22 @@ class TaskTransitionExecutor
             }
 
             if ($effects->afterCommit) {
-                $connection = $lockedTask->getConnection();
-                $connectionName = $connection->getName();
-                $afterCommit = $effects->afterCommit;
+                $required = collect($effects->events)->contains(fn ($event) => app(NotificationPreferencePolicy::class)->isRequiredType(str_replace('.', '_', $event['type'])));
+                if ($required) {
+                    ($effects->afterCommit)($lockedTask);
+                } else {
+                    $connection = $lockedTask->getConnection();
+                    $connectionName = $connection->getName();
+                    $afterCommit = $effects->afterCommit;
 
-                $connection->afterCommit(function () use ($connectionName, $taskId, $afterCommit): void {
-                    $committedTask = Task::on($connectionName)->find($taskId);
+                    $connection->afterCommit(function () use ($connectionName, $taskId, $afterCommit): void {
+                        $committedTask = Task::on($connectionName)->find($taskId);
 
-                    if ($committedTask) {
-                        $afterCommit($committedTask);
-                    }
-                });
+                        if ($committedTask) {
+                            $afterCommit($committedTask);
+                        }
+                    });
+                }
             }
 
             return new TaskTransitionResult(

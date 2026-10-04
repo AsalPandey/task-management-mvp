@@ -11,7 +11,7 @@ final class TaskDeadlineSql
             WHEN tasks.status IN ('completed', 'cancelled') THEN NULL
             WHEN tasks.status IN ('submitted', 'in_review') THEN 'review'
             WHEN tasks.status = 'revision_requested'
-                OR (tasks.status = 'in_progress' AND tasks.active_revision_cycle_id IS NOT NULL
+                OR (tasks.status IN ('in_progress', 'on_hold') AND tasks.active_revision_cycle_id IS NOT NULL
                     AND tasks.active_revision_cycle_id <> 0 AND tasks.revision_due_date IS NOT NULL) THEN 'revision'
             ELSE 'execution' END";
     }
@@ -22,7 +22,7 @@ final class TaskDeadlineSql
             WHEN tasks.status IN ('completed', 'cancelled') THEN NULL
             WHEN tasks.status IN ('submitted', 'in_review') THEN tasks.review_due_date
             WHEN tasks.status = 'revision_requested'
-                OR (tasks.status = 'in_progress' AND tasks.active_revision_cycle_id IS NOT NULL AND tasks.active_revision_cycle_id <> 0
+                OR (tasks.status IN ('in_progress', 'on_hold') AND tasks.active_revision_cycle_id IS NOT NULL AND tasks.active_revision_cycle_id <> 0
                     AND tasks.revision_due_date IS NOT NULL) THEN tasks.revision_due_date
             ELSE COALESCE(tasks.execution_due_date, tasks.due_date)
         END)";

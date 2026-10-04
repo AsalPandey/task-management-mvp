@@ -39,7 +39,9 @@ final class ResumeTask implements TaskTransitionCommand
         $priorHeldAt = $task->held_at;
         $priorHeldBy = $task->held_by;
         $priorReason = $task->hold_reason;
-        $deadline = $task->execution_due_date?->toDateString() ?? $task->due_date?->toDateString();
+        $deadline = $task->activeDeadline()?->toDateString();
+        $kind = $task->activeDeadlineKind();
+        $generation = $task->activeDeadlineGeneration()?->fingerprint();
         $holdDuration = $priorHeldAt
             ? (int) max(0, $priorHeldAt->diffInSeconds($context->occurredAt, false))
             : null;
@@ -58,6 +60,8 @@ final class ResumeTask implements TaskTransitionCommand
             'hold_reason' => ['before' => $priorReason, 'after' => null],
             'hold_duration_seconds' => ['before' => null, 'after' => $holdDuration],
             'active_deadline' => ['before' => $deadline, 'after' => $deadline],
+            'active_deadline_kind' => ['before' => $kind, 'after' => $kind],
+            'active_deadline_generation' => ['before' => $generation, 'after' => $generation],
         ];
 
         return new TaskTransitionEffects(
@@ -66,6 +70,7 @@ final class ResumeTask implements TaskTransitionCommand
             events: [[
                 'type' => TaskEventRecorder::RESUMED,
                 'changed_fields' => $changes,
+                'metadata' => ['deadline_type' => $kind, 'deadline_generation' => $generation],
             ]],
             afterCommit: fn (Task $committedTask) => $this->notifications
                 ->dispatchTaskResumed($committedTask, $actor),

@@ -19,9 +19,21 @@ $actor = User::findOrFail($spec['actor']);
 auth()->guard('web')->setUser($actor);
 $paused = false;
 $transactionAttempts = 0;
-Event::listen(TransactionBeginning::class, static function ($event) use (&$transactionAttempts): void {
+$notificationTransactions = 0;
+$requiredDelivery = false;
+DB::listen(function ($query) use (&$requiredDelivery): void {
+    if (DB::transactionLevel() === 0 && str_starts_with($query->sql, 'select')
+        && str_contains($query->sql, '`workflow_notification_intents`')) {
+        $requiredDelivery = true;
+    }
+});
+Event::listen(TransactionBeginning::class, static function ($event) use (&$transactionAttempts, &$notificationTransactions, &$requiredDelivery): void {
     if ($event->connection->transactionLevel() === 1) {
-        $transactionAttempts++;
+        if ($requiredDelivery) {
+            $notificationTransactions++;
+        } else {
+            $transactionAttempts++;
+        }
     }
 });
 if (($spec['pause'] ?? '') === 'binding') {
@@ -61,5 +73,5 @@ if ($spec['fail_delete'] ?? false) {
 $request = Request::create($spec['path'], $spec['method'], server: ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'], content: json_encode($spec['data'], JSON_THROW_ON_ERROR));
 $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
 $response = $kernel->handle($request);
-file_put_contents($spec['result'], json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pause_reached' => $paused, 'transaction_attempts' => $transactionAttempts], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+file_put_contents($spec['result'], json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pause_reached' => $paused, 'transaction_attempts' => $transactionAttempts, 'notification_transactions' => $notificationTransactions], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 $kernel->terminate($request, $response);

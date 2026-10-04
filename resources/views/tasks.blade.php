@@ -100,6 +100,11 @@ document.addEventListener('DOMContentLoaded', function() {
         availableGroup.label = 'Available staff — add to project';
         assignmentCandidates
             .filter(candidate => !memberIds.has(String(candidate.id)))
+            .filter(candidate => {
+                const reviewer = reviewerCandidates.find(user => String(user.id) === String(candidate.id));
+                const project = projectMembership[projectId];
+                return reviewer?.role?.name !== 'project_manager' || String(project?.project_manager_id) === String(candidate.id);
+            })
             .forEach(candidate => {
                 const option = document.createElement('option');
                 option.value = candidate.id;
@@ -1249,7 +1254,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="date-item">
                         <span class="date-icon" aria-hidden="true">📅</span>
                         <span class="due-date">
-                            Deadline: {{ $activeDeadline?->format('M j, Y') ?? 'Not set' }}
+                            {{ ucfirst($task->activeDeadlineKind() ?? '') }} deadline: {{ $activeDeadline?->format('M j, Y') ?? 'Not set' }}
                         </span>
                     </div>
                     <div class="date-item">
@@ -1455,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 {{ $task->assignee ? $task->assignee->name : '-' }}
                             @endif
                         </td>
-                        <td>{{ $activeDeadline?->format('M j, Y') ?? '-' }}</td>
+                        <td>{{ $activeDeadline ? ucfirst($task->activeDeadlineKind()).': '.$activeDeadline->format('M j, Y') : '-' }}</td>
                         <td>{{ $task->progress }}%</td>
                         <td>
                             @if (! $taskState->isFinal())

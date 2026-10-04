@@ -26,16 +26,14 @@ class ProjectMemberRemoved extends Notification
     {
         return (new MailMessage)
             ->subject('Removed from project')
-            ->line("You were removed from {$this->project->name}.");
+            ->line('Your membership and access to a project were removed.');
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type' => 'project_member_removed',
-            'project_id' => $this->project->id,
-            'message' => 'You were removed from project: '.$this->project->name,
-            'actor_id' => $this->actor?->id,
+            'message' => 'Your membership and access to a project were removed.',
         ];
     }
 }

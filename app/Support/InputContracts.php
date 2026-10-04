@@ -9,6 +9,11 @@ final class InputContracts
 {
     public const TEXT_CHARACTERS = 20000;
 
+    public static function date(string ...$rules): array
+    {
+        return ['bail', 'nullable', 'date_format:Y-m-d', 'after_or_equal:1000-01-01', 'before_or_equal:9999-12-31', ...$rules];
+    }
+
     public static function id(string $presence = 'required', mixed ...$rules): array
     {
         return ['bail', $presence, new PositiveResourceId, ...$rules];

@@ -209,6 +209,16 @@ test('basic approval and full revision lifecycle use the current deadline action
     await transition(page, 'R41 Revision Task', 'revision-request', ['Please revise', date(6)]);
     await deadline(page, 'R41 Revision Task', 'revision');
     await transition(assignee, 'R41 Revision Task', 'revision-start');
+    await transition(assignee, 'R41 Revision Task', 'hold', ['R52 waiting during revision']);
+    await expect(card(assignee, 'R41 Revision Task')).toContainText('Revision deadline:');
+    await expect(card(assignee, 'R41 Revision Task')).toContainText('On Hold');
+    await deadline(page, 'R41 Revision Task', 'revision');
+    const held = snapshot();
+    const heldTask = held.tasks.find(task => task.title === 'R41 Revision Task');
+    const holdEvent = held.events.find(event => event.task_id === heldTask.id && event.event_type === 'task.held');
+    expect(holdEvent.metadata.deadline_type).toBe('revision');
+    expect(holdEvent.changed_fields.active_deadline.after).toBe(heldTask.revision_due_date.slice(0, 10));
+    await transition(assignee, 'R41 Revision Task', 'resume');
     await transition(assignee, 'R41 Revision Task', 'resubmit', ['Corrected']);
     await transition(page, 'R41 Revision Task', 'review');
     await deadline(page, 'R41 Revision Task', 'review');

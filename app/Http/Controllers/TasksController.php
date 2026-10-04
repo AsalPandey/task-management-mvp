@@ -147,6 +147,10 @@ class TasksController extends Controller
                 ->orderBy('name')
                 ->get();
 
+            foreach ($projects as $project) {
+                $project->setRelation('members', $project->members->filter(fn (User $candidate) => app(TaskAssignmentCandidateService::class)->canExecuteInProject($candidate, $project))->values());
+            }
+
             $assignmentCandidates = app(TaskAssignmentCandidateService::class)
                 ->forProjects($projects)
                 ->get(['id', 'name']);

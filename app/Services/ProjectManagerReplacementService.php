@@ -8,7 +8,6 @@ use App\Models\Task;
 use App\Models\TaskHistory;
 use App\Models\User;
 use App\ValueObjects\TaskOperationContext;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ProjectManagerReplacementService
@@ -105,7 +104,6 @@ class ProjectManagerReplacementService
         }
 
         $context = TaskOperationContext::web($actor);
-        $pendingDispatches = [];
 
         foreach ($tasksToReassign as $item) {
             /** @var Task $task */
@@ -155,37 +153,10 @@ class ProjectManagerReplacementService
                 ],
             );
 
-            $pendingDispatches[] = [
-                'task_id' => (int) $task->id,
-                'old_reviewer' => $oldReviewerModel,
-            ];
+            // Persist required intent before the outer project mutation commits.
+            $task->setRelation('reviewer', $newPm);
+            $task->setRelation('project', $simulatedProject);
+            $this->notifications->dispatchReviewerReassigned($task, $actor, $oldReviewerModel);
         }
-
-        // Register afterCommit notification dispatches
-        $connectionName = $connection->getName();
-        $notifications = $this->notifications;
-
-        $connection->afterCommit(function () use ($connectionName, $pendingDispatches, $actor, $notifications): void {
-            foreach ($pendingDispatches as $dispatchItem) {
-                $committedTask = Task::on($connectionName)
-                    ->with(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'approval', 'project.projectManager'])
-                    ->find($dispatchItem['task_id']);
-
-                if ($committedTask) {
-                    try {
-                        $notifications->dispatchReviewerReassigned(
-                            $committedTask,
-                            $actor,
-                            $dispatchItem['old_reviewer'],
-                        );
-                    } catch (\Throwable $exception) {
-                        Log::warning('Task notification dispatch failed following project manager replacement', [
-                            'task_id' => $dispatchItem['task_id'],
-                            'error' => $exception->getMessage(),
-                        ]);
-                    }
-                }
-            }
-        });
     }
 }

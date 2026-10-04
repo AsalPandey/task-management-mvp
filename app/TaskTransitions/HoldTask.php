@@ -46,7 +46,9 @@ final class HoldTask implements TaskTransitionCommand
     public function apply(Task $task, User $actor, TaskOperationContext $context): TaskTransitionEffects
     {
         $reason = trim($this->reason);
-        $deadline = $task->execution_due_date?->toDateString() ?? $task->due_date?->toDateString();
+        $deadline = $task->activeDeadline()?->toDateString();
+        $kind = $task->activeDeadlineKind();
+        $generation = $task->activeDeadlineGeneration()?->fingerprint();
         $beforeHeldAt = $task->held_at?->toAtomString();
         $beforeHeldBy = $task->held_by === null ? null : (int) $task->held_by;
         $beforeReason = $task->hold_reason;
@@ -64,6 +66,8 @@ final class HoldTask implements TaskTransitionCommand
             'held_by' => ['before' => $beforeHeldBy, 'after' => (int) $actor->id],
             'hold_reason' => ['before' => $beforeReason, 'after' => $reason],
             'active_deadline' => ['before' => $deadline, 'after' => $deadline],
+            'active_deadline_kind' => ['before' => $kind, 'after' => $kind],
+            'active_deadline_generation' => ['before' => $generation, 'after' => $generation],
         ];
 
         return new TaskTransitionEffects(
@@ -72,6 +76,7 @@ final class HoldTask implements TaskTransitionCommand
             events: [[
                 'type' => TaskEventRecorder::HELD,
                 'changed_fields' => $changes,
+                'metadata' => ['deadline_type' => $kind, 'deadline_generation' => $generation],
             ]],
             afterCommit: fn (Task $committedTask) => $this->notifications
                 ->dispatchTaskHeld($committedTask, $actor),

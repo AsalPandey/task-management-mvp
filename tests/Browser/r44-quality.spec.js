@@ -201,6 +201,22 @@ test('R44 core pages pass axe high-confidence WCAG A and AA checks', async ({ pa
     expect(results.flatMap(({ route, result }) => result.violations.map(v => `${route} ${v.id} ${v.nodes.map(n => n.target).join(';')}`))).toEqual([]);
 });
 
+test('R52 Manager, Team and PM dashboards retain one top-level main landmark', async ({ page }) => {
+    const results = [];
+    for (const [email, path] of [[manager, '/manager'], [member, '/team-dashboard'], [pm, '/manager']]) {
+        await login(page, email);
+        await page.goto(path);
+        await settled(page);
+        await expect(page.locator('main')).toHaveCount(1);
+        await expect(page.locator('main#main-content')).toHaveCount(1);
+        const result = await new AxeBuilder({ page }).withRules(['landmark-main-is-top-level', 'landmark-no-duplicate-main']).analyze();
+        results.push({ email, path, violations: result.violations });
+        expect(result.violations).toEqual([]);
+        await page.locator('form[action$="/logout"] button').click();
+    }
+    fs.writeFileSync(`${evidenceDir}/r52-landmarks.json`, JSON.stringify(results, null, 2));
+});
+
 test('R44 responsive matrix preserves page and modal reflow including long content', async ({ page, browser }) => {
     test.setTimeout(300_000);
     const matrix = [[320,568],[375,667],[390,844],[430,932],[768,1024],[844,390],[1280,720],[1440,900],[720,450]];

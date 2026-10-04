@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\TaskRevisionCycle;
 use App\Models\User;
 use App\Services\ReviewerEligibilityService;
+use App\Services\TaskAssignmentCandidateService;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskNotificationDispatcher;
 use App\ValueObjects\TaskOperationContext;
@@ -41,6 +42,9 @@ final class ReopenApprovedTask implements TaskTransitionCommand
 
     public function validate(Task $task, User $actor): void
     {
+        // These account rows were acquired in sorted order before the project/task.
+        $task->setRelation('assignee', User::with('role')->whereKey($task->assignee_id)->lockForUpdate()->first());
+        $task->setRelation('reviewer', User::with('role')->whereKey($task->reviewer_id)->lockForUpdate()->first());
         if ($task->machineState() !== TaskState::Completed) {
             throw TaskTransitionException::invalidState('Only completed approved work may be reopened for revision.');
         }
@@ -65,7 +69,8 @@ final class ReopenApprovedTask implements TaskTransitionCommand
         $lockedProject = Project::query()->whereKey($task->project_id)->lockForUpdate()->firstOrFail();
         $task->setRelation('project', $lockedProject);
 
-        if (! $task->project->members()->whereKey($task->assignee_id)->exists()) {
+        if (! $task->project->members()->whereKey($task->assignee_id)->exists()
+            || ! app(TaskAssignmentCandidateService::class)->canExecuteInProject($task->assignee, $task->project)) {
             throw TaskTransitionException::invariant('assignee_id', 'The assignee must still belong to the task project.');
         }
 

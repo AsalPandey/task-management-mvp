@@ -53,7 +53,7 @@ class TaskUpdateRequest extends FormRequest
             'priority' => ['sometimes', 'required', Rule::in(Task::PRIORITIES)],
             'status' => ['missing'],
             'progress' => 'sometimes|required|integer|min:0|max:99',
-            'start_date' => 'nullable|date',
+            'start_date' => InputContracts::date(),
             'comments' => InputContracts::text(),
             'expected_version' => ['required_without_all:lock_version,version', 'integer', 'min:1'],
             'lock_version' => ['sometimes', 'required', 'integer', 'min:1'],

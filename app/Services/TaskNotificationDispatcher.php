@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Exceptions\TaskNotificationDispatchException;
 use App\Models\Task;
 use App\Models\User;
-use App\Notifications\TaskAssignedNotification;
 use App\Notifications\TaskReviewWorkflowNotification;
 use App\Notifications\TaskUpdatedNotification;
 use App\Notifications\TaskWorkflowTransitionNotification;
@@ -20,9 +19,7 @@ class TaskNotificationDispatcher
 
     public function taskCreated(Task $task, User $actor): void
     {
-        $this->afterCommit($task, 'task.created', function (Task $committedTask) use ($actor): void {
-            $committedTask->assignee?->notify(new TaskAssignedNotification($committedTask, $actor));
-        });
+        app(RequiredWorkflowNotifications::class)->record($task, $actor, 'assigned', collect([$task->assignee]), 'Begin execution');
     }
 
     /**
@@ -30,6 +27,9 @@ class TaskNotificationDispatcher
      */
     public function taskUpdated(Task $task, array $changes, User $actor): void
     {
+        if (array_key_exists('assignee_id', $changes)) {
+            app(RequiredWorkflowNotifications::class)->record($task, $actor, 'assigned', collect([$task->assignee]), 'Begin execution');
+        }
         $this->afterCommit($task, 'task.updated', function (Task $committedTask) use ($changes, $actor): void {
             if ($committedTask->assignee && (int) $committedTask->assignee_id !== (int) $actor->id) {
                 $committedTask->assignee->notify(new TaskUpdatedNotification($committedTask, $changes, $actor));
@@ -79,7 +79,7 @@ class TaskNotificationDispatcher
             $actor,
             'resumed',
             collect([$task->assignee, $task->creator, $task->reviewer]),
-            'Continue execution and update progress.',
+            $task->activeDeadlineKind() === 'revision' ? 'Continue revision and update progress.' : 'Continue execution and update progress.',
         );
     }
 
@@ -229,6 +229,11 @@ class TaskNotificationDispatcher
         Collection $recipients,
         string $requiredAction,
     ): void {
+        if (app(NotificationPreferencePolicy::class)->isRequiredType('task_'.$transition)) {
+            app(RequiredWorkflowNotifications::class)->record($task, $actor, $transition, $recipients, $requiredAction);
+
+            return;
+        }
         try {
             $task->loadMissing(['assignee', 'creator', 'reviewer', 'activeRevisionCycle', 'approval', 'project.projectManager']);
             $recipients = $recipients->filter(fn (?User $user) => app(NotificationAccess::class)->allows($user?->fresh(), ['task_id' => $task->id]))
@@ -255,6 +260,11 @@ class TaskNotificationDispatcher
         Collection $recipients,
         string $nextAction,
     ): void {
+        if (app(NotificationPreferencePolicy::class)->isRequiredType('task_'.$transition)) {
+            app(RequiredWorkflowNotifications::class)->record($task, $actor, $transition, $recipients, $nextAction);
+
+            return;
+        }
         try {
             $task->loadMissing(['assignee', 'creator', 'reviewer', 'project.projectManager']);
             $uniqueRecipients = $recipients

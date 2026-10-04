@@ -8,10 +8,12 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskEventRecorder;
 use App\Services\TaskNotificationDispatcher;
+use App\Support\InputContracts;
 use App\Support\TaskDeadlineRules;
 use App\ValueObjects\TaskOperationContext;
 use App\ValueObjects\TaskTransitionEffects;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Validator;
 
 final class ChangeTaskDeadline implements TaskTransitionCommand
 {
@@ -29,6 +31,7 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
 
     public function validate(Task $task, User $actor): void
     {
+        Validator::make(['due_date' => $this->dueDate], ['due_date' => InputContracts::date('required')])->validate();
         if (! TaskDeadlineRules::supports($this->deadlineType)) {
             throw TaskTransitionException::invariant('deadline_type', 'The deadline type is invalid.');
         }
@@ -48,6 +51,10 @@ final class ChangeTaskDeadline implements TaskTransitionCommand
 
         if (! $this->parsedDueDate()->isAfter(today(config('app.timezone')))) {
             throw TaskTransitionException::invariant('due_date', 'The deadline must be in the future.');
+        }
+
+        if ($this->deadlineType === 'execution' && $task->start_date && $this->parsedDueDate()->toDateString() < $task->start_date->toDateString()) {
+            throw TaskTransitionException::invariant('due_date', 'The execution deadline must be on or after the task start date.');
         }
 
         if (TaskDeadlineRules::reasonRequired($task, $this->deadlineType) && trim((string) $this->reason) === '') {

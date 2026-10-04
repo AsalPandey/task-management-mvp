@@ -21,6 +21,7 @@ readonly r42_timezone_database="task_management_r42_timezone_ci"
 readonly r3c_fresh_database="task_management_r3c_fresh_ci"
 readonly r43_qualification_database="task_management_r43_ci_qualification"
 readonly r51_concurrency_database="task_management_r51_concurrency_ci"
+readonly r52_concurrency_database="task_management_r52_concurrency_ci"
 readonly r43_concurrency_database="task_management_r43_concurrency_ci"
 
 mysql_command=(
@@ -35,7 +36,7 @@ mysql_command=(
 
 database_is_approved() {
     case "$1" in
-        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r43_concurrency_database}"|"${r51_concurrency_database}")
+        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r43_concurrency_database}"|"${r51_concurrency_database}"|"${r52_concurrency_database}")
             return 0
             ;;
         *)
@@ -133,6 +134,7 @@ run_suite "${r3a3_database}" \
 run_suite "${r42_membership_database}" tests/Feature/ProjectMembershipMariaDbConcurrencyTest.php
 run_suite "${r43_concurrency_database}" tests/Feature/R43NotificationMariaDbConcurrencyTest.php
 run_suite "${r51_concurrency_database}" tests/Feature/R51ProjectWriterMariaDbConcurrencyTest.php
+run_suite "${r52_concurrency_database}" tests/Feature/R52EligibilityMariaDbConcurrencyTest.php
 recreate_database "${r42_reset_database}"
 php artisan db:seed --force --no-interaction
 php artisan migrate:reset --force --no-interaction

@@ -32,7 +32,7 @@ class TaskWorkflowTransitionNotification extends Notification implements SendsBr
      */
     public function toArray(object $notifiable): array
     {
-        $deadline = $this->task->execution_due_date ?? $this->task->due_date;
+        $deadline = $this->task->activeDeadline();
         $state = $this->task->machineState();
 
         return [
@@ -44,6 +44,8 @@ class TaskWorkflowTransitionNotification extends Notification implements SendsBr
             'current_state' => $state->value,
             'current_state_label' => $state->label(),
             'deadline' => $deadline?->toDateString(),
+            'deadline_type' => $this->task->activeDeadlineKind(),
+            'deadline_generation' => $this->task->activeDeadlineGeneration()?->fingerprint(),
             'next_action' => $this->nextAction,
             'type' => 'task_'.$this->transition,
             'message' => "{$this->actor->name} changed '{$this->task->title}' to {$state->label()}.",

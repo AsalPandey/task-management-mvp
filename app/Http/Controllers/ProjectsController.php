@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TaskState;
+use App\Exceptions\TaskNotificationDispatchException;
 use App\Models\Project;
 use App\Models\ProjectHistory;
 use App\Models\User;
@@ -11,11 +12,15 @@ use App\Services\ProjectMembershipService;
 use App\Services\ProjectWriterLocks;
 use App\Support\InputContracts;
 use App\Support\UserPayload;
+use Closure;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ProjectsController extends Controller
 {
@@ -55,9 +60,10 @@ class ProjectsController extends Controller
         $this->authorize('create', Project::class);
 
         $data = $this->validatedProjectData($request);
-        $project = DB::transaction(function () use ($data) {
-            $actor = app(ProjectWriterLocks::class)->actor(auth()->user());
+        $project = $this->writeProject(function () use ($data) {
+            $actor = app(ProjectWriterLocks::class)->actor(auth()->user(), array_filter([$data['project_manager_id'] ?? null]));
             Gate::forUser($actor)->authorize('create', Project::class);
+            $this->validatedProjectData(request());
             if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
                 $data['project_manager_id'] = $actor->id;
             }
@@ -84,43 +90,54 @@ class ProjectsController extends Controller
     {
         $this->authorize('update', $project);
 
-        DB::transaction(function () use ($project, $request, $pmReplacementService) {
-            $actor = app(ProjectWriterLocks::class)->actor(auth()->user());
-            $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
-            Gate::forUser($actor)->authorize('update', $lockedProject);
-            $data = $this->validatedProjectData($request, $lockedProject);
-            if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
-                $data['project_manager_id'] = $actor->id;
-            }
-            $oldPmId = $lockedProject->project_manager_id ? (int) $lockedProject->project_manager_id : null;
-            $newPmId = array_key_exists('project_manager_id', $data) && $data['project_manager_id'] !== null
-                ? (int) $data['project_manager_id']
-                : null;
+        // Validate the account ID shape before using it in the sorted account lock set.
+        $request->validate(['project_manager_id' => InputContracts::id('nullable')]);
 
-            if (array_key_exists('project_manager_id', $data) && $oldPmId !== $newPmId) {
-                $pmReplacementService->reconcile(
-                    project: $lockedProject,
-                    oldPmId: $oldPmId,
-                    newPmId: $newPmId,
-                    actor: $actor,
-                );
-            }
+        $notificationStatus = 'sent';
+        try {
+            $this->writeProject(function () use ($project, $request, $pmReplacementService) {
+                $actor = app(ProjectWriterLocks::class)->actor(auth()->user(), array_filter([$project->project_manager_id, $request->input('project_manager_id')]));
+                $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+                Gate::forUser($actor)->authorize('update', $lockedProject);
+                $data = $this->validatedProjectData($request, $lockedProject);
+                if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
+                    $data['project_manager_id'] = $actor->id;
+                }
+                $oldPmId = $lockedProject->project_manager_id ? (int) $lockedProject->project_manager_id : null;
+                $newPmId = array_key_exists('project_manager_id', $data) && $data['project_manager_id'] !== null
+                    ? (int) $data['project_manager_id']
+                    : null;
 
-            $old = $lockedProject->toArray();
-            $lockedProject->update($data);
+                if (array_key_exists('project_manager_id', $data) && $oldPmId !== $newPmId) {
+                    $pmReplacementService->reconcile(
+                        project: $lockedProject,
+                        oldPmId: $oldPmId,
+                        newPmId: $newPmId,
+                        actor: $actor,
+                    );
+                }
 
-            if ($lockedProject->project_manager_id) {
-                $lockedProject->members()->syncWithoutDetaching([
-                    $lockedProject->project_manager_id => ['added_by' => auth()->id()],
-                ]);
-            }
+                $old = $lockedProject->toArray();
+                $lockedProject->update($data);
 
-            $this->recordHistory($lockedProject, 'updated', ['old' => $old, 'new' => $data]);
-        });
+                if ($lockedProject->project_manager_id) {
+                    $lockedProject->members()->syncWithoutDetaching([
+                        $lockedProject->project_manager_id => ['added_by' => auth()->id()],
+                    ]);
+                }
+
+                $this->recordHistory($lockedProject, 'updated', ['old' => $old, 'new' => $data]);
+            });
+
+        } catch (TaskNotificationDispatchException $exception) {
+            $notificationStatus = 'delivery_failed';
+            Log::warning('Project saved; required workflow notice awaits retry', ['project_id' => $project->id, 'error_type' => get_class($exception)]);
+        }
 
         return response()->json([
             'success' => true,
             'project' => $this->projectPayload($project->fresh()),
+            'notification_status' => $notificationStatus,
         ]);
     }
 
@@ -220,18 +237,18 @@ class ProjectsController extends Controller
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('projects', 'name')->ignore($project?->id),
+                Rule::unique('projects', 'name_identity')->ignore($project?->id),
             ],
             'description' => InputContracts::text(),
             'project_manager_id' => InputContracts::id('nullable', Rule::exists('users', 'id')->where('active', true)->whereNull('deleted_at')),
             'color' => ['nullable', 'string', 'max:20'],
             'status' => ['required', Rule::in(['active', 'on_hold', 'completed', 'archived'])],
-            'start_date' => ['nullable', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'start_date' => InputContracts::date(),
+            'end_date' => InputContracts::date('after_or_equal:start_date'),
         ]);
 
         if (! empty($data['project_manager_id'])) {
-            $manager = User::query()->with('role')->find($data['project_manager_id']);
+            $manager = User::query()->with('role')->when(DB::transactionLevel() > 0, fn ($query) => $query->lockForUpdate())->find($data['project_manager_id']);
             if (! $manager?->hasAnyRole(['manager', 'project_manager']) || ! $manager->isActive()) {
                 abort(422, 'Project manager must be an active manager or project manager.');
             }
@@ -248,5 +265,18 @@ class ProjectsController extends Controller
             'action' => $action,
             'changes' => $changes,
         ]);
+    }
+
+    private function writeProject(Closure $write, int $attempts = 3): mixed
+    {
+        try {
+            return DB::transaction($write, $attempts);
+        } catch (UniqueConstraintViolationException $exception) {
+            if (! str_contains($exception->getMessage(), 'projects_name_identity_unique')
+                && ! str_contains($exception->getMessage(), 'projects.name_identity')) {
+                throw $exception;
+            }
+            throw ValidationException::withMessages(['name' => 'A project with this name already exists, including archived or deleted projects.']);
+        }
     }
 }

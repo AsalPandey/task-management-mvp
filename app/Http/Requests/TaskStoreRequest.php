@@ -24,8 +24,8 @@ class TaskStoreRequest extends FormRequest
             'assignee_id' => InputContracts::id('required', 'exists:users,id'),
             'reviewer_id' => InputContracts::id('required', 'exists:users,id', 'different:assignee_id'),
             'priority' => ['required', Rule::in(Task::PRIORITIES)],
-            'start_date' => 'nullable|date',
-            'due_date' => 'nullable|date|after_or_equal:start_date',
+            'start_date' => InputContracts::date(),
+            'due_date' => InputContracts::date('after_or_equal:start_date'),
             'comments' => InputContracts::text(),
         ] + array_fill_keys(TaskCreationFields::FORBIDDEN, ['missing']);
     }

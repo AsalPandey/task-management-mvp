@@ -68,7 +68,7 @@ class TaskLifecycleService
         unset($data['reviewer_id']);
 
         return DB::transaction(function () use ($data, $actor, $context, $reviewerId) {
-            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) $data['assignee_id']]);
+            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) $data['assignee_id'], (int) $reviewerId]);
             $data['status'] = TaskState::NotStarted;
             $data['progress'] = 0;
             $data['created_by'] = $actor->id;
@@ -85,6 +85,7 @@ class TaskLifecycleService
             }
             $this->assertAssigneeIsProjectMember($data['project_id'], $data['assignee_id'] ?? null);
             $this->assertCompletionState($data);
+            $this->assertSchedule($data['start_date'] ?? null, $data['execution_due_date'] ?? null);
             $this->assertReviewerAssignment($project, $data['assignee_id'] ?? null, $reviewerId, $actor);
 
             $task = $this->createTaskWithUidRetry($data);
@@ -132,7 +133,7 @@ class TaskLifecycleService
 
         return DB::transaction(function () use ($task, $data, $actor, $context) {
             $snapshot = Task::query()->findOrFail($task->getKey());
-            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) ($data['assignee_id'] ?? $snapshot->assignee_id)]);
+            $actor = app(ProjectWriterLocks::class)->actor($actor, [(int) ($data['assignee_id'] ?? $snapshot->assignee_id), (int) $snapshot->reviewer_id]);
             $projects = Project::query()->whereIn('id', array_unique([(int) $snapshot->project_id, (int) ($data['project_id'] ?? $snapshot->project_id)]))
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $lockedTask = Task::query()
@@ -141,7 +142,8 @@ class TaskLifecycleService
                 ->firstOrFail();
 
             if ((int) $lockedTask->project_id !== (int) $snapshot->project_id
-                || (int) $lockedTask->assignee_id !== (int) $snapshot->assignee_id) {
+                || (int) $lockedTask->assignee_id !== (int) $snapshot->assignee_id
+                || (int) $lockedTask->reviewer_id !== (int) $snapshot->reviewer_id) {
                 throw new StaleTaskEditException($lockedTask, (int) $snapshot->lock_version, (int) $lockedTask->lock_version);
             }
             $lockedTask->setRelation('project', $projects->get($lockedTask->project_id));
@@ -173,6 +175,7 @@ class TaskLifecycleService
             }
             $this->assertAssigneeIsProjectMember((int) $merged['project_id'], $merged['assignee_id'] ?? null);
             $this->assertCompletionState($merged);
+            $this->assertSchedule($merged['start_date'] ?? null, $lockedTask->execution_due_date ?? $lockedTask->due_date);
             if (array_key_exists('project_id', $data) || array_key_exists('assignee_id', $data)) {
                 $this->assertReviewerAssignment(
                     $project,
@@ -279,7 +282,7 @@ class TaskLifecycleService
         }
 
         // Lock assignee row for update to prevent concurrent deactivation race
-        $assignee = User::query()->whereKey($assigneeId)->lockForUpdate()->first();
+        $assignee = User::query()->with('role')->whereKey($assigneeId)->lockForUpdate()->first();
 
         if (! $assignee || ! $assignee->isActive()) {
             throw ValidationException::withMessages([
@@ -290,7 +293,8 @@ class TaskLifecycleService
         $isMember = DB::table('project_user')->where('project_id', $projectId)
             ->where('user_id', $assigneeId)->lockForUpdate()->exists();
 
-        if (! $isMember) {
+        $project = Project::query()->whereKey($projectId)->lockForUpdate()->firstOrFail();
+        if (! $isMember || ! app(TaskAssignmentCandidateService::class)->canExecuteInProject($assignee, $project)) {
             throw ValidationException::withMessages([
                 'assignee_id' => 'The selected assignee is not an active member of this project.',
             ]);
@@ -322,7 +326,7 @@ class TaskLifecycleService
             ]);
         }
 
-        $reviewer = User::query()->with('role')->find($reviewerId);
+        $reviewer = User::query()->with('role')->whereKey($reviewerId)->lockForUpdate()->first();
 
         if (! $reviewer) {
             throw ValidationException::withMessages(['reviewer_id' => 'The selected reviewer is unavailable.']);
@@ -341,6 +345,17 @@ class TaskLifecycleService
             throw ValidationException::withMessages([
                 'progress' => 'Progress may reach 100% only through reviewer approval.',
             ]);
+        }
+    }
+
+    private function assertSchedule(mixed $start, mixed $deadline): void
+    {
+        $date = fn ($value) => $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
+        Validator::make(['start_date' => $date($start), 'due_date' => $date($deadline)], [
+            'start_date' => InputContracts::date(), 'due_date' => InputContracts::date(),
+        ])->validate();
+        if ($start && $deadline && $date($start) > $date($deadline)) {
+            throw ValidationException::withMessages(['start_date' => 'The task start date must be on or before the execution deadline.']);
         }
     }
 

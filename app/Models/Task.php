@@ -103,7 +103,7 @@ class Task extends Model
             return 'review';
         }
         if ($state === TaskState::RevisionRequested
-            || ($state === TaskState::InProgress && $this->active_revision_cycle_id && $this->revision_due_date)) {
+            || (in_array($state, [TaskState::InProgress, TaskState::OnHold], true) && $this->active_revision_cycle_id && $this->revision_due_date)) {
             return 'revision';
         }
 

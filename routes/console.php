@@ -8,6 +8,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('app:deliver-required-workflow-notifications')->everyMinute()->withoutOverlapping();
+
 Schedule::command('app:send-task-deadline-reminders')
     ->dailyAt('08:00')
     ->timezone(config('app.timezone'))

@@ -11,6 +11,8 @@ class Project extends Model
     use HasFactory;
     use SoftDeletes;
 
+    protected $hidden = ['name_identity'];
+
     protected $fillable = [
         'name',
         'description',

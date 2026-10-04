@@ -27,6 +27,11 @@ final class ReassignTaskReviewer implements TaskTransitionCommand
         return 'reassignReviewer';
     }
 
+    public function accountLockIds(): array
+    {
+        return [$this->reviewerId];
+    }
+
     public function validate(Task $task, User $actor): void
     {
         if ($task->machineState()->isFinal()) {
@@ -37,7 +42,7 @@ final class ReassignTaskReviewer implements TaskTransitionCommand
             throw TaskTransitionException::invariant('reviewer_id', 'The selected reviewer is already assigned.');
         }
 
-        $reviewer = User::query()->with('role')->find($this->reviewerId);
+        $reviewer = User::query()->with('role')->whereKey($this->reviewerId)->lockForUpdate()->first();
         if (! $reviewer) {
             throw TaskTransitionException::missingData('reviewer_id', 'The selected reviewer is unavailable.');
         }

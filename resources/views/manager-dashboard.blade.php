@@ -432,7 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="app-container">
 
     <div id="messageContainer" class="message-container" style="display: none;"></div>
-    <main class="main-content">
+    <div class="main-content">
         <div id="dashboard" class="tab-content active">
             <div class="page-header">
                 <div>
@@ -661,7 +661,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <p id="progressDescription">Average completion across {{ $currentActiveCount }} tasks</p>
             </div>
         </div>
-    </main>
+    </div>
     <!-- Task Form Modal -->
     <div id="taskModal" class="modal">
         <div class="modal-content">

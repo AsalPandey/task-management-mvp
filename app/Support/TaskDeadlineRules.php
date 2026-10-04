@@ -10,7 +10,7 @@ final class TaskDeadlineRules
     private const ALLOWED_STATES = [
         'execution' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold],
         'review' => [TaskState::NotStarted, TaskState::InProgress, TaskState::OnHold, TaskState::Submitted, TaskState::InReview],
-        'revision' => [TaskState::RevisionRequested, TaskState::InProgress],
+        'revision' => [TaskState::RevisionRequested, TaskState::InProgress, TaskState::OnHold],
     ];
 
     public static function supports(string $kind): bool
@@ -20,7 +20,15 @@ final class TaskDeadlineRules
 
     public static function allows(Task $task, string $kind): bool
     {
-        return self::supports($kind) && in_array($task->machineState(), self::ALLOWED_STATES[$kind], true);
+        if (! self::supports($kind) || ! in_array($task->machineState(), self::ALLOWED_STATES[$kind], true)) {
+            return false;
+        }
+
+        return match ($kind) {
+            'execution' => $task->activeDeadlineKind() === 'execution',
+            'revision' => $task->activeDeadlineKind() === 'revision',
+            default => true,
+        };
     }
 
     public static function reasonRequired(Task $task, string $kind): bool

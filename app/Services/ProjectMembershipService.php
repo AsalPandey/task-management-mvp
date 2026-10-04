@@ -48,7 +48,12 @@ final class ProjectMembershipService
             }
             ProjectHistory::query()->create(['project_id' => $locked->id, 'user_id' => $actor->id,
                 'action' => $add ? 'member_added' : 'member_removed', 'changes' => ['user_id' => $memberId]]);
-            DB::afterCommit(fn () => $member->notify($add ? new ProjectMemberAdded($locked, $actor) : new ProjectMemberRemoved($locked, $actor)));
+            if ($add) {
+                DB::afterCommit(fn () => $member->notify(new ProjectMemberAdded($locked, $actor)));
+            } else {
+                // Safe recipient-only notice and detach commit together, without a revoked-resource link.
+                $member->notify(new ProjectMemberRemoved($locked, $actor));
+            }
 
             return true;
         }, 3);

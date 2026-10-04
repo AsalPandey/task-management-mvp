@@ -161,7 +161,7 @@ body { background: #f7f8fa; }
 <div class="app-container">
     <div id="messageContainer" class="message-container" style="display: none;"></div>
     <!-- Header -->
-    <main class="main-content">
+    <div class="main-content">
         <!-- Dashboard Tab -->
         <div id="dashboard" class="tab-content active">
             <div class="page-header">
@@ -362,7 +362,7 @@ body { background: #f7f8fa; }
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 <!-- Completed Tasks History (last 7 days) -->
 <p>Showing up to 10 recent completions. <a href="{{ route('completed-tasks') }}">View completed history</a></p>
 @if($recentCompletedHistory->count())

@@ -52,6 +52,11 @@ final class NotificationPreferencePolicy
         return $this->decideForType($user, (string) ($payload['type'] ?? ''), $channel);
     }
 
+    public function isRequiredType(string $type): bool
+    {
+        return (self::TYPES[$type] ?? null) === NotificationCategory::Mandatory;
+    }
+
     public function decideForType(
         User $user,
         string $type,
