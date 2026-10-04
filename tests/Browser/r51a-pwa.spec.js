@@ -50,6 +50,13 @@ async function ready(page) {
     await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state)).toBe('activated');
     await page.waitForLoadState('networkidle');
 }
+async function updateWorker(page) {
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    await expect.poll(() => page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return !registration.installing && !registration.waiting && registration.active?.state === 'activated';
+    })).toBe(true);
+}
 async function state(page) {
     return page.evaluate(async () => ({
         origin: location.origin, secure: isSecureContext,
@@ -100,7 +107,7 @@ for (const engine of ['chromium', 'webkit']) {
                 const namespace = `task-management-static-${encodeURIComponent(new URL(`${base}/`).pathname)}-`;
                 await page.evaluate(async name => { await caches.open(name); }, `${namespace}obsolete-r51a`);
                 fs.writeFileSync(workerPath, original.replace('${CACHE_NAMESPACE}' + version, '${CACHE_NAMESPACE}' + version + '-r51a-probe'));
-                await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+                await updateWorker(page);
                 await expect(page.locator('[data-client-notice]')).toContainText('application update');
                 await expect(page.locator('#taskTitle')).toHaveValue('Keep the update draft');
                 await expect.poll(() => page.evaluate(() => caches.keys())).toContain(`${namespace}${version}-r51a-probe`);
@@ -109,7 +116,7 @@ for (const engine of ['chromium', 'webkit']) {
                 expect(cache.some(entry => entry.name === `${namespace}obsolete-r51a`)).toBe(false);
                 expect(cache.flatMap(entry => entry.urls).every(url => /\/(manifest\.webmanifest|offline\.html|build\/assets\/|css\/|js\/|icons\/|images\/)/.test(new URL(url).pathname))).toBe(true);
                 fs.writeFileSync(workerPath, original);
-                await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+                await updateWorker(page);
                 await expect.poll(() => page.evaluate(() => caches.keys())).toContain(`${namespace}${version}`);
                 await page.goto(`${base}/settings`); await ready(page);
                 await page.locator('.nav-item[data-tab="notifications"]').click();
