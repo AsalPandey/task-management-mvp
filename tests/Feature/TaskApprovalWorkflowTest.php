@@ -42,7 +42,7 @@ class TaskApprovalWorkflowTest extends TestCase
 
         $this->actingAs($f['reviewer'])
             ->withHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
-            ->postJson(route('tasks.approve', $f['task']), ['approval_comment' => '  Approved cleanly.  '])
+            ->postTaskTransitionJson(route('tasks.approve', $f['task']), ['approval_comment' => '  Approved cleanly.  '])
             ->assertOk()
             ->assertHeader(EnsureTaskCorrelationId::HEADER, $correlationId)
             ->assertJson(['success' => true, 'message' => 'Task approved and completed.']);
@@ -122,7 +122,7 @@ class TaskApprovalWorkflowTest extends TestCase
             'submission_note' => 'Revision submitted.',
         ]);
 
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.approve', $f['task']))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.approve', $f['task']))->assertOk();
 
         $task = $f['task']->fresh();
         $this->assertNull($task->active_revision_cycle_id);
@@ -138,29 +138,29 @@ class TaskApprovalWorkflowTest extends TestCase
         $f = $this->fixtures();
 
         $this->actingAs($f['other_project_manager'])
-            ->postJson(route('tasks.approve', $f['task']))
+            ->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertForbidden();
 
         $f['reviewer']->update(['active' => false]);
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.approve', $f['task']))
+            ->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertForbidden();
         $f['reviewer']->update(['active' => true]);
 
         $f['project']->forceFill(['project_manager_id' => $f['other_project_manager']->id])->save();
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.approve', $f['task']))
+            ->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('reviewer_id');
         $f['project']->forceFill(['project_manager_id' => $f['reviewer']->id])->save();
 
         TaskSubmission::query()->where('task_id', $f['task']->id)->delete();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.approve', $f['task']))
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('submission_id');
 
         $f['task']->forceFill(['assignee_id' => $f['reviewer']->id])->save();
-        $this->postJson(route('tasks.approve', $f['task']))
+        $this->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('approver_id');
 
@@ -174,11 +174,11 @@ class TaskApprovalWorkflowTest extends TestCase
     public function test_duplicate_approval_is_deterministic_and_side_effect_free(): void
     {
         $f = $this->fixtures();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.approve', $f['task']))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.approve', $f['task']))->assertOk();
         $counts = $this->approvalCounts();
         Notification::fake();
 
-        $this->postJson(route('tasks.approve', $f['task']))
+        $this->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('task');
 
@@ -195,7 +195,7 @@ class TaskApprovalWorkflowTest extends TestCase
             ->andThrow(new \RuntimeException('event recording failed'));
 
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.approve', $f['task']))
+            ->postTaskTransitionJson(route('tasks.approve', $f['task']))
             ->assertServerError();
 
         $task = $f['task']->fresh();
@@ -214,17 +214,17 @@ class TaskApprovalWorkflowTest extends TestCase
         $f = $this->fixtures();
 
         $this->actingAs($f['creator'])
-            ->postJson(route('tasks.approve.override', $f['task']), ['override_reason' => '   '])
+            ->postTaskTransitionJson(route('tasks.approve.override', $f['task']), ['override_reason' => '   '])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('override_reason');
 
         $this->actingAs($f['other_project_manager'])
-            ->postJson(route('tasks.approve.override', $f['task']), ['override_reason' => 'Urgent release'])
+            ->postTaskTransitionJson(route('tasks.approve.override', $f['task']), ['override_reason' => 'Urgent release'])
             ->assertForbidden();
 
         $reason = 'Emergency customer recovery — internal only.';
         $this->actingAs($f['creator'])
-            ->postJson(route('tasks.approve.override', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.approve.override', $f['task']), [
                 'override_reason' => "  {$reason}  ",
                 'approval_comment' => 'Approved by management.',
             ])
@@ -253,7 +253,7 @@ class TaskApprovalWorkflowTest extends TestCase
         $f['task']->forceFill(['assignee_id' => $f['creator']->id])->save();
 
         $this->actingAs($f['creator'])
-            ->postJson(route('tasks.approve.override', $f['task']), ['override_reason' => 'Emergency'])
+            ->postTaskTransitionJson(route('tasks.approve.override', $f['task']), ['override_reason' => 'Emergency'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('approver_id');
 

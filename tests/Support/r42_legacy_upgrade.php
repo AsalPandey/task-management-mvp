@@ -5,6 +5,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ReopenApprovedTask;
+use App\ValueObjects\TaskOperationContext;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -51,7 +52,7 @@ if (! $completed->legacy_completion_provenance || $completed->approval()->exists
 }
 $command = app()->make(ReopenApprovedTask::class, ['reopenReason' => 'Historical follow-up', 'revisionDueDate' => today()->addDays(3)->toDateString(), 'reviewerId' => $manager]);
 try {
-    app(TaskTransitionExecutor::class)->execute($completed, User::findOrFail($manager), $command);
+    app(TaskTransitionExecutor::class)->execute($completed, User::findOrFail($manager), $command, TaskOperationContext::test(expectedVersion: $completed->lock_version));
     throw new RuntimeException('Legacy completion incorrectly reopened without approval.');
 } catch (TaskTransitionException $exception) {
     if (! str_contains($exception->getMessage(), 'historical completion')) {

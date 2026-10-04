@@ -55,10 +55,12 @@ class ProjectsController extends Controller
         $this->authorize('create', Project::class);
 
         $data = $this->validatedProjectData($request);
-        if (auth()->user()->hasRole('project_manager') && ! auth()->user()->hasRole('manager')) {
-            $data['project_manager_id'] = auth()->id();
-        }
         $project = DB::transaction(function () use ($data) {
+            $actor = app(ProjectWriterLocks::class)->actor(auth()->user());
+            Gate::forUser($actor)->authorize('create', Project::class);
+            if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
+                $data['project_manager_id'] = $actor->id;
+            }
             $project = Project::query()->create($data);
 
             if ($project->project_manager_id) {

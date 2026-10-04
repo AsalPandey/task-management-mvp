@@ -126,7 +126,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         $afterCompletion = $this->lifecycleCounts();
 
         $this->actingAs($manager)
-            ->postJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
+            ->postTaskTransitionJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
             ->assertUnprocessable();
         $this->assertSame($afterCompletion, $this->lifecycleCounts());
 
@@ -180,7 +180,7 @@ class CanonicalTaskLifecycleTest extends TestCase
         $afterCompletion = $this->lifecycleCounts();
 
         $this->actingAs($coworker)
-            ->postJson(route('tasks.reopen', $completed))
+            ->postTaskTransitionJson(route('tasks.reopen', $completed))
             ->assertForbidden();
 
         $this->assertSame($afterCompletion, $this->lifecycleCounts());

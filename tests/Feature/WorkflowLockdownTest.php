@@ -106,7 +106,7 @@ class WorkflowLockdownTest extends TestCase
         $uid = $task->task_uid;
 
         $this->actingAs($f['project_manager'])
-            ->postJson(route('tasks.reviewer.reassign', $task), [
+            ->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), [
                 'reviewer_id' => $newReviewer->id,
             ])
             ->assertOk();
@@ -133,11 +133,11 @@ class WorkflowLockdownTest extends TestCase
             'submitted_at' => now(),
         ])->save();
 
-        $this->postJson(route('tasks.reviewer.reassign', $task), [
+        $this->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), [
             'reviewer_id' => $f['reviewer']->id,
         ])->assertUnprocessable()->assertJsonValidationErrors('reason');
 
-        $this->postJson(route('tasks.reviewer.reassign', $task), [
+        $this->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), [
             'reviewer_id' => $f['reviewer']->id,
             'reason' => 'Primary reviewer has returned.',
         ])->assertOk();
@@ -166,13 +166,13 @@ class WorkflowLockdownTest extends TestCase
         $originalState = $task->machineState();
 
         $this->actingAs($f['project_manager'])
-            ->postJson(route('tasks.deadline.change', [$task, 'execution']), [
+            ->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'execution']), [
                 'due_date' => now()->addDays(6)->toDateString(),
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('reason');
 
-        $this->postJson(route('tasks.deadline.change', [$task, 'execution']), [
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'execution']), [
             'due_date' => now()->addDays(6)->toDateString(),
             'reason' => 'External dependency moved.',
         ])->assertOk();
@@ -183,7 +183,7 @@ class WorkflowLockdownTest extends TestCase
         $this->assertSame($task->execution_due_date->toDateString(), $task->due_date->toDateString());
 
         $task->forceFill(['status' => TaskState::Submitted])->save();
-        $this->postJson(route('tasks.deadline.change', [$task, 'review']), [
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'review']), [
             'due_date' => now()->addDays(7)->toDateString(),
             'reason' => 'Review capacity changed.',
         ])->assertOk();
@@ -201,7 +201,7 @@ class WorkflowLockdownTest extends TestCase
             'active_revision_cycle_id' => $cycle->id,
             'revision_due_date' => $cycle->revision_due_date,
         ])->save();
-        $this->postJson(route('tasks.deadline.change', [$task, 'revision']), [
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'revision']), [
             'due_date' => now()->addDays(8)->toDateString(),
             'reason' => 'Revision scope expanded.',
         ])->assertOk();

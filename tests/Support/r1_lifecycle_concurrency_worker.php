@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\AccountLifecycleService;
 use App\Services\ProjectManagerReplacementService;
+use App\Services\ProjectWriterLocks;
 use App\Services\TaskLifecycleService;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -26,9 +27,10 @@ $readyFile = ! empty($argv[6]) ? $argv[6] : null;
 $payloadJson = $argv[7] ?? '{}';
 $payload = json_decode($payloadJson, true) ?: [];
 
+// Production resolves the authenticated actor before entering the account writer transaction.
+$actor = User::query()->findOrFail($actorId);
 try {
-    $result = DB::transaction(function () use ($operation, $targetId, $actorId, $holdMilliseconds, $readyFile, $payload) {
-        $actor = User::query()->findOrFail($actorId);
+    $result = DB::transaction(function () use ($operation, $targetId, $actorId, $actor, $holdMilliseconds, $readyFile, $payload) {
 
         switch ($operation) {
             case 'delete_user':
@@ -93,7 +95,7 @@ try {
                 $reviewerId = (int) ($payload['reviewer_id'] ?? $actorId);
 
                 if ($holdMilliseconds > 0) {
-                    User::query()->whereKey($assigneeId)->lockForUpdate()->firstOrFail();
+                    app(ProjectWriterLocks::class)->actor($actor, [$assigneeId]);
                     if ($readyFile) {
                         file_put_contents($readyFile, 'locked');
                     }
@@ -114,6 +116,7 @@ try {
                 $projectId = $targetId;
                 $newPmId = (int) ($payload['new_pm_id'] ?? 0);
 
+                $actor = app(ProjectWriterLocks::class)->actor($actor);
                 $lockedProject = Project::query()->whereKey($projectId)->lockForUpdate()->firstOrFail();
                 if ($holdMilliseconds > 0) {
                     if ($readyFile) {

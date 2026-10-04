@@ -2,8 +2,10 @@
 
 use App\Exceptions\DuplicateTaskOperationException;
 use App\Exceptions\StaleTaskEditException;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ProjectWriterLocks;
 use App\Services\TaskLifecycleService;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ApproveTask;
@@ -38,6 +40,11 @@ if ($startFile) {
 try {
     $details = DB::transaction(function () use ($operation, $payload, $holdMilliseconds, $readyFile) {
         $actor = User::query()->findOrFail((int) $payload['actor_id']);
+        $routing = Task::findOrFail((int) $payload['task_id']);
+        if ($readyFile) {
+            app(ProjectWriterLocks::class)->actor($actor);
+            Project::whereKey($routing->project_id)->lockForUpdate()->firstOrFail();
+        }
         $taskQuery = Task::query();
 
         if ($readyFile) {
@@ -57,7 +64,7 @@ try {
             $context = TaskOperationContext::test(
                 $actor->id,
                 $payload['correlation_id'] ?? null,
-                expectedVersion: isset($payload['expected_version']) ? (int) $payload['expected_version'] : null,
+                expectedVersion: isset($payload['expected_version']) ? (int) $payload['expected_version'] : $task->lock_version,
             );
 
             $updated = app(TaskLifecycleService::class)->update(
@@ -80,7 +87,7 @@ try {
             $context = TaskOperationContext::test(
                 $actor->id,
                 $payload['correlation_id'] ?? null,
-                expectedVersion: isset($payload['expected_version']) ? (int) $payload['expected_version'] : null,
+                expectedVersion: isset($payload['expected_version']) ? (int) $payload['expected_version'] : $task->lock_version,
             );
 
             $command = match ($operation) {

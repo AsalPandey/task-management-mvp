@@ -40,7 +40,7 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
         $approvalId = TaskApproval::query()->where('task_id', $taskId)->sole()->id;
         Notification::fake();
 
-        $response = $this->actingAs($f['manager'])->postJson(route('tasks.reopen', $completed), [
+        $response = $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => '  The approved result needs a corrected final section.  ',
             'revision_due_date' => now()->addDays(4)->toDateString(),
         ])->assertOk();
@@ -87,9 +87,9 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
             'revision_due_date' => now()->addDays(2)->toDateString(),
         ];
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.reopen', $completed), $payload)->assertForbidden();
-        $this->actingAs($unrelated)->postJson(route('tasks.reopen', $completed), $payload)->assertForbidden();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.reopen', $completed), $payload)->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)->assertForbidden();
+        $this->actingAs($unrelated)->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)->assertForbidden();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)->assertOk();
     }
 
     public function test_reopen_requires_reason_future_deadline_and_valid_current_participants(): void
@@ -97,17 +97,17 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
         $f = $this->fixtures();
         $completed = $this->approveTask($f['task'], $f['manager']);
 
-        $this->actingAs($f['manager'])->postJson(route('tasks.reopen', $completed), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => '   ',
             'revision_due_date' => now()->addDay()->toDateString(),
         ])->assertUnprocessable()->assertJsonValidationErrors('reopen_reason');
-        $this->postJson(route('tasks.reopen', $completed), [
+        $this->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => 'Valid reason',
             'revision_due_date' => today()->toDateString(),
         ])->assertUnprocessable()->assertJsonValidationErrors('revision_due_date');
 
         $f['assignee']->update(['active' => false]);
-        $this->postJson(route('tasks.reopen', $completed), [
+        $this->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => 'Valid reason',
             'revision_due_date' => now()->addDays(2)->toDateString(),
         ])->assertUnprocessable()->assertJsonValidationErrors('assignee_id');
@@ -123,11 +123,11 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
             'reopen_reason' => 'Further revision required.',
             'revision_due_date' => now()->addDays(2)->toDateString(),
         ];
-        $this->actingAs($f['manager'])->postJson(route('tasks.reopen', $completed), $payload)->assertOk();
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)->assertOk();
         $counts = $this->counts();
         Notification::fake();
 
-        $this->postJson(route('tasks.reopen', $completed), $payload)->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)->assertUnprocessable();
 
         $this->assertSame($counts, $this->counts());
         Notification::assertNothingSent();
@@ -141,7 +141,7 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
             $id = $task->id;
             $uid = $task->task_uid;
 
-            $this->actingAs($f[$actorKey])->postJson(route('tasks.cancel', $task), [
+            $this->actingAs($f[$actorKey])->postTaskTransitionJson(route('tasks.cancel', $task), [
                 'cancellation_reason' => '  Work is no longer required.  ',
             ])->assertOk();
 
@@ -164,14 +164,14 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
         $f = $this->fixtures();
         $payload = ['cancellation_reason' => 'No longer required.'];
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.cancel', $f['task']), $payload)->assertForbidden();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.cancel', $f['task']), $payload)->assertForbidden();
         $completed = $this->approveTask($f['task'], $f['manager']);
-        $this->actingAs($f['manager'])->postJson(route('tasks.cancel', $completed), $payload)->assertUnprocessable();
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.cancel', $completed), $payload)->assertUnprocessable();
 
         $active = $this->task($f);
-        $this->postJson(route('tasks.cancel', $active), $payload)->assertOk();
+        $this->postTaskTransitionJson(route('tasks.cancel', $active), $payload)->assertOk();
         $counts = $this->counts();
-        $this->postJson(route('tasks.cancel', $active), $payload)->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.cancel', $active), $payload)->assertUnprocessable();
         $this->assertSame($counts, $this->counts());
     }
 
@@ -199,7 +199,7 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
             'revision_due_date' => now()->addDays(2),
         ])->save();
 
-        $this->actingAs($f['manager'])->postJson(route('tasks.cancel', $task), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.cancel', $task), [
             'cancellation_reason' => 'Project direction changed.',
         ])->assertOk();
 
@@ -258,11 +258,11 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
     {
         $f = $this->fixtures();
         $cancelled = $f['task'];
-        $this->actingAs($f['manager'])->postJson(route('tasks.cancel', $cancelled), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.cancel', $cancelled), [
             'cancellation_reason' => 'Cancelled for reporting test.',
         ])->assertOk();
         $completed = $this->approveTask($this->task($f), $f['manager']);
-        $this->postJson(route('tasks.reopen', $completed), [
+        $this->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => 'Revision queue correction.',
             'revision_due_date' => now()->addDays(2)->toDateString(),
         ])->assertOk();
@@ -297,7 +297,7 @@ class TaskReopenAndCancellationWorkflowTest extends TestCase
             ->assertDontSee('class="btn-small btn-primary reopen-revision-btn"', false);
 
         $active = $this->task($f);
-        $this->actingAs($f['manager'])->postJson(route('tasks.cancel', $active), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.cancel', $active), [
             'cancellation_reason' => 'UI cancellation state.',
         ])->assertOk();
         $this->get(route('tasks'))

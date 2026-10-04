@@ -79,52 +79,52 @@ class CoreWorkflowIntegrityTest extends TestCase
     {
         [$manager, $pm, $member, $task] = $this->task();
         $this->actingAs($manager)->get('/tasks')->assertSee('Change Execution Deadline');
-        $this->actingAs($member)->postJson(route('tasks.start', $task))->assertOk();
-        $this->postJson(route('tasks.submit', $task))->assertOk();
-        $this->actingAs($pm)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($member)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $task))->assertOk();
+        $this->actingAs($pm)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         $this->get('/tasks')->assertSee('Change Review Deadline');
-        $this->postJson(route('tasks.revision.request', $task), [
+        $this->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => 'Please revise.', 'revision_due_date' => today()->addDays(5)->toDateString(),
         ])->assertOk();
         $this->get('/tasks')->assertSee('Change Revision Deadline');
-        $this->actingAs($member)->postJson(route('tasks.revision.start', $task))->assertOk();
-        $this->postJson(route('tasks.resubmit', $task))->assertOk();
-        $this->actingAs($pm)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($member)->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertOk();
+        $this->actingAs($pm)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         $this->assertNotNull($task->fresh()->active_revision_cycle_id);
         $this->get('/tasks')->assertSee('Change Review Deadline')->assertDontSee('Change Revision Deadline');
         $due = today()->addDays(8)->toDateString();
-        $this->postJson(route('tasks.deadline.change', [$task, 'review']), ['due_date' => $due, 'reason' => 'Review needs time'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'review']), ['due_date' => $due, 'reason' => 'Review needs time'])->assertOk();
         $this->assertSame($due, $task->fresh()->review_due_date->toDateString());
         $this->assertSame('review', $task->fresh()->activeDeadlineGeneration()->kind);
-        $this->postJson(route('tasks.deadline.change', [$task, 'revision']), ['due_date' => $due, 'reason' => 'Invalid stage'])->assertStatus(422);
-        $this->actingAs($member)->postJson(route('tasks.deadline.change', [$task, 'review']), ['due_date' => $due, 'reason' => 'Unauthorized'])->assertForbidden();
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'revision']), ['due_date' => $due, 'reason' => 'Invalid stage'])->assertStatus(422);
+        $this->actingAs($member)->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'review']), ['due_date' => $due, 'reason' => 'Unauthorized'])->assertForbidden();
         $this->assertDatabaseHas('task_events', ['task_id' => $task->id, 'event_type' => 'task.deadline_changed']);
     }
 
     public function test_supported_account_lifecycle_preserves_reviewer_and_override_remains_available(): void
     {
         [$manager, $pm, $member, $task] = $this->task();
-        $this->actingAs($member)->postJson(route('tasks.start', $task))->assertOk();
-        $this->postJson(route('tasks.submit', $task))->assertOk();
-        $this->actingAs($pm)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($member)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $task))->assertOk();
+        $this->actingAs($pm)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         $this->actingAs($manager)->postJson('/team-management/'.$pm->id.'/deactivate')->assertStatus(409);
         $this->putJson('/team-management/'.$pm->id, ['name' => $pm->name, 'email' => $pm->email, 'role_id' => Role::where('name', 'team_member')->value('id')])->assertStatus(409);
         $this->deleteJson('/team-management/'.$pm->id)->assertStatus(409);
         $this->assertTrue($pm->fresh()->isActive());
-        $this->postJson(route('tasks.approve.override', $task), ['override_reason' => 'Manager reconciliation'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve.override', $task), ['override_reason' => 'Manager reconciliation'])->assertOk();
     }
 
     public function test_historical_invalid_reviewer_can_be_replaced_without_weakening_approval(): void
     {
         [$manager, $pm, $member, $task] = $this->task();
-        $this->actingAs($member)->postJson(route('tasks.start', $task))->assertOk();
-        $this->postJson(route('tasks.submit', $task))->assertOk();
-        $this->actingAs($pm)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($member)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $task))->assertOk();
+        $this->actingAs($pm)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         // Model an imported/historical inconsistency, explicitly NOT a supported lifecycle mutation.
         $pm->forceFill(['active' => false])->save();
-        $this->actingAs($manager)->postJson(route('tasks.approve.override', $task), ['override_reason' => 'Historical data'])->assertUnprocessable();
-        $this->postJson(route('tasks.reviewer.reassign', $task), ['reviewer_id' => $manager->id, 'reason' => 'Replace historical invalid reviewer'])->assertOk();
-        $this->postJson(route('tasks.approve.override', $task), ['override_reason' => 'Recovered with an eligible reviewer'])->assertOk();
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.approve.override', $task), ['override_reason' => 'Historical data'])->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), ['reviewer_id' => $manager->id, 'reason' => 'Replace historical invalid reviewer'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve.override', $task), ['override_reason' => 'Recovered with an eligible reviewer'])->assertOk();
         $this->assertDatabaseHas('task_approvals', ['task_id' => $task->id, 'approved_by' => $manager->id, 'is_override' => true]);
     }
 

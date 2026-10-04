@@ -198,10 +198,10 @@ class TaskOptimisticConcurrencyTest extends TestCase
         $this->assertSame(1, $form['lock_version']);
 
         // Assignee starts and submits the task
-        $this->actingAs($assignee)->postJson(route('tasks.start', $task))->assertOk();
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
         $this->assertSame(2, $task->fresh()->lock_version);
 
-        $this->actingAs($assignee)->postJson(route('tasks.submit', $task), [
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.submit', $task), [
             'submission_note' => 'Work ready for review.',
         ])->assertOk();
         $this->assertSame(3, $task->fresh()->lock_version);
@@ -222,18 +222,18 @@ class TaskOptimisticConcurrencyTest extends TestCase
     public function test_workflow_revision_request_advances_version_and_invalidates_stale_edit_form(): void
     {
         [$manager, $reviewer, $assignee, $task] = $this->fixtures();
-        $this->actingAs($assignee)->postJson(route('tasks.start', $task))->assertOk();
-        $this->actingAs($assignee)->postJson(route('tasks.submit', $task), ['submission_note' => 'Review me'])->assertOk();
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.submit', $task), ['submission_note' => 'Review me'])->assertOk();
 
         // Reviewer opens review / edit
         $currentVersion = $task->fresh()->lock_version;
 
         // Reviewer starts review
-        $this->actingAs($reviewer)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($reviewer)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         $this->assertSame($currentVersion + 1, $task->fresh()->lock_version);
 
         // Reviewer requests revision
-        $this->actingAs($reviewer)->postJson(route('tasks.revision.request', $task), [
+        $this->actingAs($reviewer)->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => 'Need rework on section 2.',
             'revision_due_date' => now()->addDays(2)->toDateString(),
         ])->assertOk();
@@ -253,7 +253,7 @@ class TaskOptimisticConcurrencyTest extends TestCase
         [$manager, , , $task] = $this->fixtures();
         $oldVersion = $task->lock_version;
 
-        $this->actingAs($manager)->postJson(route('tasks.cancel', $task), [
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.cancel', $task), [
             'cancellation_reason' => 'Project priority pivoted.',
         ])->assertOk();
 
@@ -276,14 +276,14 @@ class TaskOptimisticConcurrencyTest extends TestCase
     public function test_workflow_approval_advances_version_and_invalidates_stale_edit_form(): void
     {
         [$manager, $reviewer, $assignee, $task] = $this->fixtures();
-        $this->actingAs($assignee)->postJson(route('tasks.start', $task))->assertOk();
-        $this->actingAs($assignee)->postJson(route('tasks.submit', $task), ['submission_note' => 'Ready for approval'])->assertOk();
-        $this->actingAs($reviewer)->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.submit', $task), ['submission_note' => 'Ready for approval'])->assertOk();
+        $this->actingAs($reviewer)->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
 
         $staleVersion = $task->fresh()->lock_version;
 
         // Reviewer approves task
-        $this->actingAs($reviewer)->postJson(route('tasks.approve', $task), [
+        $this->actingAs($reviewer)->postTaskTransitionJson(route('tasks.approve', $task), [
             'approval_comment' => 'Looks great!',
         ])->assertOk();
 
@@ -309,7 +309,7 @@ class TaskOptimisticConcurrencyTest extends TestCase
         $newReviewer = User::factory()->create(['role_id' => Role::query()->where('name', 'manager')->value('id')]);
         $oldVersion = $task->lock_version;
 
-        $this->actingAs($manager)->postJson(route('tasks.reviewer.reassign', $task), [
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), [
             'reviewer_id' => $newReviewer->id,
             'reason' => 'Load balancing across reviewers.',
         ])->assertOk();
@@ -329,7 +329,7 @@ class TaskOptimisticConcurrencyTest extends TestCase
         [$manager, , , $task] = $this->fixtures();
         $oldVersion = $task->lock_version;
 
-        $this->actingAs($manager)->postJson(route('tasks.deadline.change', [
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.deadline.change', [
             'task' => $task,
             'deadlineType' => 'execution',
         ]), [

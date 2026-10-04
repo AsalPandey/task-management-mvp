@@ -36,7 +36,7 @@ class TaskRevisionWorkflowTest extends TestCase
         $dueDate = now()->addDays(4)->toDateString();
 
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.revision.request', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
                 'formal_feedback' => '  Correct the totals and cite the source.  ',
                 'revision_due_date' => $dueDate,
             ])
@@ -66,7 +66,7 @@ class TaskRevisionWorkflowTest extends TestCase
         Notification::assertSentTo($f['creator'], TaskReviewWorkflowNotification::class);
 
         Notification::fake();
-        $this->postJson(route('tasks.revision.request', $task), [
+        $this->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => 'Duplicate',
             'revision_due_date' => $dueDate,
         ])->assertStatus(422);
@@ -81,7 +81,7 @@ class TaskRevisionWorkflowTest extends TestCase
         $f = $this->fixtures();
 
         $this->actingAs($f['other_reviewer'])
-            ->postJson(route('tasks.revision.request', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
                 'formal_feedback' => 'Feedback',
                 'revision_due_date' => now()->addDay()->toDateString(),
             ])->assertForbidden();
@@ -92,13 +92,13 @@ class TaskRevisionWorkflowTest extends TestCase
             ['formal_feedback' => 'Feedback', 'revision_due_date' => now()->subDay()->toDateString()],
         ] as $payload) {
             $this->actingAs($f['reviewer'])
-                ->postJson(route('tasks.revision.request', $f['task']), $payload)
+                ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), $payload)
                 ->assertStatus(422);
         }
 
         $f['task']->forceFill(['reviewer_id' => $f['assignee']->id])->save();
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.revision.request', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
                 'formal_feedback' => 'Feedback',
                 'revision_due_date' => now()->addDay()->toDateString(),
             ])->assertForbidden();
@@ -115,7 +115,7 @@ class TaskRevisionWorkflowTest extends TestCase
             ->andThrow(new RuntimeException('event failed'));
 
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.revision.request', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
                 'formal_feedback' => 'Feedback',
                 'revision_due_date' => now()->addDays(2)->toDateString(),
             ])->assertServerError();
@@ -133,7 +133,7 @@ class TaskRevisionWorkflowTest extends TestCase
         try {
             DB::transaction(function () use ($f): void {
                 $this->actingAs($f['reviewer'])
-                    ->postJson(route('tasks.revision.request', $f['task']), [
+                    ->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
                         'formal_feedback' => 'Feedback inside outer transaction.',
                         'revision_due_date' => now()->addDays(2)->toDateString(),
                     ])
@@ -160,11 +160,11 @@ class TaskRevisionWorkflowTest extends TestCase
         $dueDate = $cycle->revision_due_date->toDateString();
 
         $this->actingAs($f['other_member'])
-            ->postJson(route('tasks.revision.start', $f['task']))
+            ->postTaskTransitionJson(route('tasks.revision.start', $f['task']))
             ->assertForbidden();
 
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.revision.start', $f['task']))
+            ->postTaskTransitionJson(route('tasks.revision.start', $f['task']))
             ->assertOk();
 
         $this->assertSame(TaskState::InProgress, $f['task']->fresh()->machineState());
@@ -173,7 +173,7 @@ class TaskRevisionWorkflowTest extends TestCase
         $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::REVISION_STARTED)->count());
         $this->assertSame(1, TaskHistory::query()->where('action', 'revision_started')->count());
 
-        $this->postJson(route('tasks.revision.start', $f['task']))->assertStatus(422);
+        $this->postTaskTransitionJson(route('tasks.revision.start', $f['task']))->assertStatus(422);
         $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::REVISION_STARTED)->count());
     }
 
@@ -183,9 +183,9 @@ class TaskRevisionWorkflowTest extends TestCase
         $taskId = $f['task']->id;
         $taskUid = $f['task']->task_uid;
         $cycle = $this->requestRevision($f);
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $f['task']))->assertOk();
 
-        $this->postJson(route('tasks.resubmit', $f['task']), ['submission_note' => '  Updated totals.  '])
+        $this->postTaskTransitionJson(route('tasks.resubmit', $f['task']), ['submission_note' => '  Updated totals.  '])
             ->assertOk()
             ->assertJson(['message' => 'Task resubmitted for review.']);
 
@@ -205,7 +205,7 @@ class TaskRevisionWorkflowTest extends TestCase
         Notification::assertSentTo($f['reviewer'], TaskReviewWorkflowNotification::class);
 
         Notification::fake();
-        $this->postJson(route('tasks.resubmit', $task))->assertStatus(422);
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertStatus(422);
         $this->assertSame(1, TaskSubmission::query()->where('revision_cycle_id', $cycle->id)->count());
         Notification::assertNothingSent();
     }
@@ -216,12 +216,12 @@ class TaskRevisionWorkflowTest extends TestCase
         $this->requestRevision($f);
         $f['task']->forceFill(['status' => TaskState::InProgress])->save();
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.resubmit', $f['task']))->assertStatus(422);
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.resubmit', $f['task']))->assertStatus(422);
 
         $cycle = TaskRevisionCycle::query()->where('task_id', $f['task']->id)->sole();
         $cycle->forceFill(['started_at' => now()])->save();
         $f['reviewer']->update(['active' => false]);
-        $this->postJson(route('tasks.resubmit', $f['task']))->assertStatus(422);
+        $this->postTaskTransitionJson(route('tasks.resubmit', $f['task']))->assertStatus(422);
         $this->assertDatabaseCount('task_submissions', 0);
     }
 
@@ -229,11 +229,11 @@ class TaskRevisionWorkflowTest extends TestCase
     {
         $f = $this->fixtures();
         $firstCycle = $this->requestRevision($f);
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $f['task']))->assertOk();
-        $this->postJson(route('tasks.resubmit', $f['task']))->assertOk();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $f['task']))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $f['task']))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $f['task']))->assertOk();
 
-        $this->postJson(route('tasks.revision.request', $f['task']), [
+        $this->postTaskTransitionJson(route('tasks.revision.request', $f['task']), [
             'formal_feedback' => 'Second revision round.',
             'revision_due_date' => now()->addDays(4)->toDateString(),
         ])->assertOk();
@@ -272,8 +272,8 @@ class TaskRevisionWorkflowTest extends TestCase
                 ->assertStatus(422);
         }
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $f['task']))->assertOk();
-        $this->postJson(route('tasks.submit', $f['task']))->assertStatus(422);
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $f['task']))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertStatus(422);
     }
 
     public function test_revision_ui_controls_are_state_and_role_scoped_and_payload_is_safe(): void
@@ -302,7 +302,7 @@ class TaskRevisionWorkflowTest extends TestCase
 
     private function requestRevision(array $fixtures): TaskRevisionCycle
     {
-        $this->actingAs($fixtures['reviewer'])->postJson(route('tasks.revision.request', $fixtures['task']), [
+        $this->actingAs($fixtures['reviewer'])->postTaskTransitionJson(route('tasks.revision.request', $fixtures['task']), [
             'formal_feedback' => 'Revise the calculations.',
             'revision_due_date' => now()->addDays(3)->toDateString(),
         ])->assertOk();

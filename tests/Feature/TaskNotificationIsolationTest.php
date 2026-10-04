@@ -75,7 +75,7 @@ class TaskNotificationIsolationTest extends TestCase
             ->once()
             ->andThrow(new RuntimeException('Injected notification transport failure.'));
 
-        $response = $this->actingAs($this->projectManager)->postJson(route('tasks.approve', $task), [
+        $response = $this->actingAs($this->projectManager)->postTaskTransitionJson(route('tasks.approve', $task), [
             'approval_comment' => 'Looks good to me.',
         ]);
 
@@ -167,7 +167,7 @@ class TaskNotificationIsolationTest extends TestCase
         ]);
         $task->forceFill(['reviewer_id' => $this->projectManager->id])->save();
 
-        $response = $this->actingAs($this->projectManager)->postJson(route('tasks.approve', $task), [
+        $response = $this->actingAs($this->projectManager)->postTaskTransitionJson(route('tasks.approve', $task), [
             'approval_comment' => 'Cannot approve yet.',
         ]);
 

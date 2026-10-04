@@ -1,7 +1,10 @@
 <?php
 
+use App\Exceptions\StaleTaskEditException;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ProjectWriterLocks;
 use App\Services\TaskTransitionExecutor;
 use App\TaskTransitions\ApproveTask;
 use App\TaskTransitions\CancelTask;
@@ -32,10 +35,14 @@ $worker = (string) ($argv[4] ?? 'worker');
 $holdMilliseconds = (int) ($argv[5] ?? 0);
 $readyFile = $argv[6] ?? null;
 $expectedState = $argv[7] ?? null;
+$intentVersion = isset($argv[8]) ? (int) $argv[8] : null;
 
 try {
-    $task = DB::transaction(function () use ($operation, $taskId, $actorId, $worker, $holdMilliseconds, $readyFile, $expectedState) {
+    $task = DB::transaction(function () use ($operation, $taskId, $actorId, $worker, $holdMilliseconds, $readyFile, $expectedState, $intentVersion) {
         if ($holdMilliseconds > 0) {
+            $routing = Task::withTrashed()->findOrFail($taskId);
+            app(ProjectWriterLocks::class)->actor(User::findOrFail($actorId));
+            Project::whereKey($routing->project_id)->lockForUpdate()->firstOrFail();
             Task::withTrashed()->whereKey($taskId)->lockForUpdate()->firstOrFail();
 
             if ($readyFile) {
@@ -51,6 +58,7 @@ try {
         $context = TaskOperationContext::test(
             $actor->id,
             "{$operation}-concurrency-{$worker}",
+            expectedVersion: $intentVersion ?? $task->lock_version,
         );
 
         return match ($operation) {
@@ -121,6 +129,8 @@ try {
         'task_uid' => $task->task_uid,
         'status' => $task->status,
     ];
+} catch (StaleTaskEditException $exception) {
+    $result = ['result' => 'conflict', 'status_code' => 409, 'database' => DB::getDatabaseName(), 'message' => $exception->getMessage()];
 } catch (ValidationException $exception) {
     $result = [
         'result' => 'conflict',

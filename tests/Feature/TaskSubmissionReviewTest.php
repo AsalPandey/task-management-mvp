@@ -34,7 +34,7 @@ class TaskSubmissionReviewTest extends TestCase
         $uid = $f['task']->task_uid;
 
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.submit', $f['task']), ['submission_note' => '  Ready for review.  '])
+            ->postTaskTransitionJson(route('tasks.submit', $f['task']), ['submission_note' => '  Ready for review.  '])
             ->assertOk()
             ->assertJson(['success' => true, 'message' => 'Task submitted for review.']);
 
@@ -59,7 +59,7 @@ class TaskSubmissionReviewTest extends TestCase
         Notification::assertSentTo($f['reviewer'], TaskReviewWorkflowNotification::class);
         Notification::assertSentTo($f['creator'], TaskReviewWorkflowNotification::class);
 
-        $this->postJson(route('tasks.submit', $task), ['submission_note' => 'duplicate'])
+        $this->postTaskTransitionJson(route('tasks.submit', $task), ['submission_note' => 'duplicate'])
             ->assertStatus(422);
         $this->assertDatabaseCount('task_submissions', 1);
         $this->assertDatabaseCount('task_events', 1);
@@ -70,7 +70,7 @@ class TaskSubmissionReviewTest extends TestCase
     {
         $f = $this->fixtures();
 
-        $this->actingAs($f['other_member'])->postJson(route('tasks.submit', $f['task']))->assertForbidden();
+        $this->actingAs($f['other_member'])->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertForbidden();
 
         foreach ([
             null,
@@ -79,7 +79,7 @@ class TaskSubmissionReviewTest extends TestCase
         ] as $reviewerId) {
             $f['task']->forceFill(['reviewer_id' => $reviewerId])->save();
             $this->actingAs($f['assignee'])
-                ->postJson(route('tasks.submit', $f['task']))
+                ->postTaskTransitionJson(route('tasks.submit', $f['task']))
                 ->assertStatus(422)
                 ->assertJsonValidationErrors('reviewer_id');
         }
@@ -87,7 +87,7 @@ class TaskSubmissionReviewTest extends TestCase
         $f['task']->forceFill(['reviewer_id' => $f['reviewer']->id])->save();
         $f['project']->members()->detach($f['assignee']->id);
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.submit', $f['task']))
+            ->postTaskTransitionJson(route('tasks.submit', $f['task']))
             ->assertForbidden();
 
         $this->assertDatabaseCount('task_submissions', 0);
@@ -101,7 +101,7 @@ class TaskSubmissionReviewTest extends TestCase
         $explicit = now()->addDays(8)->toDateString();
         $f['task']->forceFill(['review_due_date' => $explicit])->save();
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.submit', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertOk();
 
         $this->assertSame($explicit, $f['task']->fresh()->review_due_date->toDateString());
         $this->assertSame(
@@ -119,7 +119,7 @@ class TaskSubmissionReviewTest extends TestCase
             ->andThrow(new \RuntimeException('event failed'));
 
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.submit', $f['task']))
+            ->postTaskTransitionJson(route('tasks.submit', $f['task']))
             ->assertServerError();
 
         $this->assertSame(TaskState::InProgress, $f['task']->fresh()->machineState());
@@ -132,15 +132,15 @@ class TaskSubmissionReviewTest extends TestCase
     public function test_assigned_reviewer_starts_review_once_and_preserves_deadline(): void
     {
         $f = $this->fixtures();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.submit', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertOk();
         $deadline = $f['task']->fresh()->review_due_date->toDateString();
 
         $this->actingAs($f['other_project_manager'])
-            ->postJson(route('tasks.review.start', $f['task']))
+            ->postTaskTransitionJson(route('tasks.review.start', $f['task']))
             ->assertForbidden();
 
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.review.start', $f['task']))
+            ->postTaskTransitionJson(route('tasks.review.start', $f['task']))
             ->assertOk()
             ->assertJson(['message' => 'Task review started.']);
 
@@ -152,7 +152,7 @@ class TaskSubmissionReviewTest extends TestCase
         $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::REVIEW_STARTED)->count());
         Notification::assertSentTo($f['assignee'], TaskReviewWorkflowNotification::class);
 
-        $this->postJson(route('tasks.review.start', $task))->assertStatus(422);
+        $this->postTaskTransitionJson(route('tasks.review.start', $task))->assertStatus(422);
         $this->assertSame(1, TaskHistory::query()->where('action', 'review_started')->count());
         $this->assertSame(1, TaskEvent::query()->where('event_type', TaskEventRecorder::REVIEW_STARTED)->count());
     }
@@ -160,11 +160,11 @@ class TaskSubmissionReviewTest extends TestCase
     public function test_inactive_reviewer_cannot_start_review(): void
     {
         $f = $this->fixtures();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.submit', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertOk();
         $f['reviewer']->update(['active' => false]);
 
         $this->actingAs($f['reviewer'])
-            ->postJson(route('tasks.review.start', $f['task']))
+            ->postTaskTransitionJson(route('tasks.review.start', $f['task']))
             ->assertForbidden();
 
         $this->assertSame(TaskState::Submitted, $f['task']->fresh()->machineState());
@@ -178,7 +178,7 @@ class TaskSubmissionReviewTest extends TestCase
             ->putJson(route('tasks.update', $f['task']), ['status' => TaskState::Submitted->value])
             ->assertStatus(422);
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.submit', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.submit', $f['task']))->assertOk();
 
         foreach ([
             ['assignee_id' => $f['other_member']->id],
@@ -197,20 +197,20 @@ class TaskSubmissionReviewTest extends TestCase
         $f = $this->fixtures(TaskState::NotStarted, ['reviewer_id' => null]);
 
         $this->actingAs($f['project_manager'])
-            ->postJson(route('tasks.reviewer.reassign', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.reviewer.reassign', $f['task']), [
                 'reviewer_id' => $f['project_manager']->id,
             ])
             ->assertOk();
         $this->assertSame($f['project_manager']->id, $f['task']->fresh()->reviewer_id);
 
-        $this->postJson(route('tasks.reviewer.reassign', $f['task']), [
+        $this->postTaskTransitionJson(route('tasks.reviewer.reassign', $f['task']), [
             'reviewer_id' => $f['other_project_manager']->id,
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('reviewer_id');
 
         $this->actingAs($f['assignee'])
-            ->postJson(route('tasks.reviewer.reassign', $f['task']), [
+            ->postTaskTransitionJson(route('tasks.reviewer.reassign', $f['task']), [
                 'reviewer_id' => $f['creator']->id,
             ])
             ->assertForbidden();
@@ -226,7 +226,7 @@ class TaskSubmissionReviewTest extends TestCase
         $this->actingAs($f['creator'])->get(route('tasks'))
             ->assertOk()->assertDontSee($submitUrl);
 
-        $this->actingAs($f['assignee'])->postJson($submitUrl)->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson($submitUrl)->assertOk();
         $reviewUrl = route('tasks.review.start', $f['task']);
         $this->actingAs($f['reviewer'])->get(route('tasks'))
             ->assertOk()->assertSee($reviewUrl);

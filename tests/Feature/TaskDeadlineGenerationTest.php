@@ -30,13 +30,13 @@ class TaskDeadlineGenerationTest extends TestCase
         $this->assertSame('execution', $f['task']->activeDeadlineGeneration()?->kind);
         $this->assertFalse($f['task']->deadlineReminderWasSentForActiveGeneration());
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.start', $f['task']))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.start', $f['task']))->assertOk();
         $this->assertSame($initial, $this->fingerprint($f['task']->fresh()));
 
-        $this->postJson(route('tasks.hold', $f['task']), ['reason' => 'Waiting'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.hold', $f['task']), ['reason' => 'Waiting'])->assertOk();
         $this->assertSame($initial, $this->fingerprint($f['task']->fresh()));
 
-        $this->postJson(route('tasks.resume', $f['task']))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resume', $f['task']))->assertOk();
         $this->assertSame($initial, $this->fingerprint($f['task']->fresh()));
     }
 
@@ -54,7 +54,7 @@ class TaskDeadlineGenerationTest extends TestCase
         $this->assertSame($consumed, $this->fingerprint($task->fresh()));
         $this->assertTrue($task->fresh()->deadlineReminderWasSentForActiveGeneration());
 
-        $this->postJson(route('tasks.deadline.change', [$task, 'execution']), [
+        $this->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'execution']), [
             'due_date' => now(config('app.timezone'))->addDays(8)->toDateString(),
         ])->assertOk();
         $this->assertNotSame($consumed, $this->fingerprint($task->fresh()));
@@ -77,7 +77,7 @@ class TaskDeadlineGenerationTest extends TestCase
         $execution = $this->fingerprint($task);
         $task->markDeadlineReminderSentForActiveGeneration();
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.submit', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.submit', $task))->assertOk();
         $submitted = $task->fresh();
         $review = $this->fingerprint($submitted);
         $this->assertSame('review', $submitted->activeDeadlineGeneration()?->kind);
@@ -85,11 +85,11 @@ class TaskDeadlineGenerationTest extends TestCase
         $this->assertFalse($submitted->deadlineReminderWasSentForActiveGeneration());
 
         $submitted->markDeadlineReminderSentForActiveGeneration();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
         $this->assertSame($review, $this->fingerprint($task->fresh()));
         $this->assertTrue($task->fresh()->deadlineReminderWasSentForActiveGeneration());
 
-        $this->postJson(route('tasks.revision.request', $task), [
+        $this->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => 'Revise the result.',
             'revision_due_date' => now(config('app.timezone'))->addDays(4)->toDateString(),
         ])->assertOk();
@@ -99,10 +99,10 @@ class TaskDeadlineGenerationTest extends TestCase
         $this->assertFalse($task->fresh()->deadlineReminderWasSentForActiveGeneration());
 
         $task->fresh()->markDeadlineReminderSentForActiveGeneration();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
         $this->assertSame($revision, $this->fingerprint($task->fresh()));
 
-        $this->postJson(route('tasks.resubmit', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertOk();
         $resubmitted = $task->fresh();
         $this->assertSame('review', $resubmitted->activeDeadlineGeneration()?->kind);
         $this->assertNotSame($revision, $this->fingerprint($resubmitted));
@@ -116,19 +116,19 @@ class TaskDeadlineGenerationTest extends TestCase
 
         $firstRevision = $this->requestRevision($task, $f['reviewer'], 4);
         $task->fresh()->markDeadlineReminderSentForActiveGeneration();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $task))->assertOk();
-        $this->postJson(route('tasks.resubmit', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertOk();
         $firstReview = $this->fingerprint($task->fresh());
         $task->fresh()->markDeadlineReminderSentForActiveGeneration();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
 
         $secondRevision = $this->requestRevision($task, $f['reviewer'], 5);
         $this->assertNotSame($firstRevision, $secondRevision);
         $this->assertNotSame($firstReview, $secondRevision);
         $this->assertFalse($task->fresh()->deadlineReminderWasSentForActiveGeneration());
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $task))->assertOk();
-        $this->postJson(route('tasks.resubmit', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertOk();
         $this->assertNotSame($firstReview, $this->fingerprint($task->fresh()));
         $this->assertFalse($task->fresh()->deadlineReminderWasSentForActiveGeneration());
     }
@@ -140,7 +140,7 @@ class TaskDeadlineGenerationTest extends TestCase
         $task->markDeadlineReminderSentForActiveGeneration();
         $before = $this->fingerprint($task->fresh());
 
-        $this->actingAs($f['manager'])->postJson(route('tasks.reviewer.reassign', $task), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reviewer.reassign', $task), [
             'reviewer_id' => $f['other_reviewer']->id,
             'reason' => 'Review coverage changed.',
         ])->assertOk();
@@ -202,7 +202,7 @@ class TaskDeadlineGenerationTest extends TestCase
         $this->assertSame('review', $task->fresh()->activeDeadlineGeneration()?->kind);
         $this->assertSame($reviewDate, $task->fresh()->activeDeadline()?->toDateString());
 
-        $this->actingAs($f['manager'])->postJson(route('tasks.deadline.change', [$task, 'revision']), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.deadline.change', [$task, 'revision']), [
             'due_date' => now(config('app.timezone'))->addDays(3)->toDateString(),
             'reason' => 'Must not replace review deadline.',
         ])->assertUnprocessable();
@@ -211,7 +211,7 @@ class TaskDeadlineGenerationTest extends TestCase
 
     private function requestRevision(Task $task, User $reviewer, int $days): string
     {
-        $this->actingAs($reviewer)->postJson(route('tasks.revision.request', $task), [
+        $this->actingAs($reviewer)->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => "Revision cycle {$days}.",
             'revision_due_date' => now(config('app.timezone'))->addDays($days)->toDateString(),
         ])->assertOk();

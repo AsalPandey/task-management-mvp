@@ -164,7 +164,7 @@ class TaskNotificationAfterCommitTest extends TestCase
         Notification::fake();
 
         $this->actingAs($manager)
-            ->postJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
+            ->postTaskTransitionJson(route('tasks.approve.override', $completed), ['override_reason' => 'Duplicate'])
             ->assertUnprocessable();
 
         Notification::assertNothingSent();

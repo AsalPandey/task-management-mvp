@@ -79,7 +79,7 @@ try {
 
         $task = Task::query()->findOrFail((int) $payload['task_id']);
         $executor = app(TaskTransitionExecutor::class);
-        $context = TaskOperationContext::test($actor->id, $payload['correlation_id']);
+        $context = TaskOperationContext::test($actor->id, $payload['correlation_id'], expectedVersion: $task->lock_version);
 
         if ($operation === 'review') {
             $result = $executor->execute($task, $actor, app(StartTaskReview::class), $context);

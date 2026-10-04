@@ -73,7 +73,7 @@ class CorrectnessNeighborsTest extends TestCase
         $this->actingAs($manager)->postJson('/tasks', $payload)->assertOk();
         $task = Task::query()->sole();
         $reason = str_repeat('न', 5000);
-        $this->postJson('/tasks/'.$task->id.'/cancel', ['cancellation_reason' => $reason])->assertOk();
+        $this->postTaskTransitionJson('/tasks/'.$task->id.'/cancel', ['cancellation_reason' => $reason])->assertOk();
         $this->assertSame($reason, $task->fresh()->cancellation_reason);
         $this->assertSame(TaskState::Cancelled, $task->fresh()->machineState());
     }

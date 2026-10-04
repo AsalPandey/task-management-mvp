@@ -44,7 +44,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             [$first, $second] = $this->race('approve', $task, $manager);
 
             $this->assertSame(['transitioned', 'conflict'], [$first['result'], $second['result']]);
-            $this->assertSame('Only a task in review may be approved.', $second['message']);
+            $this->assertSame(409, $second['status_code']);
             $this->assertSame($taskId, $first['task_id']);
             $this->assertSame($taskUid, $first['task_uid']);
 
@@ -83,7 +83,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             [$first, $second] = $this->race('reopen', $task, $manager);
 
             $this->assertSame(['transitioned', 'conflict'], [$first['result'], $second['result']]);
-            $this->assertSame('Only completed approved work may be reopened for revision.', $second['message']);
+            $this->assertSame(409, $second['status_code']);
             $this->assertSame($taskId, $first['task_id']);
             $this->assertSame($taskUid, $first['task_uid']);
 
@@ -120,7 +120,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
 
             $this->assertSame('transitioned', $approval['result']);
             $this->assertSame('conflict', $revision['result']);
-            $this->assertSame('Only a task in review may have a revision requested.', $revision['message']);
+            $this->assertSame(409, $revision['status_code']);
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
                 ->where('event_type', TaskEventRecorder::APPROVED)->count());
             $this->assertSame(1, TaskEvent::query()->where('task_id', $taskId)
@@ -401,6 +401,7 @@ class TaskLifecycleMariaDbConcurrencyTest extends TestCase
             (string) $holdMilliseconds,
             $readyFile ?? '',
             $task->machineState()->value,
+            (string) $task->fresh()->lock_version,
         ], base_path(), timeout: 20);
     }
 

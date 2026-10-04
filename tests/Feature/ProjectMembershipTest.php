@@ -195,7 +195,7 @@ class ProjectMembershipTest extends TestCase
 
         $completed = $this->approveTask($task, $manager);
 
-        $this->postJson(route('tasks.reopen', $completed), [
+        $this->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => 'Additional corrections are required.',
             'revision_due_date' => now()->addDays(3)->toDateString(),
         ])

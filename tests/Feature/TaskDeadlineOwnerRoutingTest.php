@@ -95,7 +95,7 @@ class TaskDeadlineOwnerRoutingTest extends TestCase
         $f = $this->fixtures(TaskState::Submitted, 1);
         $oldGeneration = $f['task']->activeDeadlineGeneration()?->fingerprint();
 
-        $this->actingAs($f['manager'])->postJson(route('tasks.reviewer.reassign', $f['task']), [
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reviewer.reassign', $f['task']), [
             'reviewer_id' => $f['other_reviewer']->id,
             'reason' => 'Reviewer availability changed.',
         ])->assertOk();

@@ -65,7 +65,7 @@ try {
 
         $actor = User::query()->findOrFail((int) $argument);
         $executor = app(TaskTransitionExecutor::class);
-        $context = TaskOperationContext::test($actor->id, "r2b5q-{$operation}");
+        $context = TaskOperationContext::test($actor->id, "r2b5q-{$operation}", expectedVersion: $task->lock_version);
         $command = $operation === 'cancel'
             ? app()->make(CancelTask::class, [
                 'cancellationReason' => 'R2B.5Q concurrent cancellation',

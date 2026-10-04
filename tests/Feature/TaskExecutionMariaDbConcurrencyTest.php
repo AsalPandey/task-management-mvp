@@ -128,7 +128,7 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
                 [$winner, $loser] = $this->raceOperations($firstOperation, $secondOperation, $task, $assignee);
                 $this->assertSame('transitioned', $winner['result']);
                 $this->assertSame('conflict', $loser['result']);
-                $this->assertSame(422, $loser['status_code']);
+                $this->assertSame(409, $loser['status_code']);
                 $this->assertSame($expectedState, $task->fresh()->machineState());
                 $this->assertSame(1, TaskEvent::query()->where('task_id', $task->id)->count());
                 $this->assertSame(1, TaskHistory::query()->where('task_id', $task->id)->count());
@@ -286,6 +286,8 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
             $worker,
             (string) $holdMilliseconds,
             $readyFile ?? '',
+            $task->fresh()->machineState()->value,
+            (string) $task->fresh()->lock_version,
         ], base_path(), timeout: 30);
     }
 
@@ -320,8 +322,8 @@ class TaskExecutionMariaDbConcurrencyTest extends TestCase
     {
         $this->assertSame('transitioned', $success['result']);
         $this->assertSame('conflict', $conflict['result']);
-        $this->assertSame(422, $conflict['status_code']);
-        $this->assertSame($message, $conflict['message']);
+        $this->assertSame(409, $conflict['status_code']);
+        $this->assertStringContainsString('changed after you opened', $conflict['message']);
         $this->assertSame(DB::getDatabaseName(), $success['database']);
         $this->assertSame(DB::getDatabaseName(), $conflict['database']);
     }

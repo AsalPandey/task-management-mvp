@@ -16,6 +16,17 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    /** Explicit current-intent fixture; raw postJson remains available for missing/malformed versions. */
+    protected function postTaskTransitionJson($uri, array $data = [], array $headers = [], $options = 0)
+    {
+        if (! array_key_exists('expected_version', $data)) {
+            preg_match('~/tasks/([0-9]+)/~', $uri, $match);
+            $data['expected_version'] = Task::withTrashed()->findOrFail($match[1])->lock_version;
+        }
+
+        return $this->postJson($uri, $data, $headers, $options);
+    }
+
     protected function approveTask(
         Task $task,
         User $actor,
@@ -55,7 +66,7 @@ abstract class TestCase extends BaseTestCase
             : app()->make(OverrideApproveTask::class, ['overrideReason' => 'Test fixture approval.']);
 
         return app(TaskTransitionExecutor::class)
-            ->execute($task, $actor, $command, $context)
+            ->execute($task, $actor, $command, $context?->expectedVersion !== null ? $context : ($context ?? TaskOperationContext::test($actor->id))->withExpectedVersion((int) $task->fresh()->lock_version))
             ->task;
     }
 
@@ -70,7 +81,7 @@ abstract class TestCase extends BaseTestCase
         ]);
 
         return app(TaskTransitionExecutor::class)
-            ->execute($task, $actor, $command, $context)
+            ->execute($task, $actor, $command, $context?->expectedVersion !== null ? $context : ($context ?? TaskOperationContext::test($actor->id))->withExpectedVersion((int) $task->fresh()->lock_version))
             ->task;
     }
 }

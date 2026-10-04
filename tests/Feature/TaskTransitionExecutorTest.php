@@ -36,7 +36,7 @@ class TaskTransitionExecutorTest extends TestCase
             $task,
             $assignee,
             $command,
-            TaskOperationContext::test($assignee->id, 'phase-2.2-foundation'),
+            TaskOperationContext::test($assignee->id, 'phase-2.2-foundation', expectedVersion: $task->lock_version),
         );
 
         $this->assertSame(42, $result->task->progress);
@@ -55,7 +55,7 @@ class TaskTransitionExecutorTest extends TestCase
         DB::table('tasks')->where('id', $task->id)->update(['assignee_id' => $otherMember->id]);
 
         try {
-            app(TaskTransitionExecutor::class)->execute($task, $assignee, new FoundationProgressCommand);
+            app(TaskTransitionExecutor::class)->execute($task, $assignee, new FoundationProgressCommand, TaskOperationContext::test(expectedVersion: $task->lock_version));
             $this->fail('A stale in-memory assignment must not authorize a transition.');
         } catch (AuthorizationException $exception) {
             $response = app(ExceptionHandler::class)
@@ -75,7 +75,7 @@ class TaskTransitionExecutorTest extends TestCase
         $command = new FailingFoundationCommand($afterCommitCalls);
 
         try {
-            app(TaskTransitionExecutor::class)->execute($task, $assignee, $command);
+            app(TaskTransitionExecutor::class)->execute($task, $assignee, $command, TaskOperationContext::test(expectedVersion: $task->lock_version));
             $this->fail('The failing transition command should throw.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Foundation callback failure.', $exception->getMessage());
@@ -94,7 +94,7 @@ class TaskTransitionExecutorTest extends TestCase
         $task->forceFill(['status' => TaskState::OnHold])->save();
 
         try {
-            app(TaskTransitionExecutor::class)->execute($task, $assignee, new FoundationProgressCommand);
+            app(TaskTransitionExecutor::class)->execute($task, $assignee, new FoundationProgressCommand, TaskOperationContext::test(expectedVersion: $task->lock_version));
             $this->fail('An invalid current state should fail.');
         } catch (TaskTransitionException $exception) {
             $this->assertSame(422, $exception->status);

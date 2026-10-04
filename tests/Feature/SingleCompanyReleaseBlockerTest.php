@@ -138,7 +138,7 @@ class SingleCompanyReleaseBlockerTest extends TestCase
         $oldApprovalReviewer = $completed->approval->assigned_reviewer_id;
         $oldReviewer->forceFill(['active' => false])->save();
 
-        $this->actingAs($manager)->postJson(route('tasks.reopen', $completed), [
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.reopen', $completed), [
             'reopen_reason' => 'The approved result needs correction.',
             'rework_instructions' => 'Correct the totals and resubmit the evidence.',
             'revision_due_date' => now(config('app.timezone'))->addDays(3)->toDateString(),
@@ -179,9 +179,9 @@ class SingleCompanyReleaseBlockerTest extends TestCase
             'reviewer_id' => $assignee->id,
         ];
 
-        $this->actingAs($manager)->postJson(route('tasks.reopen', $completed), $payload)
+        $this->actingAs($manager)->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)
             ->assertUnprocessable()->assertJsonValidationErrors('reviewer_id');
-        $this->actingAs($assignee)->postJson(route('tasks.reopen', $completed), $payload)
+        $this->actingAs($assignee)->postTaskTransitionJson(route('tasks.reopen', $completed), $payload)
             ->assertForbidden();
         $this->assertSame(TaskState::Completed, $completed->fresh()->machineState());
     }

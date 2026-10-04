@@ -30,8 +30,8 @@ class TaskWorkflowEndToEndTest extends TestCase
         [$id, $uid] = [$task->id, $task->task_uid];
 
         $this->startAndSubmit($f, $task);
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
-        $this->postJson(route('tasks.approve', $task), ['approval_comment' => 'Accepted.'])->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve', $task), ['approval_comment' => 'Accepted.'])->assertOk();
 
         $task->refresh();
         $this->assertSame($id, $task->id);
@@ -56,15 +56,15 @@ class TaskWorkflowEndToEndTest extends TestCase
         $uid = $task->task_uid;
 
         $this->startAndSubmit($f, $task);
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
-        $this->postJson(route('tasks.revision.request', $task), [
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.revision.request', $task), [
             'formal_feedback' => 'Correct the calculations.',
             'revision_due_date' => now()->addDays(3)->toDateString(),
         ])->assertOk();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $task))->assertOk();
-        $this->postJson(route('tasks.resubmit', $task), ['submission_note' => 'Corrected.'])->assertOk();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
-        $this->postJson(route('tasks.approve', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task), ['submission_note' => 'Corrected.'])->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve', $task))->assertOk();
 
         $task->refresh();
         $this->assertSame($uid, $task->task_uid);
@@ -91,10 +91,10 @@ class TaskWorkflowEndToEndTest extends TestCase
         $f = $this->fixtures();
         $task = $this->task($f);
 
-        $this->actingAs($f['assignee'])->postJson(route('tasks.start', $task))->assertOk();
-        $this->postJson(route('tasks.hold', $task), ['reason' => 'Waiting for access.'])->assertOk();
-        $this->postJson(route('tasks.resume', $task))->assertOk();
-        $this->postJson(route('tasks.submit', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.hold', $task), ['reason' => 'Waiting for access.'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resume', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $task))->assertOk();
 
         $this->assertSame(TaskState::Submitted, $task->fresh()->machineState());
         $this->assertSame([
@@ -112,16 +112,16 @@ class TaskWorkflowEndToEndTest extends TestCase
         [$id, $uid] = [$task->id, $task->task_uid];
 
         $this->startAndSubmit($f, $task);
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
-        $this->postJson(route('tasks.approve', $task))->assertOk();
-        $this->actingAs($f['manager'])->postJson(route('tasks.reopen', $task), [
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve', $task))->assertOk();
+        $this->actingAs($f['manager'])->postTaskTransitionJson(route('tasks.reopen', $task), [
             'reopen_reason' => 'One more correction is required.',
             'revision_due_date' => now()->addDays(4)->toDateString(),
         ])->assertOk();
-        $this->actingAs($f['assignee'])->postJson(route('tasks.revision.start', $task))->assertOk();
-        $this->postJson(route('tasks.resubmit', $task))->assertOk();
-        $this->actingAs($f['reviewer'])->postJson(route('tasks.review.start', $task))->assertOk();
-        $this->postJson(route('tasks.approve', $task))->assertOk();
+        $this->actingAs($f['assignee'])->postTaskTransitionJson(route('tasks.revision.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resubmit', $task))->assertOk();
+        $this->actingAs($f['reviewer'])->postTaskTransitionJson(route('tasks.review.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.approve', $task))->assertOk();
 
         $task->refresh();
         $this->assertSame($id, $task->id);
@@ -150,11 +150,11 @@ class TaskWorkflowEndToEndTest extends TestCase
             $uid = $task->task_uid;
 
             $this->actingAs($f['manager'])
-                ->postJson(route('tasks.cancel', $task), [
+                ->postTaskTransitionJson(route('tasks.cancel', $task), [
                     'cancellation_reason' => 'No longer required.',
                 ])
                 ->assertOk();
-            $this->postJson(route('tasks.cancel', $task), [
+            $this->postTaskTransitionJson(route('tasks.cancel', $task), [
                 'cancellation_reason' => 'Duplicate attempt.',
             ])->assertUnprocessable();
 
@@ -168,8 +168,8 @@ class TaskWorkflowEndToEndTest extends TestCase
 
     private function startAndSubmit(array $fixtures, Task $task): void
     {
-        $this->actingAs($fixtures['assignee'])->postJson(route('tasks.start', $task))->assertOk();
-        $this->postJson(route('tasks.submit', $task), ['submission_note' => 'Ready.'])->assertOk();
+        $this->actingAs($fixtures['assignee'])->postTaskTransitionJson(route('tasks.start', $task))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.submit', $task), ['submission_note' => 'Ready.'])->assertOk();
     }
 
     /**

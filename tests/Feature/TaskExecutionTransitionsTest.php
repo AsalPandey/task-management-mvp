@@ -37,7 +37,7 @@ class TaskExecutionTransitionsTest extends TestCase
         $deadline = $task->execution_due_date->toDateString();
 
         $this->actingAs($fixtures['assignee'])
-            ->postJson(route('tasks.start', $task))
+            ->postTaskTransitionJson(route('tasks.start', $task))
             ->assertOk()
             ->assertJson(['success' => true, 'message' => 'Work started.']);
 
@@ -60,7 +60,7 @@ class TaskExecutionTransitionsTest extends TestCase
         $this->assertSame($fixtures['assignee']->id, $startedEvent->changed_fields['assignee_id']['after']);
         $this->assertSame($firstStartedAt, $startedEvent->changed_fields['started_at']['after']);
 
-        $this->postJson(route('tasks.hold', $task), ['reason' => '  Waiting for source files.  '])
+        $this->postTaskTransitionJson(route('tasks.hold', $task), ['reason' => '  Waiting for source files.  '])
             ->assertOk()
             ->assertJson(['success' => true, 'message' => 'Task placed on hold.']);
 
@@ -81,7 +81,7 @@ class TaskExecutionTransitionsTest extends TestCase
         $this->assertSame($deadline, $heldEvent->changed_fields['active_deadline']['before']);
         $this->assertSame($deadline, $heldEvent->changed_fields['active_deadline']['after']);
 
-        $this->postJson(route('tasks.resume', $task))
+        $this->postTaskTransitionJson(route('tasks.resume', $task))
             ->assertOk()
             ->assertJson(['success' => true, 'message' => 'Work resumed.']);
 
@@ -111,7 +111,7 @@ class TaskExecutionTransitionsTest extends TestCase
 
         foreach ([$fixtures['manager'], $fixtures['project_manager'], $fixtures['other_member']] as $actor) {
             $this->actingAs($actor)
-                ->postJson(route('tasks.start', $fixtures['task']))
+                ->postTaskTransitionJson(route('tasks.start', $fixtures['task']))
                 ->assertForbidden();
         }
 
@@ -128,12 +128,12 @@ class TaskExecutionTransitionsTest extends TestCase
 
         $task->forceFill(['reviewer_id' => null])->save();
         $this->actingAs($fixtures['assignee'])
-            ->postJson(route('tasks.start', $task))
+            ->postTaskTransitionJson(route('tasks.start', $task))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('reviewer_id');
 
         $task->forceFill(['reviewer_id' => $fixtures['other_project_manager']->id])->save();
-        $this->postJson(route('tasks.start', $task))
+        $this->postTaskTransitionJson(route('tasks.start', $task))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('reviewer_id');
 
@@ -149,14 +149,14 @@ class TaskExecutionTransitionsTest extends TestCase
         $removedFixtures['project']->members()->detach($removedFixtures['assignee']->id);
 
         $this->actingAs($removedFixtures['assignee'])
-            ->postJson(route('tasks.start', $removedFixtures['task']))
+            ->postTaskTransitionJson(route('tasks.start', $removedFixtures['task']))
             ->assertForbidden();
 
         $inactiveFixtures = $this->fixtures();
         $inactiveFixtures['assignee']->forceFill(['active' => false])->save();
 
         $this->actingAs($inactiveFixtures['assignee'])
-            ->postJson(route('tasks.start', $inactiveFixtures['task']))
+            ->postTaskTransitionJson(route('tasks.start', $inactiveFixtures['task']))
             ->assertForbidden();
 
         $this->assertSame(TaskState::NotStarted, $removedFixtures['task']->fresh()->machineState());
@@ -169,12 +169,12 @@ class TaskExecutionTransitionsTest extends TestCase
 
         foreach ([[], ['reason' => '   ']] as $payload) {
             $this->actingAs($fixtures['assignee'])
-                ->postJson(route('tasks.hold', $fixtures['task']), $payload)
+                ->postTaskTransitionJson(route('tasks.hold', $fixtures['task']), $payload)
                 ->assertUnprocessable()
                 ->assertJsonValidationErrors('reason');
         }
 
-        $this->postJson(route('tasks.hold', $fixtures['task']), [
+        $this->postTaskTransitionJson(route('tasks.hold', $fixtures['task']), [
             'reason' => 'Valid reason',
             'status' => TaskState::Completed->value,
         ])->assertUnprocessable()->assertJsonValidationErrors('status');
@@ -189,18 +189,18 @@ class TaskExecutionTransitionsTest extends TestCase
         $fixtures = $this->fixtures();
         $this->actingAs($fixtures['assignee']);
 
-        $this->postJson(route('tasks.start', $fixtures['task']))->assertOk();
-        $this->postJson(route('tasks.start', $fixtures['task']))->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.start', $fixtures['task']))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.start', $fixtures['task']))->assertUnprocessable();
         $this->assertSame(1, $this->eventCount($fixtures['task'], TaskEventRecorder::STARTED));
         $this->assertSame(1, $this->historyCount($fixtures['task'], 'started'));
 
-        $this->postJson(route('tasks.hold', $fixtures['task']), ['reason' => 'Dependency blocked'])->assertOk();
-        $this->postJson(route('tasks.hold', $fixtures['task']), ['reason' => 'Duplicate'])->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.hold', $fixtures['task']), ['reason' => 'Dependency blocked'])->assertOk();
+        $this->postTaskTransitionJson(route('tasks.hold', $fixtures['task']), ['reason' => 'Duplicate'])->assertUnprocessable();
         $this->assertSame(1, $this->eventCount($fixtures['task'], TaskEventRecorder::HELD));
         $this->assertSame(1, $this->historyCount($fixtures['task'], 'held'));
 
-        $this->postJson(route('tasks.resume', $fixtures['task']))->assertOk();
-        $this->postJson(route('tasks.resume', $fixtures['task']))->assertUnprocessable();
+        $this->postTaskTransitionJson(route('tasks.resume', $fixtures['task']))->assertOk();
+        $this->postTaskTransitionJson(route('tasks.resume', $fixtures['task']))->assertUnprocessable();
         $this->assertSame(1, $this->eventCount($fixtures['task'], TaskEventRecorder::RESUMED));
         $this->assertSame(1, $this->historyCount($fixtures['task'], 'resumed'));
         Notification::assertSentToTimes(
@@ -250,7 +250,7 @@ class TaskExecutionTransitionsTest extends TestCase
 
         DB::transaction(function () use ($fixtures): void {
             $this->actingAs($fixtures['assignee'])
-                ->postJson(route('tasks.start', $fixtures['task']))
+                ->postTaskTransitionJson(route('tasks.start', $fixtures['task']))
                 ->assertOk();
             Notification::assertNothingSent();
         });
@@ -265,7 +265,7 @@ class TaskExecutionTransitionsTest extends TestCase
         try {
             DB::transaction(function () use ($rollbackFixtures): void {
                 $this->actingAs($rollbackFixtures['assignee'])
-                    ->postJson(route('tasks.start', $rollbackFixtures['task']))
+                    ->postTaskTransitionJson(route('tasks.start', $rollbackFixtures['task']))
                     ->assertOk();
                 Notification::assertNothingSent();
 
@@ -292,7 +292,7 @@ class TaskExecutionTransitionsTest extends TestCase
         ])->save();
 
         $this->actingAs($fixtures['assignee'])
-            ->postJson(route('tasks.hold', $task), ['reason' => 'Sensitive operational blocker'])
+            ->postTaskTransitionJson(route('tasks.hold', $task), ['reason' => 'Sensitive operational blocker'])
             ->assertOk();
 
         Notification::assertSentToTimes(
@@ -336,7 +336,7 @@ class TaskExecutionTransitionsTest extends TestCase
             ->andThrow(new RuntimeException('Injected transition notification failure.'));
 
         $response = $this->actingAs($fixtures['assignee'])
-            ->postJson(route('tasks.start', $fixtures['task']));
+            ->postTaskTransitionJson(route('tasks.start', $fixtures['task']));
 
         $response->assertOk();
         $response->assertJson([
