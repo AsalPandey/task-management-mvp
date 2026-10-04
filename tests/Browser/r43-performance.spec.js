@@ -28,7 +28,7 @@ test('R43 server search reaches an off-page account created through the real Tea
     await expect(target.locator('.edit-btn')).toBeVisible();
     await expect(page).not.toHaveURL(/page=/);
     await page.locator('#teamSearch').fill('पुरानो'); await page.getByRole('button', { name: 'Search', exact: true }).click(); await expect(target).toBeVisible();
-    await page.screenshot({ path: 'output/playwright/r43-team-search.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r43-team-search.png`, fullPage: true });
     await page.getByRole('link', { name: 'Clear search', exact: true }).click();
     await expect(page.locator('#teamSearch')).toHaveValue(''); await expect(page.locator('.member-card')).toHaveCount(12);
     await page.locator('#teamSearch').fill('R43 Search Member'); await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -53,7 +53,7 @@ test('R43 large manager pages retain totals with bounded previews and paginated 
         if (index % 8 < 6 && index % 7 - 2 < elapsedDays) overdue++;
     }
     await expect(page.locator('#overdueCount')).toHaveText(String(overdue));
-    await page.screenshot({ path: 'output/playwright/r43-large-dashboard.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r43-large-dashboard.png`, fullPage: true });
     await page.goto('/projects'); await expect(page.locator('.project-card')).toHaveCount(12);
     await page.goto('/tasks'); await expect(page.locator('#tasksGrid .task-card')).toHaveCount(24);
     const firstTitles = await page.locator('#tasksGrid .task-title').allTextContents();
@@ -64,7 +64,7 @@ test('R43 large manager pages retain totals with bounded previews and paginated 
     await expect(metric(page, 'Completion Rate')).toHaveText('14.3%');
     await expect(page.locator('body')).toContainText('1250 of 8750 non-cancelled cohort tasks completed');
     await expect(page.locator('canvas[aria-label="30-Day Creation Trend"]')).toBeVisible();
-    await page.screenshot({ path: 'output/playwright/r43-large-analytics.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r43-large-analytics.png`, fullPage: true });
     await page.goto('/analytics/print?dateFrom=2026-09-01&dateTo=2026-10-03'); await expect(page.locator('body')).toContainText('7500');
     await page.goto('/notifications/all'); expect(await page.locator('.notification-page-item').count()).toBeLessThanOrEqual(20);
     expect(errors).toEqual([]);
@@ -78,7 +78,7 @@ test('R43 large mobile member dashboard and PM search preserve scope and remain 
     expect(await page.locator('.overdue-task').count()).toBeLessThanOrEqual(10);
     expect(await page.locator('.deadline-task').count()).toBeLessThanOrEqual(10);
     await expect(page.getByRole('link', { name: 'View all tasks' }).first()).toBeVisible();
-    await page.screenshot({ path: 'output/playwright/r43-large-member-mobile.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r43-large-member-mobile.png`, fullPage: true });
     await page.locator('form[action$="/logout"] button').click();
     await expect(page.locator('#email')).toBeVisible();
     await login(page, 'pm@r43.example.invalid'); await page.goto('/manager');

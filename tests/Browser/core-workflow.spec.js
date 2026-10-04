@@ -357,11 +357,11 @@ test('logout and login retain canonical completed state and history', async ({ p
     await page.goto('/history');
     await expect(page.getByText('R41 Basic Task', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('R41 Revision Task', { exact: true }).first()).toBeVisible();
-    await page.screenshot({ path: 'output/playwright/r41-completed-history.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r41-completed-history.png`, fullPage: true });
     await page.locator('tr').filter({ hasText: 'R41 Revision Task' }).getByRole('button', { name: 'Timeline', exact: true }).click();
     await expect(page.locator('.swal2-popup')).toContainText('Deadline changed');
     await expect(page.locator('.swal2-popup')).toContainText('Task created');
-    await page.screenshot({ path: 'output/playwright/r41-revision-timeline.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r41-revision-timeline.png`, fullPage: true });
 });
 import { writeFileSync } from 'node:fs';
 

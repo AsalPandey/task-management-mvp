@@ -57,7 +57,7 @@ test('account lifecycle collision explains retained identity after actual UI del
     await page.locator('#createAccountBtn').click(); expect((await response).status()).toBe(422);
     await expect(page.locator('#addMemberForm')).toContainText('prior account');
     await expect(page.locator('#addMemberForm')).toContainText('preserve its history');
-    await page.screenshot({ path: 'output/playwright/r42-email-policy.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r42-email-policy.png`, fullPage: true });
 });
 
 test('membership retry preserves one visible member, history and notification generation', async ({ page }) => {
@@ -105,13 +105,13 @@ test('UI-created work gives correct visible analytics, real date filtering and m
     await page.locator('#dateFrom').fill('2026-01-01'); await page.locator('#dateTo').fill('2026-01-01'); await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await expect(metric(page, 'In Progress')).toHaveText('2'); await expect(metric(page, 'Total Tasks')).toHaveText('2');
     await expect(page.locator('#dateFrom')).toHaveValue('2026-01-01'); await page.reload(); await expect(metric(page, 'In Progress')).toHaveText('2');
-    await page.screenshot({ path: 'output/playwright/r42-member-range.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r42-member-range.png`, fullPage: true });
     await memberPage.goto(`/team-management/${id}/analytics?dateFrom=2026-01-01&dateTo=2026-01-01`); await expect(metric(memberPage, 'In Progress')).toHaveText('2');
     const currentDate = snapshot().tasks.find(t => t.title === 'R42 Current').created_at.slice(0, 10);
     const range = `?dateFrom=${currentDate}&dateTo=${currentDate}`;
     await page.goto('/analytics/print' + range); await expect(page.locator('tr').filter({ has: page.getByRole('cell', { name: 'In Progress', exact: true }) })).toContainText('1');
     const csv = await page.request.get('/analytics/export/csv' + range); expect(csv.status()).toBe(200); expect(await csv.text()).toContain('"In Progress Tasks",1');
     await page.goto('/analytics' + range); await expect(metric(page, 'Active Workflow')).toHaveText('3');
-    await page.screenshot({ path: 'output/playwright/r42-analytics-oracle.png', fullPage: true });
+    await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r42-analytics-oracle.png`, fullPage: true });
     await context.close();
 });
