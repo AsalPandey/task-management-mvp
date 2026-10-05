@@ -470,37 +470,6 @@ class TaskLifecycleService
             ->all();
     }
 
-    private function lifecycleEventValues(Task $task): array
-    {
-        return array_merge($this->taskEventValues($task), [
-            'completed_at' => $task->completed_at?->format(DateTimeInterface::ATOM),
-            'completed_by' => $task->completed_by === null ? null : (int) $task->completed_by,
-        ]);
-    }
-
-    private function canonicalHistorySnapshot(Task $task): array
-    {
-        return array_merge($task->only([
-            'project_id',
-            'title',
-            'description',
-            'assignee_id',
-            'created_by',
-            'assigned_by',
-            'priority',
-            'status',
-            'progress',
-            'start_date',
-            'due_date',
-            'comments',
-            'completed_at',
-            'completed_by',
-        ]), [
-            'task_uid' => $task->task_uid,
-            'original_task_id' => $task->original_task_id ?: $task->id,
-        ]);
-    }
-
     private function recordHistory(
         Task $task,
         string $action,
