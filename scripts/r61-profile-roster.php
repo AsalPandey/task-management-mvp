@@ -1,14 +1,15 @@
 <?php
 
-require __DIR__.'/../vendor/autoload.php';
-$app = require __DIR__.'/../bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
 use App\Models\User;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+
+require __DIR__.'/../vendor/autoload.php';
+$app = require __DIR__.'/../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
 
 if (! preg_match('/^task_management_r6_company(?:_\d+)?$/', DB::getDatabaseName())) {
     throw new RuntimeException('R6 company only');

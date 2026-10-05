@@ -1,8 +1,5 @@
 <?php
 
-require __DIR__.'/../vendor/autoload.php';
-$app = require __DIR__.'/../bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
 use App\Models\CompanySetting;
 use App\Models\Project;
 use App\Models\Role;
@@ -11,6 +8,10 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+
+require __DIR__.'/../vendor/autoload.php';
+$app = require __DIR__.'/../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
 
 if (! preg_match('/^task_management_r6_company(?:_\d+)?$/', DB::getDatabaseName())) {
     throw new RuntimeException('R6 synthetic company required');
