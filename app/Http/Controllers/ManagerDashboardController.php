@@ -52,11 +52,11 @@ class ManagerDashboardController extends Controller
         $achievements = ['Completed '.$todayCompletedCount.' tasks today', 'Currently managing '.$currentActiveCount.' active tasks', "Today's progress: ".$todayProgress.'%'];
         $improvements = ['Focus on '.$totalOverdueCount.' overdue task(s)', 'Balance high-priority task load', 'Monitor task progress throughout the day'];
         $projects = $this->visibleProjects()->whereNotIn('status', ['completed', 'archived'])
-            ->with(['members' => fn ($query) => $query->where('active', true)->orderBy('name')])->orderBy('name')->get();
-        $assignmentCandidates = app(TaskAssignmentCandidateService::class)->forProjects($projects)->get(['id', 'name']);
+            ->with(['members' => fn ($query) => $query->where('active', true)->orderBy('name')->limit(25)])->orderBy('name')->get();
+        $assignmentCandidates = app(TaskAssignmentCandidateService::class)->forProjects($projects)->limit(25)->get(['id', 'name']);
         $reviewerCandidates = User::query()->where('active', true)
             ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
-            ->with('role')->orderBy('name')->get(['id', 'name', 'role_id']);
+            ->with('role')->orderBy('name')->limit(25)->get(['id', 'name', 'role_id']);
 
         return view('manager-dashboard', compact('todayActiveTasks', 'todayCompletedTasks', 'currentActiveTasks',
             'executionTaskCount', 'reviewQueueTaskCount', 'totalOverdueCount', 'todayTotalTasks', 'todayCompletedCount',

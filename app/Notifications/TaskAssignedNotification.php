@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
 use App\Notifications\Channels\BrowserPushChannel;
+use App\Notifications\Concerns\InterpretsRequiredIntent;
 use App\Support\BrowserPushMessageFactory;
 use App\ValueObjects\BrowserPushMessage;
 use Carbon\Carbon;
@@ -14,6 +15,7 @@ use Illuminate\Notifications\Notification;
 
 class TaskAssignedNotification extends Notification implements SendsBrowserPush
 {
+    use InterpretsRequiredIntent;
     use Queueable;
 
     protected $task;
@@ -67,7 +69,7 @@ class TaskAssignedNotification extends Notification implements SendsBrowserPush
         $assignorName = $this->assignor ? $this->assignor->name : 'System';
         $dueDate = $this->getFormattedDueDate();
 
-        return [
+        return $this->coherentPayload([
             'task_id' => $this->task->id,
             'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
@@ -76,7 +78,7 @@ class TaskAssignedNotification extends Notification implements SendsBrowserPush
             'assignor' => $assignorName,
             'message' => "New task '{$this->task->title}' assigned by {$assignorName}. Priority: {$this->task->priority}, {$dueDate}",
             'type' => 'task_assigned',
-        ];
+        ], $this->task);
     }
 
     public function toBrowserPush(object $notifiable): BrowserPushMessage

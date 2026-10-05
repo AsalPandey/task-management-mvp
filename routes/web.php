@@ -7,6 +7,7 @@ use App\Http\Controllers\CompletedTasksController;
 use App\Http\Controllers\ManagerDashboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProjectRosterController;
 use App\Http\Controllers\ProjectsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SetupController;
@@ -55,10 +56,13 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/analytics/print', [AnalyticsController::class, 'exportPrint'])->middleware('throttle:analytics-export')->name('analytics.export.print');
 
     Route::get('/projects', [ProjectsController::class, 'index'])->name('projects');
+    Route::get('/roster/project-managers', [ProjectRosterController::class, 'managers'])->name('roster.managers');
+    Route::get('/roster/task-filters', [ProjectRosterController::class, 'taskFilters'])->name('roster.task-filters');
     Route::post('/projects', [ProjectsController::class, 'store'])->name('projects.store');
     Route::put('/projects/{project}', [ProjectsController::class, 'update'])->name('projects.update');
     Route::delete('/projects/{project}', [ProjectsController::class, 'destroy'])->name('projects.destroy');
-    Route::get('/projects/{project}/members', [ProjectsController::class, 'members'])->name('projects.members');
+    Route::get('/projects/{project}/members', [ProjectRosterController::class, 'members'])->name('projects.members');
+    Route::get('/projects/{project}/candidates', [ProjectRosterController::class, 'candidates'])->name('projects.candidates');
     Route::post('/projects/{project}/add-member', [ProjectsController::class, 'addMember'])->name('projects.members.add');
     Route::delete('/projects/{project}/remove-member', [ProjectsController::class, 'removeMember'])->name('projects.members.remove');
 

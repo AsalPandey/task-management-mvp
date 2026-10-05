@@ -116,7 +116,7 @@ body { background: #f7f8fa; }
                     <div class="member-header">
                         <div class="member-avatar">{{ $member['avatar'] }}</div>
                         <div class="member-info">
-                            <h4>{{ $member['name'] }}</h4>
+                            <h4>{{ $member['name'] }} <span class="text-sm">({{ $member['accountStatus'] }})</span></h4>
                             <p>{{ $member['completionRate'] }}% completion rate</p>
                         </div>
                     </div>

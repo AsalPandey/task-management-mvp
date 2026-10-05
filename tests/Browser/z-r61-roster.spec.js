@@ -1,0 +1,44 @@
+import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+
+test('R61 dense 1000-person roster remains searchable keyboard usable and scoped', async ({page,browser}) => {
+    test.skip(process.env.R61_LARGE_ROSTER !== '1','Requires separate disposable 1000-person roster fixture.');
+    const errors=[]; page.on('pageerror',error=>errors.push(error.message));
+    await page.goto('/login'); await page.locator('#email').fill('manager@r6.example.invalid'); await page.locator('#password').fill('password');
+    await page.getByRole('button',{name:'Log in',exact:true}).click(); await expect(page).not.toHaveURL(/\/login$/);
+    await page.goto('/projects');
+    const project=page.locator('.project-card').filter({hasText:'R6 Project 12'});
+    await expect(project.locator('.member-row')).toHaveCount(5);
+    await project.getByRole('button',{name:'Browse members of R6 Project 12'}).click();
+    await expect(project.locator('.member-row')).toHaveCount(20);
+    await project.locator('.member-more-btn').click(); await expect(project.locator('.member-row')).toHaveCount(20);
+    const search=project.getByRole('searchbox',{name:'Search staff for R6 Project 12'});
+    await search.focus(); await search.fill('Employee 999'); await search.press('Tab');
+    await project.locator('[name=user_id]').selectOption({label:'Employee 999'});
+    await page.goto('/tasks'); await page.locator('#newTaskBtn').click();
+    await page.locator('#taskTitle').fill('R61 large roster assignment');
+    await page.locator('#taskProject').selectOption({label:'R6 Project 12'});
+    await page.getByRole('searchbox',{name:'Search task assignee',exact:true}).fill('Employee 999');
+    await page.locator('#taskAssignee').selectOption({label:'Employee 999'});
+    await page.locator('#taskReviewer').selectOption({label:'R6 Company Manager'});
+    await page.locator('#taskDueDate').fill(new Date(Date.now()+7*86400000).toISOString().slice(0,10));
+    const response=page.waitForResponse(r=>r.request().method()==='POST' && new URL(r.url()).pathname==='/tasks');
+    await page.locator('#taskForm button[type=submit]').click(); expect((await response).status()).toBe(200);
+    await expect(page.locator('#tasksGrid')).toContainText('R61 large roster assignment');
+    expect(errors).toEqual([]);
+    const context=await browser.newContext();
+    try {
+        const pm=await context.newPage(); await pm.goto('/login');
+        const identity=JSON.parse(execFileSync(process.env.PHP_BINARY || 'php',['tests/Support/r61_roster_browser_identity.php'],{encoding:'utf8'}));
+        await pm.locator('#email').fill(identity.pm_email); await pm.locator('#password').fill('password');
+        await pm.getByRole('button',{name:'Log in',exact:true}).click(); await expect(pm).not.toHaveURL(/\/login$/);
+        await pm.goto('/projects'); await expect(pm.locator('.project-card')).toHaveCount(12);
+        const managerResponse=await pm.request.get('/roster/project-managers');
+        expect(managerResponse.status()).toBe(200);
+        const pmId=(await managerResponse.json()).candidates[0].id;
+        expect((await managerResponse.json()).candidates).toHaveLength(1);
+        const unrelated=await pm.request.get(`/projects/12/candidates?kind=assignment&selected=${pmId}`);
+        expect(unrelated.status()).toBe(200);
+        expect((await unrelated.json()).candidates.length).toBeLessThanOrEqual(26);
+    } finally { await context.close(); }
+});

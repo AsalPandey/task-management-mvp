@@ -67,12 +67,14 @@ final class ResubmitTask implements TaskTransitionCommand
         $changes = [
             'status' => ['before' => TaskState::InProgress->value, 'after' => TaskState::Submitted->value],
             'submitted_at' => ['before' => $task->submitted_at?->toAtomString(), 'after' => $context->occurredAt->toAtomString()],
+            'review_started_at' => ['before' => $task->review_started_at?->toAtomString(), 'after' => null],
             'review_due_date' => ['before' => $task->review_due_date?->toDateString(), 'after' => $reviewDueDate->toDateString()],
             'revision_due_date' => ['before' => $task->revision_due_date?->toDateString(), 'after' => null],
         ];
         $task->forceFill([
             'status' => TaskState::Submitted,
             'submitted_at' => $context->occurredAt,
+            'review_started_at' => null,
             'review_due_date' => $reviewDueDate,
             'revision_due_date' => null,
         ])->save();

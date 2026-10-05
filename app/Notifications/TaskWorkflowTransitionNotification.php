@@ -6,6 +6,7 @@ use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\BrowserPushChannel;
+use App\Notifications\Concerns\InterpretsRequiredIntent;
 use App\Support\BrowserPushMessageFactory;
 use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
@@ -13,6 +14,7 @@ use Illuminate\Notifications\Notification;
 
 class TaskWorkflowTransitionNotification extends Notification implements SendsBrowserPush
 {
+    use InterpretsRequiredIntent;
     use Queueable;
 
     public function __construct(
@@ -35,7 +37,7 @@ class TaskWorkflowTransitionNotification extends Notification implements SendsBr
         $deadline = $this->task->activeDeadline();
         $state = $this->task->machineState();
 
-        return [
+        return $this->coherentPayload([
             'task_id' => (int) $this->task->id,
             'task_uid' => $this->task->task_uid,
             'task_title' => $this->task->title,
@@ -49,7 +51,7 @@ class TaskWorkflowTransitionNotification extends Notification implements SendsBr
             'next_action' => $this->nextAction,
             'type' => 'task_'.$this->transition,
             'message' => "{$this->actor->name} changed '{$this->task->title}' to {$state->label()}.",
-        ];
+        ], $this->task);
     }
 
     public function toBrowserPush(object $notifiable): BrowserPushMessage

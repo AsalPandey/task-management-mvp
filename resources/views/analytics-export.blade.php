@@ -33,7 +33,7 @@
         <tr><th>Member</th><th>Total</th><th>Completed</th><th>Overdue</th><th>Rate</th></tr>
         @foreach($teamPerformance as $member)
             <tr>
-                <td>{{ $member['name'] }}</td>
+                <td>{{ $member['name'] }} ({{ $member['accountStatus'] }})</td>
                 <td>{{ $member['total'] }}</td>
                 <td>{{ $member['completed'] }}</td>
                 <td>{{ $member['overdue'] }}</td>

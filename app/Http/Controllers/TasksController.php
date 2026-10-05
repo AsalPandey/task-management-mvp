@@ -123,15 +123,27 @@ class TasksController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $assignees = User::query()
+        $assigneesQuery = User::query()
             ->whereIn('id', $this->visibleTasks()->whereNotNull('assignee_id')->select('assignee_id'))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+            ->orderBy('name');
+        $assignees = (clone $assigneesQuery)->limit(25)->get(['id', 'name']);
+        if (isset($filters['assignee']) && ! $assignees->contains('id', $filters['assignee'])) {
+            $selected = (clone $assigneesQuery)->whereKey($filters['assignee'])->first(['id', 'name']);
+            if ($selected) {
+                $assignees->push($selected);
+            }
+        }
 
-        $filterReviewers = User::query()
+        $filterReviewersQuery = User::query()
             ->whereIn('id', $this->visibleTasks()->whereNotNull('reviewer_id')->select('reviewer_id'))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+            ->orderBy('name');
+        $filterReviewers = (clone $filterReviewersQuery)->limit(25)->get(['id', 'name']);
+        if (isset($filters['reviewer']) && ! $filterReviewers->contains('id', $filters['reviewer'])) {
+            $selected = (clone $filterReviewersQuery)->whereKey($filters['reviewer'])->first(['id', 'name']);
+            if ($selected) {
+                $filterReviewers->push($selected);
+            }
+        }
 
         $projects = collect();
         $assignmentCandidates = collect();
@@ -141,7 +153,7 @@ class TasksController extends Controller
             $projects = $this->visibleProjects()
                 ->whereNotIn('status', ['completed', 'archived'])
                 ->with([
-                    'members' => fn ($query) => $query->where('active', true)->orderBy('name'),
+                    'members' => fn ($query) => $query->where('active', true)->orderBy('name')->limit(25),
                     'members.role',
                     'projectManager',
                 ])
@@ -153,14 +165,14 @@ class TasksController extends Controller
             }
 
             $assignmentCandidates = app(TaskAssignmentCandidateService::class)
-                ->forProjects($projects)
+                ->forProjects($projects)->limit(25)
                 ->get(['id', 'name']);
 
             $reviewerCandidates = User::query()
                 ->where('active', true)
                 ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
                 ->with('role')
-                ->orderBy('name')
+                ->orderBy('name')->limit(25)
                 ->get(['id', 'name', 'role_id']);
         }
 

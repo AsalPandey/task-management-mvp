@@ -50,7 +50,7 @@ class AnalyticsController extends Controller
             $writeRow(['Cancellation Events', $data['cancellationEvents']]);
             $writeRow(['Reopen Events', $data['reopenEvents']]);
             $writeRow([]);
-            $writeRow(['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate']);
+            $writeRow(['Team Member', 'Total', 'Completed', 'Overdue', 'Completion Rate', 'Account Status']);
             foreach ($data['teamPerformance'] as $member) {
                 $writeRow([
                     $member['name'],
@@ -58,6 +58,7 @@ class AnalyticsController extends Controller
                     $member['completed'],
                     $member['overdue'],
                     $member['completionRate'].'%',
+                    $member['accountStatus'],
                 ]);
             }
             fclose($out);
@@ -98,21 +99,15 @@ class AnalyticsController extends Controller
             isset($validated['project']) ? (int) $validated['project'] : null,
         );
         $users = $this->visibleUsers()->with('role')->get();
-        $selectedAssignee = isset($validated['assignee']) ? (int) $validated['assignee'] : null;
-        $performanceByUser = $report['teamPerformance']->keyBy('id');
-        $teamPerformance = $users
-            ->when($selectedAssignee, fn ($members) => $members->where('id', $selectedAssignee))
-            ->map(function (User $user) use ($performanceByUser): array {
-                return $performanceByUser->get($user->id, [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'avatar' => strtoupper(substr($user->name, 0, 2)),
-                    'total' => 0,
-                    'completed' => 0,
-                    'overdue' => 0,
-                    'completionRate' => 0.0,
-                ]);
-            })->values();
+        $teamPerformance = $report['teamPerformance']->values();
+        // Retain the existing zero-work roster rows without using that roster to
+        // remove historical contributors. The scoped report remains authoritative.
+        $selected = $validated['assignee'] ?? null;
+        $teamPerformance = $teamPerformance->concat($users->whereNotIn('id', $teamPerformance->pluck('id'))
+            ->when($selected, fn ($rows) => $rows->where('id', $selected))
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name,
+                'avatar' => strtoupper(substr($user->name, 0, 2)), 'total' => 0, 'completed' => 0,
+                'overdue' => 0, 'completionRate' => 0.0, 'accountStatus' => 'Active']))->values();
         $lastUpdated = $this->taskReads->activeVisibleTo($request->user())->latest('updated_at')->toBase()->value('updated_at');
 
         return array_merge($report, [

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Support\WorkflowNoticeSemantics;
 use Illuminate\Database\Eloquent\Model;
 
 final class NotificationAccess
@@ -50,6 +51,10 @@ final class NotificationAccess
             return ['type' => 'access_removed', 'message' => 'This notification is no longer available.'];
         }
         if ($task) {
+            if (isset($data['event_task_version'])) {
+                $data = WorkflowNoticeSemantics::interpret($data, $task, (int) $data['event_task_version'], substr($data['type'], 5), $data['event_at'] ?? null);
+                $data['task_title'] = $task->title;
+            }
             if (! $user->can('viewManagementNotes', $task)) {
                 foreach (['reopen_reason_reference', 'reopen_reason_excerpt', 'cancellation_reason_reference', 'cancellation_reason_excerpt'] as $key) {
                     unset($data[$key]);

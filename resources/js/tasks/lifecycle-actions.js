@@ -244,7 +244,20 @@ export function initLifecycleActions({ reviewerCandidates, showMessage, firstErr
 
             if (this.dataset.action === 'reassign-reviewer') {
                 const options = {};
-                reviewerCandidates.forEach(candidate => {
+                const projectId = this.closest('.task-card')?.dataset.projectId;
+                const rosterUrl = window.AppClient.appUrl(`/projects/${projectId}/candidates?kind=reviewer`);
+                let candidates;
+                this.disabled = true;
+                try {
+                    const response = await fetch(rosterUrl, { headers: { Accept: 'application/json' } });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'Reviewers could not be loaded.');
+                    candidates = data.candidates;
+                } catch (error) {
+                    showMessage(error.message, false);
+                    return;
+                } finally { this.disabled = false; }
+                candidates.forEach(candidate => {
                     options[candidate.id] = candidate.name;
                 });
                 const reviewer = await Swal.fire({
@@ -255,6 +268,29 @@ export function initLifecycleActions({ reviewerCandidates, showMessage, firstErr
                     showCancelButton: true,
                     confirmButtonText: 'Continue',
                     inputValidator: value => value ? undefined : 'A reviewer is required.',
+                    didOpen: () => {
+                        const search = document.createElement('input');
+                        search.type = 'search'; search.className = 'swal2-input';
+                        search.setAttribute('aria-label', 'Search replacement reviewer');
+                        search.placeholder = 'Search reviewer by name';
+                        const select = Swal.getInput();
+                        select.before(search);
+                        let timer; let sequence = 0;
+                        search.addEventListener('input', () => {
+                            clearTimeout(timer);
+                            timer = setTimeout(async () => {
+                                const current = ++sequence;
+                                try {
+                                    const response = await fetch(`${rosterUrl}&search=${encodeURIComponent(search.value)}`, {headers: {Accept: 'application/json'}});
+                                    const data = await response.json();
+                                    if (!response.ok) throw new Error(data.message || 'Reviewers could not be loaded.');
+                                    if (current !== sequence || !select.isConnected) return;
+                                    select.replaceChildren(new Option('Select reviewer', ''));
+                                    data.candidates.forEach(user => select.appendChild(new Option(user.name, user.id)));
+                                } catch(error) { Swal.showValidationMessage(error.message); }
+                            }, 250);
+                        });
+                    },
                 });
                 if (!reviewer.isConfirmed) return;
 

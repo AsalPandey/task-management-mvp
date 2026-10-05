@@ -71,6 +71,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const managerSelect = form.querySelector('[name="project_manager_id"]');
+    const managerSearch = document.createElement('input'); managerSearch.type = 'search';
+    managerSearch.placeholder = 'Search project manager'; managerSearch.setAttribute('aria-label', 'Search project manager');
+    managerSelect?.before(managerSearch);
+    let managerSequence = 0; let managerTimer;
+    async function loadManagers(selectedId = '') {
+        const sequence = ++managerSequence;
+        try {
+            const parameters = new URLSearchParams({search: managerSearch.value});
+            if (selectedId) parameters.set('selected', selectedId);
+            const response = await fetch(window.AppClient.appUrl(`/roster/project-managers?${parameters}`), {headers: {Accept: 'application/json'}});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Project managers could not be loaded.');
+            if (sequence !== managerSequence) return;
+            managerSelect.replaceChildren(new Option('Unassigned', ''));
+            data.candidates.forEach(user => { const option = new Option(user.name, user.id); option.selected = String(user.id) === String(selectedId); managerSelect.appendChild(option); });
+        } catch(error) { showMessage(error.message, false); }
+    }
+    managerSearch.addEventListener('input', () => { clearTimeout(managerTimer); managerTimer = setTimeout(() => loadManagers(), 250); });
     function openModal(project = null) {
         editingProjectId = project ? project.id : null;
         form.reset();
@@ -87,6 +106,8 @@ document.addEventListener('DOMContentLoaded', function() {
             form.querySelector('[name="end_date"]').value = project.end_date || '';
         }
 
+        managerSearch.value = '';
+        loadManagers(project?.project_manager_id || '');
         modal.classList.add('active');
     }
 
@@ -182,6 +203,54 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.querySelectorAll('.member-add-form').forEach(memberForm => {
+        const search = memberForm.querySelector('.member-search');
+        const select = memberForm.querySelector('select');
+        let timer;
+        let sequence = 0;
+        async function loadCandidates() {
+            const request = ++sequence;
+            try {
+                const parameters = new URLSearchParams({kind: 'member', search: search.value});
+                const response = await fetch(window.AppClient.appUrl(`/projects/${memberForm.dataset.projectId}/candidates?${parameters}`), {headers: {Accept: 'application/json'}});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Staff could not be loaded.');
+                if (request !== sequence) return;
+                select.replaceChildren(new Option('Add member', ''));
+                data.candidates.forEach(user => select.appendChild(new Option(user.name, user.id)));
+            } catch(error) { showMessage(error.message, false); }
+        }
+        search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadCandidates, 250); });
+        select.addEventListener('focus', loadCandidates, {once: true});
+    });
+    document.querySelectorAll('.member-more-btn').forEach(button => {
+        let page = 0;
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                const response = await fetch(window.AppClient.appUrl(`/projects/${button.dataset.projectId}/members?page=${page + 1}`), {headers: {Accept: 'application/json'}});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Members could not be loaded.');
+                const list = button.closest('.project-members').querySelector('.member-list');
+                list.replaceChildren();
+                data.members.forEach(member => {
+                    const row = document.createElement('div'); row.className = 'member-row';
+                    const name = document.createElement('span'); name.textContent = member.name; row.appendChild(name);
+                    if (data.can_manage) {
+                        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'member-remove-btn';
+                        remove.textContent = 'Remove'; remove.setAttribute('aria-label', `Remove ${member.name} from project`);
+                        remove.dataset.projectId = button.dataset.projectId; remove.dataset.userId = member.id; row.appendChild(remove);
+                    }
+                    list.appendChild(row);
+                });
+                page = data.current_page;
+                button.textContent = `Members page ${page} of ${data.last_page} — ${page < data.last_page ? 'Next page' : 'First page'}`;
+                if (page >= data.last_page) page = 0;
+            } catch(error) { showMessage(error.message, false); }
+            finally { button.disabled = false; }
+        });
+    });
+
+    document.querySelectorAll('.member-add-form').forEach(memberForm => {
         memberForm.addEventListener('submit', function(event) {
             event.preventDefault();
             const projectId = this.dataset.projectId;
@@ -212,10 +281,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    document.querySelectorAll('.member-remove-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            const projectId = this.dataset.projectId;
-            const userId = this.dataset.userId;
+    document.addEventListener('click', function(event) {
+            const button = event.target.closest('.member-remove-btn');
+            if (!button) return;
+            const projectId = button.dataset.projectId;
+            const userId = button.dataset.userId;
             Swal.fire({
                 title: 'Remove this member?',
                 text: 'Members with active project tasks cannot be removed.',
@@ -241,7 +311,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     })
                     .catch(error => showMessage(error.message || 'Member could not be removed.', false));
             });
-        });
     });
 });
 </script>
@@ -304,7 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     <div class="project-stats">
                         <div class="project-stat">
-                            <strong>{{ $project->members->count() }}</strong>
+                            <strong>{{ $project->members_count }}</strong>
                             <span>Members</span>
                         </div>
                         <div class="project-stat">
@@ -332,8 +401,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             @endforelse
                         </div>
 
+                        @if($project->members_count > 5)
+                            <button type="button" class="member-more-btn btn-secondary" data-project-id="{{ $project->id }}" aria-label="Browse members of {{ $project->name }}">Browse members</button>
+                        @endif
                         @can('manageMembers', $project)
                             <form class="member-add-form member-add" data-project-id="{{ $project->id }}">
+                                <input type="search" class="member-search" aria-label="Search staff for {{ $project->name }}" placeholder="Search staff by name">
                                 <select name="user_id" aria-label="Add member to {{ $project->name }}" required>
                                     <option value="">Add member</option>
                                     @foreach ($teamMembers as $member)

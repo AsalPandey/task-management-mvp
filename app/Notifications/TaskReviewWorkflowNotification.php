@@ -6,6 +6,7 @@ use App\Contracts\SendsBrowserPush;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\Channels\BrowserPushChannel;
+use App\Notifications\Concerns\InterpretsRequiredIntent;
 use App\Support\BrowserPushMessageFactory;
 use App\ValueObjects\BrowserPushMessage;
 use Illuminate\Bus\Queueable;
@@ -14,6 +15,7 @@ use Illuminate\Support\Str;
 
 class TaskReviewWorkflowNotification extends Notification implements SendsBrowserPush
 {
+    use InterpretsRequiredIntent;
     use Queueable;
 
     public function __construct(
@@ -97,7 +99,7 @@ class TaskReviewWorkflowNotification extends Notification implements SendsBrowse
             ];
         }
 
-        return $payload;
+        return $this->coherentPayload($payload, $this->task);
     }
 
     public function toBrowserPush(object $notifiable): BrowserPushMessage

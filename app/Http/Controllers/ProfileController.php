@@ -3,14 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Models\User;
 use App\Rules\AccountEmailAvailable;
+use App\Services\AccountAdministrationWriter;
 use App\Services\AccountLifecycleService;
 use App\Services\AccountSessionSecurity;
 use App\Support\UserPayload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rules\Password;
@@ -107,9 +108,9 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
-        DB::transaction(function () use ($user) {
-            app(AccountLifecycleService::class)->assertCanDelete($user, $user);
-            $user->delete();
+        app(AccountAdministrationWriter::class)->deleteSelf($user, function (User $actor, User $target) {
+            app(AccountLifecycleService::class)->assertCanDelete($target, $actor);
+            $target->delete();
         });
 
         Auth::logout();

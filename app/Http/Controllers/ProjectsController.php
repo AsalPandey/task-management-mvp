@@ -30,8 +30,8 @@ class ProjectsController extends Controller
     {
         $user = auth()->user();
         $projects = $this->visibleProjects()
-            ->with(['projectManager', 'members.role'])
-            ->withCount([
+            ->with(['projectManager', 'members' => fn ($query) => $query->with('role')->orderBy('name')->limit(5)])
+            ->withCount(['members',
                 'tasks as active_tasks_count' => fn ($query) => $query->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value]),
                 'tasks as completed_tasks_count' => fn ($query) => $query->where('status', TaskState::Completed->value),
             ])
@@ -42,14 +42,14 @@ class ProjectsController extends Controller
         $projectManagers = User::query()
             ->whereHas('role', fn ($query) => $query->whereIn('name', ['manager', 'project_manager']))
             ->where('active', true)
-            ->orderBy('name')
+            ->orderBy('name')->limit(25)
             ->get();
 
         $teamMembers = User::query()
             ->with('role')
             ->whereHas('role', fn ($query) => $query->whereIn('name', ['project_manager', 'team_member']))
             ->where('active', true)
-            ->orderBy('name')
+            ->orderBy('name')->limit(25)
             ->get();
 
         return view('projects', compact('projects', 'projectManagers', 'teamMembers', 'user'));
@@ -98,6 +98,7 @@ class ProjectsController extends Controller
             $this->writeProject(function () use ($project, $request, $pmReplacementService) {
                 $actor = app(ProjectWriterLocks::class)->actor(auth()->user(), array_filter([$project->project_manager_id, $request->input('project_manager_id')]));
                 $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+                abort_if((int) $lockedProject->project_manager_id !== (int) $project->project_manager_id, 409, 'Project ownership changed. Refresh and try again.');
                 Gate::forUser($actor)->authorize('update', $lockedProject);
                 $data = $this->validatedProjectData($request, $lockedProject);
                 if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
@@ -218,7 +219,7 @@ class ProjectsController extends Controller
 
     private function memberPayloads(Project $project)
     {
-        return $project->members()->with('role')->orderBy('name')->get()
+        return $project->members()->with('role')->orderBy('name')->limit(20)->get()
             ->map(fn (User $user) => UserPayload::roster($user));
     }
 

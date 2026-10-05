@@ -50,6 +50,15 @@ class AccountLifecycleService
         $currentRole = $user->role;
         $newRole = Role::query()->findOrFail($newRoleId);
 
+        // The administration writer holds this account before assignment/ownership writers.
+        $assignments = Task::query()->where('assignee_id', $user->id)
+            ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value]);
+        if (app(TaskAssignmentCandidateService::class)->losingExecutionEligibility($assignments, $user, $newRole->name)
+            ->lockForUpdate()->exists()) {
+            throw new AccountLifecycleException(409,
+                'This employee has unfinished task assignments that would become inaccessible after this role change. Reassign or complete them first.', 'assignment_continuity');
+        }
+
         if ($currentRole && $currentRole->name === 'manager') {
             if ($newRole->name !== 'manager') {
                 $this->assertNotLastActiveManager($user, 'change the role of');

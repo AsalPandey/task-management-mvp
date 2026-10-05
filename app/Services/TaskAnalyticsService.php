@@ -77,14 +77,15 @@ final class TaskAnalyticsService
         // Exactly 30 scalar buckets, even if there are millions of distinct deadline dates.
         $overdueBuckets = (clone $cohort)->toBase()->selectRaw($days->map(fn ($day, $i) => "SUM(CASE WHEN {$deadline} < ? THEN 1 ELSE 0 END) AS d{$i}")->implode(', '), $days->map->toDateString()->all())->first();
         $teamPerformance = (clone $cohort)->leftJoin('users as owners', function ($join): void {
-            $join->on('owners.id', '=', 'tasks.assignee_id')->whereNull('owners.deleted_at');
-        })->toBase()->selectRaw("tasks.assignee_id, owners.id AS owner_id, owners.name,
+            $join->on('owners.id', '=', 'tasks.assignee_id');
+        })->toBase()->selectRaw("tasks.assignee_id, owners.id AS owner_id, owners.name, owners.active, owners.deleted_at,
             COUNT(*) AS total, SUM(CASE WHEN tasks.status = 'completed' THEN 1 ELSE 0 END) AS completed,
             SUM(CASE WHEN tasks.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
             SUM(CASE WHEN {$deadline} < ? THEN 1 ELSE 0 END) AS overdue", [today(config('app.timezone'))->toDateString()])
-            ->groupBy('tasks.assignee_id', 'owners.id', 'owners.name')->get()->map(fn ($row): array => [
+            ->groupBy('tasks.assignee_id', 'owners.id', 'owners.name', 'owners.active', 'owners.deleted_at')->get()->map(fn ($row): array => [
                 'id' => $row->owner_id,
                 'name' => $row->name ?? 'Unassigned',
+                'accountStatus' => $row->deleted_at ? 'Removed' : ($row->active ? 'Active' : 'Inactive'),
                 'avatar' => strtoupper(substr($row->name ?? 'UN', 0, 2)),
                 'total' => (int) $row->total,
                 'completed' => (int) $row->completed,

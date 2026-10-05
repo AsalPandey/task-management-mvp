@@ -38,7 +38,7 @@ final class StartTaskReview implements TaskTransitionCommand
     {
         $changes = [
             'status' => ['before' => TaskState::Submitted->value, 'after' => TaskState::InReview->value],
-            'review_started_at' => ['before' => null, 'after' => $context->occurredAt->toAtomString()],
+            'review_started_at' => ['before' => $task->review_started_at?->toAtomString(), 'after' => $context->occurredAt->toAtomString()],
         ];
 
         $task->forceFill([

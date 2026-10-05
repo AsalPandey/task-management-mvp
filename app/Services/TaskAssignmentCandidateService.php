@@ -9,6 +9,27 @@ use Illuminate\Database\Eloquent\Collection;
 
 class TaskAssignmentCandidateService
 {
+    public function eligibleInProject(Builder $users, Project $project): Builder
+    {
+        return $users->where('active', true)->where(fn ($query) => $query
+            ->whereHas('role', fn ($roles) => $roles->whereIn('name', ['manager', 'team_member']))
+            ->orWhere(fn ($pm) => $pm->whereKey($project->project_manager_id)
+                ->whereHas('role', fn ($roles) => $roles->where('name', 'project_manager'))));
+    }
+
+    /** Apply the same execution rule to tasks under a proposed account role. */
+    public function losingExecutionEligibility(Builder $tasks, User $user, string $role): Builder
+    {
+        if ($user->isActive() && in_array($role, ['manager', 'team_member'], true)) {
+            return $tasks->whereRaw('1 = 0');
+        }
+        if ($user->isActive() && $role === 'project_manager') {
+            return $tasks->whereDoesntHave('project', fn ($projects) => $projects->where('project_manager_id', $user->id));
+        }
+
+        return $tasks;
+    }
+
     public function canExecuteInProject(User $user, Project $project): bool
     {
         return $user->isActive() && ($user->hasAnyRole(['manager', 'team_member'])

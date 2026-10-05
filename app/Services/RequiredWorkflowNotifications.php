@@ -106,6 +106,7 @@ final class RequiredWorkflowNotifications
                     'held', 'resumed' => new TaskWorkflowTransitionNotification($task, $actor, $intent->transition, $intent->action),
                     default => new TaskReviewWorkflowNotification($task, $actor, $intent->transition, $intent->action),
                 };
+                $notification->forIntent($intent);
                 $data = $notification->toArray($user);
                 if (! app(NotificationPreferencePolicy::class)->decideForType($user, $data['type'], 'database')->allowed) {
                     $intent->update(['status' => 'discarded', 'finished_at' => now()]);

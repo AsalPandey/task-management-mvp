@@ -31,6 +31,15 @@ class ProjectManagerReplacementService
 
         $connection = $project->getConnection();
 
+        $outgoing = $oldPmId ? User::with('role')->find($oldPmId) : null;
+        $proposed = clone $project;
+        $proposed->project_manager_id = $newPmId;
+        if ($outgoing && ! app(TaskAssignmentCandidateService::class)->canExecuteInProject($outgoing, $proposed)
+            && Task::on($connection->getName())->where('project_id', $project->id)->where('assignee_id', $oldPmId)
+                ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])->lockForUpdate()->exists()) {
+            abort(409, 'The outgoing project manager has unfinished task assignments that would become inaccessible. Reassign or complete them before replacing the project manager.');
+        }
+
         // 1. If removing PM entirely ($newPmId === null), check if any active tasks rely on old PM as reviewer.
         if ($newPmId === null) {
             $hasDependentActiveTasks = Task::on($connection->getName())

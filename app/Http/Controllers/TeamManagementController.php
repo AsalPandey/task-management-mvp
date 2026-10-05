@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Notifications\AccountStatusChangedNotification;
 use App\Rules\AccountEmailAvailable;
+use App\Services\AccountAdministrationWriter;
 use App\Services\AccountLifecycleService;
 use App\Services\TaskAnalyticsService;
 use App\Services\TaskReadService;
@@ -15,7 +16,6 @@ use App\Support\InputContracts;
 use App\Support\ReadLimits;
 use App\Support\UserPayload;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -63,7 +63,7 @@ class TeamManagementController extends Controller
 
         $data['password'] = Hash::make($data['password']);
         $data['active'] = true;
-        $user = User::query()->create($data);
+        $user = app(AccountAdministrationWriter::class)->write($authUser, null, fn () => User::query()->create($data));
 
         return response()->json(UserPayload::account($user->load('role')));
     }
@@ -87,14 +87,16 @@ class TeamManagementController extends Controller
             unset($data['password']);
         }
 
-        DB::transaction(function () use ($user, $data, $authUser) {
-            Role::query()->where('name', 'manager')->lockForUpdate()->first();
-            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            if (isset($data['role_id']) && (int) $data['role_id'] !== (int) $lockedUser->role_id) {
-                app(AccountLifecycleService::class)->assertCanChangeRole($lockedUser, (int) $data['role_id'], $authUser);
-            }
-            $lockedUser->update($data);
-        }, 3);
+        try {
+            app(AccountAdministrationWriter::class)->write($authUser, $user, function (User $authUser, User $lockedUser) use ($data) {
+                if (isset($data['role_id']) && (int) $data['role_id'] !== (int) $lockedUser->role_id) {
+                    app(AccountLifecycleService::class)->assertCanChangeRole($lockedUser, (int) $data['role_id'], $authUser);
+                }
+                $lockedUser->update($data);
+            });
+        } catch (AccountLifecycleException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage(), 'code' => $exception->publicCode], $exception->getStatusCode());
+        }
 
         return response()->json(UserPayload::account($user->refresh()->load('role')));
     }
@@ -105,12 +107,10 @@ class TeamManagementController extends Controller
         $this->assertCanManageGlobalAccount($authUser, $user);
 
         try {
-            DB::transaction(function () use ($user, $authUser) {
-                Role::query()->where('name', 'manager')->lockForUpdate()->first();
-                $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            app(AccountAdministrationWriter::class)->write($authUser, $user, function (User $authUser, User $lockedUser) {
                 app(AccountLifecycleService::class)->assertCanDelete($lockedUser, $authUser);
                 $lockedUser->delete();
-            }, 3);
+            });
         } catch (AccountLifecycleException $e) {
             return response()->json([
                 'success' => false,
@@ -125,7 +125,10 @@ class TeamManagementController extends Controller
     {
         $authUser = auth()->user();
         $this->assertCanManageGlobalAccount($authUser, $user);
-        $user->forceFill(['active' => true])->save();
+        app(AccountAdministrationWriter::class)->write($authUser, $user, function (User $actor, User $target) {
+            $target->forceFill(['active' => true])->save();
+        });
+        $user->refresh();
         $user->notify(new AccountStatusChangedNotification(true, $authUser));
 
         return response()->json(['success' => true]);
@@ -137,12 +140,10 @@ class TeamManagementController extends Controller
         $this->assertCanManageGlobalAccount($authUser, $user);
 
         try {
-            DB::transaction(function () use ($user, $authUser) {
-                Role::query()->where('name', 'manager')->lockForUpdate()->first();
-                $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            app(AccountAdministrationWriter::class)->write($authUser, $user, function (User $authUser, User $lockedUser) {
                 app(AccountLifecycleService::class)->assertCanDeactivate($lockedUser, $authUser);
                 $lockedUser->forceFill(['active' => false])->save();
-            }, 3);
+            });
         } catch (AccountLifecycleException $e) {
             return response()->json([
                 'success' => false,

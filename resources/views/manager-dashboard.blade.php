@@ -89,7 +89,40 @@ document.addEventListener('DOMContentLoaded', function() {
     const reviewerCandidates = window.reviewerCandidates || [];
     const projectMembership = window.projectMembership || {};
 
-    function populateAssignees(projectId, selectedId = '') {
+    let rosterRequest = 0;
+    let rosterTimer;
+    const assigneeSearch = document.createElement('input');
+    assigneeSearch.type = 'search';
+    assigneeSearch.placeholder = 'Search staff by name';
+    assigneeSearch.setAttribute('aria-label', 'Search task assignee');
+    assigneeSearch.addEventListener('input', () => {
+        clearTimeout(rosterTimer);
+        rosterTimer = setTimeout(() => populateAssignees(taskProjectSelect.value), 250);
+    });
+    taskAssigneeSelect?.before(assigneeSearch);
+    async function populateAssignees(projectId, selectedId = '') {
+        if (!projectId || !taskAssigneeSelect) { renderAssignees(projectId, selectedId); return; }
+        const sequence = ++rosterRequest;
+        taskAssigneeSelect.disabled = true;
+        try {
+            const url = window.AppClient.appUrl(`/projects/${projectId}/candidates`);
+            const parameters = new URLSearchParams({search: assigneeSearch.value, kind: 'assignment'});
+            if (selectedId) parameters.set('selected', selectedId);
+            const response = await fetch(`${url}?${parameters}`, {headers: {Accept: 'application/json'}});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Staff could not be loaded.');
+            if (sequence !== rosterRequest) return;
+            assignmentCandidates.splice(0, assignmentCandidates.length, ...data.candidates);
+            projectMembers[projectId] = data.candidates.filter(user => user.project_member);
+            renderAssignees(projectId, selectedId);
+        } catch (error) {
+            if (sequence === rosterRequest) showMessage(error.message || 'Staff could not be loaded. Search again to retry.', false);
+        } finally {
+            if (sequence === rosterRequest) taskAssigneeSelect.disabled = false;
+        }
+    }
+
+    function renderAssignees(projectId, selectedId = '') {
         if (!taskAssigneeSelect) return;
 
         taskAssigneeSelect.replaceChildren(new Option('Select Team Member', ''));
@@ -139,7 +172,31 @@ document.addEventListener('DOMContentLoaded', function() {
         return data.message || validationMessages[0] || fallback;
     }
 
-    function populateReviewers(projectId, selectedId = '') {
+    let reviewerRequest = 0;
+    let reviewerTimer;
+    const reviewerSearch = document.createElement('input');
+    reviewerSearch.type = 'search'; reviewerSearch.placeholder = 'Search reviewer by name';
+    reviewerSearch.setAttribute('aria-label', 'Search task reviewer');
+    taskReviewerSelect?.before(reviewerSearch);
+    reviewerSearch.addEventListener('input', () => {
+        clearTimeout(reviewerTimer); reviewerTimer = setTimeout(() => populateReviewers(taskProjectSelect.value), 250);
+    });
+    async function populateReviewers(projectId, selectedId = '') {
+        if (!projectId || !taskReviewerSelect) { renderReviewers(projectId, selectedId); return; }
+        const sequence = ++reviewerRequest;
+        try {
+            const parameters = new URLSearchParams({search: reviewerSearch.value, kind: 'reviewer'});
+            if (selectedId) parameters.set('selected', selectedId);
+            const response = await fetch(window.AppClient.appUrl(`/projects/${projectId}/candidates?${parameters}`), {headers: {Accept: 'application/json'}});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Reviewers could not be loaded.');
+            if (sequence !== reviewerRequest) return;
+            reviewerCandidates.splice(0, reviewerCandidates.length, ...data.candidates);
+            renderReviewers(projectId, selectedId);
+        } catch(error) { if (sequence === reviewerRequest) showMessage(error.message, false); }
+    }
+
+    function renderReviewers(projectId, selectedId = '') {
         if (!taskReviewerSelect) return;
 
         taskReviewerSelect.replaceChildren(new Option('Select Reviewer', ''));

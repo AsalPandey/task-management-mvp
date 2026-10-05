@@ -74,6 +74,10 @@ window.TeamForms = (() => {
                 return;
             }
             if (!response.ok) {
+                if (response.status === 409 && data?.code === 'assignment_continuity') {
+                    showErrors(form, 'This employee has unfinished task assignments that would become inaccessible after this role change. Reassign or complete them first.');
+                    return;
+                }
                 showErrors(form, statusMessages[response.status] || 'The account could not be saved. Try again shortly.');
                 return;
             }

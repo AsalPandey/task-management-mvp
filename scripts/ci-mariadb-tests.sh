@@ -25,6 +25,8 @@ readonly r53_dense25_database="task_management_r43_r53_ci_dense25000"
 readonly r51_concurrency_database="task_management_r51_concurrency_ci"
 readonly r52_concurrency_database="task_management_r52_concurrency_ci"
 readonly r43_concurrency_database="task_management_r43_concurrency_ci"
+readonly r61_account_database="task_management_r6_r61_account_ci"
+readonly r61_responsibility_database="task_management_r6_r61_responsibility_ci"
 
 mysql_command=(
     mysql
@@ -39,6 +41,9 @@ mysql_command=(
 database_is_approved() {
     case "$1" in
         "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r53_dense10_database}"|"${r53_dense25_database}"|"${r43_concurrency_database}"|"${r51_concurrency_database}"|"${r52_concurrency_database}")
+            return 0
+            ;;
+        "${r61_account_database}"|"${r61_responsibility_database}"|task_management_r6_company_250|task_management_r6_company_500|task_management_r6_company)
             return 0
             ;;
         *)
@@ -137,6 +142,18 @@ run_suite "${r42_membership_database}" tests/Feature/ProjectMembershipMariaDbCon
 run_suite "${r43_concurrency_database}" tests/Feature/R43NotificationMariaDbConcurrencyTest.php
 run_suite "${r51_concurrency_database}" tests/Feature/R51ProjectWriterMariaDbConcurrencyTest.php
 run_suite "${r52_concurrency_database}" tests/Feature/R52EligibilityMariaDbConcurrencyTest.php
+run_suite "${r61_account_database}" tests/Feature/R61AccountMariaDbConcurrencyTest.php
+run_suite "${r61_responsibility_database}" tests/Feature/R61ResponsibilityMariaDbConcurrencyTest.php
+
+# Dense membership response budgets run in fresh 128M PHP processes.
+mkdir -p output/r61-ci
+for size in 250 500 1000; do
+    database="task_management_r6_company_${size}"
+    if [[ "$size" == 1000 ]]; then database=task_management_r6_company; fi
+    recreate_database "$database"
+    php scripts/r61-prepare-roster.php "$size" > "output/r61-ci/fixture-$size.json"
+    php -d memory_limit=128M scripts/r61-check-roster.php > "output/r61-ci/roster-$size.json"
+done
 recreate_database "${r42_reset_database}"
 php artisan db:seed --force --no-interaction
 php artisan migrate:reset --force --no-interaction

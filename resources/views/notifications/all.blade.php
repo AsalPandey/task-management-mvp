@@ -78,7 +78,13 @@
                                 </div>
                                 <div class="notification-page-content">
                                     <div class="notification-page-message">{{ $notificationData['message'] ?? 'You have a new notification.' }}</div>
-                                    <div class="notification-page-time">{{ $notification->created_at->diffForHumans() }}</div>
+                                    <div class="notification-page-time">
+                                        @if(($notificationData['historical'] ?? false) && !empty($notificationData['event_at']))
+                                            Event recorded {{ \Illuminate\Support\Carbon::parse($notificationData['event_at'])->timezone(config('app.timezone'))->format('Y-m-d H:i') }}
+                                        @else
+                                            {{ $notification->created_at->diffForHumans() }}
+                                        @endif
+                                    </div>
                                     @if($taskUrl)
                                         <span class="notification-task-action">Open task</span>
                                     @endif
