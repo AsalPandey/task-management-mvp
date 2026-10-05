@@ -14,7 +14,10 @@ async function login(page, email = manager) {
     await settled(page);
 }
 async function settled(page) {
-    await page.waitForLoadState('networkidle');
+    // Background freshness requests do not determine document readiness.
+    // The load event includes scripts; each workflow asserts its visible state.
+    await page.waitForLoadState('load');
+    await expect(page.locator('body')).toBeVisible();
     await page.evaluate(async () => {
         await Promise.all(document.getAnimations().filter(animation=>Number.isFinite(animation.effect?.getTiming().iterations)).map(animation=>animation.finished.catch(()=>{})));
     });
@@ -46,7 +49,7 @@ async function transition(page, title, action, prompts = []) {
     }
     if (!prompts.length) await page.locator('.swal2-confirm').click();
     await expect(page.locator('.swal2-popup')).toContainText('Success'); await page.locator('.swal2-confirm').click();
-    await page.waitForLoadState('networkidle');
+    await settled(page);
 }
 
 test('R44 different-user polling detects creation and lifecycle focus revalidation retains safety', async ({ browser }) => {
