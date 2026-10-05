@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import AxeBuilder from '@axe-core/playwright';
 
 test('R61 dense 1000-person roster remains searchable keyboard usable and scoped', async ({page,browser}) => {
     test.skip(process.env.R61_LARGE_ROSTER !== '1','Requires separate disposable 1000-person roster fixture.');
@@ -15,16 +16,21 @@ test('R61 dense 1000-person roster remains searchable keyboard usable and scoped
     const search=project.getByRole('searchbox',{name:'Search staff for R6 Project 12'});
     await search.focus(); await search.fill('Employee 999'); await search.press('Tab');
     await project.locator('[name=user_id]').selectOption({label:'Employee 999'});
+    expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>['serious','critical'].includes(v.impact))).toEqual([]);
     await page.goto('/tasks'); await page.locator('#newTaskBtn').click();
     await page.locator('#taskTitle').fill('R61 large roster assignment');
+    await page.locator('#taskDescription').fill('Searchable 1000-person assignment qualification');
     await page.locator('#taskProject').selectOption({label:'R6 Project 12'});
     await page.getByRole('searchbox',{name:'Search task assignee',exact:true}).fill('Employee 999');
     await page.locator('#taskAssignee').selectOption({label:'Employee 999'});
     await page.locator('#taskReviewer').selectOption({label:'R6 Company Manager'});
     await page.locator('#taskDueDate').fill(new Date(Date.now()+7*86400000).toISOString().slice(0,10));
+    expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>['serious','critical'].includes(v.impact))).toEqual([]);
     const response=page.waitForResponse(r=>r.request().method()==='POST' && new URL(r.url()).pathname==='/tasks');
     await page.locator('#taskForm button[type=submit]').click(); expect((await response).status()).toBe(200);
+    await page.goto('/tasks?search=R61%20large%20roster%20assignment');
     await expect(page.locator('#tasksGrid')).toContainText('R61 large roster assignment');
+    await page.screenshot({path:`${process.env.BROWSER_OUTPUT_DIR}/r61-large-assignment.png`,fullPage:true});
     expect(errors).toEqual([]);
     const context=await browser.newContext();
     try {

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import AxeBuilder from '@axe-core/playwright';
 
 const password = 'R41-browser-unique-secret-123!';
 let fixture;
@@ -48,6 +49,7 @@ test('R61 Manager sees responsibility warnings and can resolve promotion and PM 
     await login(page);
     await roleEdit(page,fixture.employee,409);
     await expect(page.locator('#editMemberForm [role="alert"]')).toContainText('unfinished task assignments');
+    expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>['serious','critical'].includes(v.impact))).toEqual([]);
     const cancelled=await api(page,'POST',`/tasks/${fixture.promotion_task}/cancel`,{expected_version:2,cancellation_reason:'Resolve before promotion'});
     expect(cancelled.status).toBe(200);
     await roleEdit(page,fixture.employee,200);
