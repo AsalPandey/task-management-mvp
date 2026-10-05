@@ -26,6 +26,10 @@ final class ProjectRosterController extends Controller
             $query->whereHas('role', fn ($roles) => $roles->whereIn('name', ['project_manager', 'team_member']));
         } else {
             app(TaskAssignmentCandidateService::class)->eligibleInProject($query, $project);
+            // Managers can execute existing project assignments, but the membership
+            // action only admits PMs/Team Members. Do not offer an impossible join.
+            $query->where(fn ($users) => $users->whereHas('role', fn ($roles) => $roles->whereIn('name', ['project_manager', 'team_member']))
+                ->orWhereHas('projects', fn ($projects) => $projects->where('projects.id', $project->id)));
         }
         // PMs see their own operational roster by default; adding other staff requires
         // an explicit name search within this authorized membership-management action.

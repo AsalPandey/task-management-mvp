@@ -16,7 +16,7 @@ class R61RosterReadTest extends TestCase
     public function test_members_candidates_and_selected_identity_are_bounded_searchable_and_scoped(): void
     {
         $this->seed();
-        $manager = User::factory()->create(['role_id' => Role::where('name', 'manager')->value('id')]);
+        $manager = User::factory()->create(['name' => 'R61 global admin', 'role_id' => Role::where('name', 'manager')->value('id')]);
         $pm = User::factory()->create(['role_id' => Role::where('name', 'project_manager')->value('id')]);
         $outsider = User::factory()->create(['role_id' => $pm->role_id]);
         $project = Project::factory()->create(['project_manager_id' => $pm->id]);
@@ -34,6 +34,10 @@ class R61RosterReadTest extends TestCase
         $this->assertLessThanOrEqual(26, count($selected->json('candidates')));
         $this->assertContains($last->id, array_column($selected->json('candidates'), 'id'));
         $this->getJson('/projects/'.$project->id.'/candidates?search=Zebra')->assertOk()->assertJsonCount(1, 'candidates')->assertJsonPath('candidates.0.id', $last->id);
+        $this->getJson('/projects/'.$project->id.'/candidates?search=R61%20global')->assertOk()->assertJsonCount(0, 'candidates');
+        // Retained membership after a promotion still permits Manager execution.
+        $project->members()->attach($manager->id);
+        $this->getJson('/projects/'.$project->id.'/candidates?search=R61%20global')->assertOk()->assertJsonCount(1, 'candidates')->assertJsonPath('candidates.0.id', $manager->id);
         $this->actingAs($outsider)->getJson('/projects/'.$project->id.'/candidates')->assertForbidden();
         $this->getJson('/projects/'.$project->id.'/members')->assertForbidden();
         $this->actingAs($members->first())->getJson('/projects/'.$project->id.'/candidates')->assertForbidden();

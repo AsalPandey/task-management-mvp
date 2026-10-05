@@ -32,7 +32,7 @@ test('R61 dense 1000-person roster remains searchable keyboard usable and scoped
     await reloaded; await page.waitForLoadState('load');
     await page.goto('/tasks?search=R61%20large%20roster%20assignment');
     await expect(page.locator('#tasksGrid')).toContainText('R61 large roster assignment');
-    await page.screenshot({path:`${process.env.BROWSER_OUTPUT_DIR}/r61-large-assignment.png`,fullPage:true});
+    await page.screenshot({path:`${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r61-large-assignment.png`,fullPage:true});
     expect(errors).toEqual([]);
     const context=await browser.newContext();
     try {
