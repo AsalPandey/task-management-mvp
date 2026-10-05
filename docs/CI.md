@@ -14,6 +14,9 @@ GitHub Actions runs three release gates for pull requests and pushes to `main`,
   runs a fresh migration and the maintained MariaDB suite, then reruns every
   database-name-gated process-concurrency suite against its required disposable
   database name. A skipped gated suite is therefore not treated as coverage.
+  R5.3 additionally qualifies fresh dense 10k/25k administration under 128M with
+  a 64 MiB peak budget, real durable delivery and independent provenance checks;
+  see [capacity and navigation contracts](R53_CAPACITY_AND_NAVIGATION.md).
 - **Clean-company browser critical path** consumes the exact production asset
   build, creates a disposable production-like MariaDB installation and exercises
   UI onboarding, R4.1/R4.2/R4.3 regressions and the R4.4 client/PWA/accessibility

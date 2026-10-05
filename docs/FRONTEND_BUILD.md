@@ -15,8 +15,11 @@ the database are not scanner inputs. JavaScript theme/font/forms configuration
 remains in `tailwind.config.js`, loaded through `@config`. Automatic whole-project
 scanning is disabled so local cache contents cannot change the production CSS.
 
-`resources/js/app.js` retains Alpine, Chart.js, SweetAlert and the existing
-bootstrap code. The compiler runs in Node during the build; production serves
+`resources/js/app.js` retains Alpine, SweetAlert and the existing bootstrap code.
+R5.3 moves Chart.js into `resources/js/charts.js`, included only by company and
+member analytics through the Vite manifest. Build both entries together; chart,
+print, non-chart, root and mounted paths are qualified by the browser gates.
+The compiler runs in Node during the build; production serves
 the resulting hashed CSS/JS and manifest. Hostinger packaging excludes
 `node_modules`, consumes the exact CI asset build, and runs PHP cache/migration
 commands on the host. Qualification of an actual deployed host remains separate.
