@@ -12,8 +12,8 @@ class AuthorizedDatabaseNotification extends DatabaseNotification
     public function getDataAttribute($value): array
     {
         // Preserve stored history; expose content using the owner's current access.
-        return app(NotificationAccess::class)->forReader(
-            User::find($this->notifiable_id),
+        return app(NotificationAccess::class)->forOwnerReader(
+            (int) $this->notifiable_id,
             $this->fromJson($value) ?? [],
         );
     }
