@@ -9,9 +9,24 @@ use App\ValueObjects\TaskDeadlineGeneration;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
+/**
+ * Canonical fields added by driver-aware migrations that schema inference cannot read.
+ *
+ * @property string|null $task_uid Null only on unsaved or pre-backfill retained models.
+ * @property int $lock_version
+ * @property int|null $assignee_id
+ * @property int|null $reviewer_id
+ * @property int|null $active_revision_cycle_id
+ * @property array<string, mixed>|null $legacy_completion_provenance
+ * @property-read string $status Human-readable label from the status accessor.
+ * @property-write string|TaskState $status Canonical or legacy input normalized by the mutator.
+ */
 class Task extends Model
 {
     use HasFactory, SoftDeletes;
@@ -195,87 +210,104 @@ class Task extends Model
         });
     }
 
-    public function project()
+    /** @return BelongsTo<Project, $this> */
+    public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
 
-    public function assignee()
+    /** @return BelongsTo<User, $this> */
+    public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assignee_id');
     }
 
-    public function reviewer()
+    /** @return BelongsTo<User, $this> */
+    public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewer_id');
     }
 
-    public function histories()
+    /** @return HasMany<TaskHistory, $this> */
+    public function histories(): HasMany
     {
         return $this->hasMany(TaskHistory::class);
     }
 
-    public function events()
+    /** @return HasMany<TaskEvent, $this> */
+    public function events(): HasMany
     {
         return $this->hasMany(TaskEvent::class)->orderBy('sequence');
     }
 
-    public function creator()
+    /** @return BelongsTo<User, $this> */
+    public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function assigner()
+    /** @return BelongsTo<User, $this> */
+    public function assigner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by');
     }
 
-    public function completedBy()
+    /** @return BelongsTo<User, $this> */
+    public function completedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'completed_by');
     }
 
-    public function approvedBy()
+    /** @return BelongsTo<User, $this> */
+    public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
     }
 
-    public function heldBy()
+    /** @return BelongsTo<User, $this> */
+    public function heldBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'held_by');
     }
 
-    public function cancelledBy()
+    /** @return BelongsTo<User, $this> */
+    public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
     }
 
-    public function revisionCycles()
+    /** @return HasMany<TaskRevisionCycle, $this> */
+    public function revisionCycles(): HasMany
     {
         return $this->hasMany(TaskRevisionCycle::class);
     }
 
-    public function activeRevisionCycle()
+    /** @return BelongsTo<TaskRevisionCycle, $this> */
+    public function activeRevisionCycle(): BelongsTo
     {
         return $this->belongsTo(TaskRevisionCycle::class, 'active_revision_cycle_id');
     }
 
-    public function submissions()
+    /** @return HasMany<TaskSubmission, $this> */
+    public function submissions(): HasMany
     {
         return $this->hasMany(TaskSubmission::class);
     }
 
-    public function latestSubmission()
+    /** @return HasOne<TaskSubmission, $this> */
+    public function latestSubmission(): HasOne
     {
         return $this->hasOne(TaskSubmission::class)->latestOfMany('submitted_at');
     }
 
-    public function approvals()
+    /** @return HasMany<TaskApproval, $this> */
+    public function approvals(): HasMany
     {
         return $this->hasMany(TaskApproval::class);
     }
 
-    public function approval()
+    /** @return HasOne<TaskApproval, $this> */
+    public function approval(): HasOne
     {
         return $this->hasOne(TaskApproval::class)->latestOfMany('approved_at');
     }

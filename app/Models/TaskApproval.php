@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TaskApproval extends Model
 {
@@ -17,27 +18,32 @@ class TaskApproval extends Model
         'is_override' => 'boolean',
     ];
 
-    public function task()
+    /** @return BelongsTo<Task, $this> */
+    public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
     }
 
-    public function submission()
+    /** @return BelongsTo<TaskSubmission, $this> */
+    public function submission(): BelongsTo
     {
         return $this->belongsTo(TaskSubmission::class);
     }
 
-    public function revisionCycle()
+    /** @return BelongsTo<TaskRevisionCycle, $this> */
+    public function revisionCycle(): BelongsTo
     {
         return $this->belongsTo(TaskRevisionCycle::class);
     }
 
-    public function approver()
+    /** @return BelongsTo<User, $this> */
+    public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
     }
 
-    public function assignedReviewer()
+    /** @return BelongsTo<User, $this> */
+    public function assignedReviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_reviewer_id');
     }

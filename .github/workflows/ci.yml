@@ -63,6 +63,21 @@ jobs:
       - name: Check PHP formatting
         run: vendor/bin/pint --test
 
+      - name: Install locked development-only static analyzer
+        run: composer install --working-dir=tools/static-analysis --no-interaction --prefer-dist --no-progress
+
+      - name: Reject new static-analysis diagnostics
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+        run: |
+          composer validate --working-dir=tools/static-analysis --strict
+          composer audit --working-dir=tools/static-analysis --locked --no-interaction
+          composer analyse
+
       - name: Install locked frontend dependencies
         run: npm ci
 
@@ -72,7 +87,9 @@ jobs:
           npm audit --omit=dev --audit-level=moderate
 
       - name: Build production assets
-        run: npm run build
+        run: |
+          npm run check:js
+          npm run build
 
       - name: Preserve the exact production asset build
         uses: actions/upload-artifact@v4

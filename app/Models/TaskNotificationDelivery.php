@@ -15,6 +15,7 @@ class TaskNotificationDelivery extends Model
         'delivered_at' => 'datetime',
     ];
 
+    /** @return BelongsTo<Task, $this> */
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);

@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Project extends Model
@@ -31,24 +34,28 @@ class Project extends Model
         ];
     }
 
-    public function projectManager()
+    /** @return BelongsTo<User, $this> */
+    public function projectManager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'project_manager_id');
     }
 
-    public function members()
+    /** @return BelongsToMany<User, $this> */
+    public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class)
             ->withTimestamps()
             ->withPivot('added_by');
     }
 
-    public function tasks()
+    /** @return HasMany<Task, $this> */
+    public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
     }
 
-    public function histories()
+    /** @return HasMany<ProjectHistory, $this> */
+    public function histories(): HasMany
     {
         return $this->hasMany(ProjectHistory::class);
     }

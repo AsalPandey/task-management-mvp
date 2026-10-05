@@ -1,0 +1,3 @@
+includes:
+    - tools/static-analysis/analysis.neon
+    - phpstan-baseline.neon

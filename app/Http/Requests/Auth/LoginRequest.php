@@ -20,11 +20,6 @@ class LoginRequest extends FormRequest
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, ValidationRule|array<mixed>|string>
-     */
     protected function prepareForValidation(): void
     {
         if (is_string($this->input('email'))) {
@@ -32,6 +27,7 @@ class LoginRequest extends FormRequest
         }
     }
 
+    /** @return array<string, ValidationRule|array<mixed>|string> */
     public function rules(): array
     {
         return [

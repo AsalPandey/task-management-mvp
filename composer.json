@@ -43,6 +43,7 @@
         }
     },
     "scripts": {
+        "analyse": "@php -d memory_limit=512M tools/static-analysis/vendor/bin/phpstan analyse --configuration=phpstan.neon --memory-limit=512M --no-progress",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

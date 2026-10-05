@@ -60,6 +60,12 @@ final class NotificationAccess
         return $data;
     }
 
+    /**
+     * @template T of Model
+     *
+     * @param  class-string<T>  $model
+     * @return T|null
+     */
     private function readerResource(string $model, int|string $id, bool $memoize): ?Model
     {
         if (! $memoize) {

@@ -28,16 +28,22 @@ class BrowserPushSubscription extends Model
         ];
     }
 
+    /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /** @return HasMany<BrowserPushDelivery, $this> */
     public function deliveries(): HasMany
     {
         return $this->hasMany(BrowserPushDelivery::class);
     }
 
+    /**
+     * @param  Builder<BrowserPushSubscription>  $query
+     * @return Builder<BrowserPushSubscription>
+     */
     public function scopeEnabled(Builder $query): Builder
     {
         return $query->whereNull('disabled_at')->whereNull('revoked_at');

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\AccountSessionSecurity;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -13,6 +14,7 @@ final class EnsureCurrentAccountSession
 {
     public function handle(Request $request, Closure $next)
     {
+        /** @var SessionGuard $guard The web driver is session in config/auth.php. */
         $guard = Auth::guard('web');
         $user = $guard->user();
         // Only session-authenticated requests have this key; stateless guards do not.

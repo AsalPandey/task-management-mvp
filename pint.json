@@ -1,0 +1,3 @@
+{
+    "exclude": ["output", "audit", "tools/static-analysis/vendor", "tools/static-analysis/cache"]
+}

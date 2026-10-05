@@ -17,6 +17,7 @@ class BrowserPushDelivery extends Model
         'delivered_at' => 'datetime',
     ];
 
+    /** @return BelongsTo<BrowserPushSubscription, $this> */
     public function subscription(): BelongsTo
     {
         return $this->belongsTo(BrowserPushSubscription::class, 'browser_push_subscription_id');

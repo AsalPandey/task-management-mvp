@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TaskRevisionCycle extends Model
 {
@@ -33,17 +35,20 @@ class TaskRevisionCycle extends Model
         'resolved_at' => 'datetime',
     ];
 
-    public function task()
+    /** @return BelongsTo<Task, $this> */
+    public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
     }
 
-    public function requestedBy()
+    /** @return BelongsTo<User, $this> */
+    public function requestedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by');
     }
 
-    public function submissions()
+    /** @return HasMany<TaskSubmission, $this> */
+    public function submissions(): HasMany
     {
         return $this->hasMany(TaskSubmission::class, 'revision_cycle_id');
     }

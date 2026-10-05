@@ -7,6 +7,10 @@ GitHub Actions runs three release gates for pull requests and pushes to `main`,
   `package-lock.json`, validates and audits them, checks PHP syntax and Pint,
   runs the maintained SQLite suite, builds production assets, and compiles Blade
   templates.
+  It also installs the separately locked development-only PHPStan/Larastan tool
+  project and rejects new level-5 diagnostics against the reviewed baseline.
+  See [static analysis](STATIC_ANALYSIS.md). JavaScript syntax checks run before
+  Vite; feature behavior remains pinned by real browser gates.
   Frontend compilation uses the official Tailwind v4 Vite plugin and explicit
   source-template scanning; see [frontend build and browser contract](FRONTEND_BUILD.md).
 - **MariaDB migrations and concurrency** uses an ephemeral MariaDB 10.4.32 service.

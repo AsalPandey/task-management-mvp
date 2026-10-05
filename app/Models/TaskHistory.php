@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TaskHistory extends Model
 {
@@ -26,17 +27,20 @@ class TaskHistory extends Model
         'created_at' => 'datetime',
     ];
 
-    public function task()
+    /** @return BelongsTo<Task, $this> */
+    public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
     }
 
-    public function project()
+    /** @return BelongsTo<Project, $this> */
+    public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
 
-    public function user()
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }

@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection;
 
 class TaskAssignmentCandidateService
 {
@@ -16,7 +16,7 @@ class TaskAssignmentCandidateService
     }
 
     /**
-     * @param  Collection<int, mixed>  $projects
+     * @param  Collection<int, Project>  $projects
      * @return Builder<User>
      */
     public function forProjects(Collection $projects): Builder

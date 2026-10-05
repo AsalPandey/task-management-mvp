@@ -2,29 +2,32 @@
 
 namespace App\Models;
 
-// Internal accounts are provisioned by managers. Email verification is optional metadata.
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * Internal accounts are provisioned by managers; verification is optional metadata.
+ *
+ * @property array<string, mixed>|null $notification_preferences
+ */
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, SoftDeletes;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     public function setEmailAttribute(mixed $value): void
     {
         $this->attributes['email'] = is_string($value) ? mb_strtolower(trim($value)) : $value;
     }
 
+    /** @var list<string> */
     protected $fillable = [
         'name',
         'email',
@@ -61,12 +64,14 @@ class User extends Authenticatable
         ];
     }
 
-    public function role()
+    /** @return BelongsTo<Role, $this> */
+    public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
     }
 
-    public function notifications()
+    /** @return MorphMany<AuthorizedDatabaseNotification, $this> */
+    public function notifications(): MorphMany
     {
         return $this->morphMany(AuthorizedDatabaseNotification::class, 'notifiable')->latest();
     }
@@ -92,31 +97,37 @@ class User extends Authenticatable
         return (bool) $this->role?->permissions->contains('name', $permission);
     }
 
-    public function tasks()
+    /** @return HasMany<Task, $this> */
+    public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'assignee_id');
     }
 
-    public function managedProjects()
+    /** @return HasMany<Project, $this> */
+    public function managedProjects(): HasMany
     {
         return $this->hasMany(Project::class, 'project_manager_id');
     }
 
-    public function projects()
+    /** @return BelongsToMany<Project, $this> */
+    public function projects(): BelongsToMany
     {
         return $this->belongsToMany(Project::class)->withTimestamps()->withPivot('added_by');
     }
 
-    public function createdTasks()
+    /** @return HasMany<Task, $this> */
+    public function createdTasks(): HasMany
     {
         return $this->hasMany(Task::class, 'created_by');
     }
 
-    public function assignedTasks()
+    /** @return HasMany<Task, $this> */
+    public function assignedTasks(): HasMany
     {
         return $this->hasMany(Task::class, 'assigned_by');
     }
 
+    /** @return HasMany<BrowserPushSubscription, $this> */
     public function browserPushSubscriptions(): HasMany
     {
         return $this->hasMany(BrowserPushSubscription::class);

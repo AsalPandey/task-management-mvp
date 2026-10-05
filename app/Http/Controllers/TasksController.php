@@ -24,6 +24,7 @@ use App\Http\Requests\StartTaskRevisionRequest;
 use App\Http\Requests\SubmitTaskRequest;
 use App\Http\Requests\TaskIndexRequest;
 use App\Http\Requests\TaskStoreRequest;
+use App\Http\Requests\TaskTransitionRequest;
 use App\Http\Requests\TaskUpdateRequest;
 use App\Models\Project;
 use App\Models\Task;
@@ -600,11 +601,13 @@ class TasksController extends Controller
         ] + $this->taskTimeline->pageForViewer($task, $request->user(), isset($data['before']) ? (int) $data['before'] : null));
     }
 
+    /** @return Builder<Task> */
     private function visibleTasks(): Builder
     {
         return $this->taskReads->visibleTo(auth()->user());
     }
 
+    /** @return Builder<Project> */
     private function visibleProjects(): Builder
     {
         $user = auth()->user();
@@ -644,7 +647,7 @@ class TasksController extends Controller
         return $this->taskViewData->make($task, $viewer);
     }
 
-    private function operationContext(Request $request): TaskOperationContext
+    private function operationContext(TaskTransitionRequest $request): TaskOperationContext
     {
         $expectedVersion = $request->validated()['expected_version'];
 

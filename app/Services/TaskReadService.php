@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 final class TaskReadService
 {
+    /** @return Builder<Task> */
     public function visibleTo(User $user): Builder
     {
         $query = Task::query();
@@ -31,6 +32,7 @@ final class TaskReadService
         return $query->where('assignee_id', $user->id);
     }
 
+    /** @return Builder<Task> */
     public function activeVisibleTo(User $user): Builder
     {
         return $this->visibleTo($user)->whereNotIn('status', [
@@ -39,16 +41,19 @@ final class TaskReadService
         ]);
     }
 
+    /** @return Builder<Task> */
     public function completedVisibleTo(User $user): Builder
     {
         return $this->visibleTo($user)->where('status', TaskState::Completed->value);
     }
 
+    /** @return Builder<Task> */
     public function cancelledVisibleTo(User $user): Builder
     {
         return $this->visibleTo($user)->where('status', TaskState::Cancelled->value);
     }
 
+    /** @return Builder<Task> */
     public function executionVisibleTo(User $user): Builder
     {
         return $this->visibleTo($user)->whereIn('status', [
@@ -59,6 +64,7 @@ final class TaskReadService
         ]);
     }
 
+    /** @return Builder<Task> */
     public function reviewQueueVisibleTo(User $user): Builder
     {
         return $this->visibleTo($user)->whereIn('status', [
