@@ -106,12 +106,14 @@ test('R54 UI reassigns reviewer, holds initial work, reopens approval and cancel
     await transition(member, title, 'start');
     await transition(member, title, 'hold', 'R54 initial execution hold');
     await transition(member, title, 'resume');
-    await transition(page, title, 'cancel', 'R54 controlled cancellation');
-    expect(snapshot().tasks.find(task => task.title === title).status).toBe('cancelled');
+    await transition(member, title, 'submit', 'R54 feature approval prerequisite');
+    await transition(page, title, 'review');
+    await transition(page, title, 'approve', 'R54 feature approval');
+    expect(snapshot().tasks.find(task => task.title === title).status).toBe('completed');
     await memberContext.close();
 
     await page.goto('/history');
-    const row = page.locator('tr').filter({ hasText: 'R41 Basic Task' });
+    const row = page.locator('tr').filter({ hasText: title });
     const reopen = row.locator('.reopen-revision-btn');
     const version = Number(await reopen.getAttribute('data-task-version'));
     const url = await reopen.getAttribute('data-url');
@@ -131,8 +133,10 @@ test('R54 UI reassigns reviewer, holds initial work, reopens approval and cancel
     await expect(row).toHaveCount(0);
     await expect(page.locator('.swal2-title')).toHaveText('Reopened!');
     await page.locator('.swal2-confirm').click();
-    expect(snapshot().tasks.find(task => task.title === 'R41 Basic Task').status).toBe('revision_requested');
-    await transition(page, 'R41 Basic Task', 'cancel', 'R54 reopened workflow cancellation');
+    expect(snapshot().tasks.find(task => task.title === title).status).toBe('revision_requested');
+    await transition(page, title, 'cancel', 'R54 reopened workflow cancellation');
+    expect(snapshot().tasks.find(task => task.title === title).status).toBe('cancelled');
+    expect(snapshot().tasks.find(task => task.title === 'R41 Basic Task').status).toBe('completed');
     expect(errors).toEqual([]);
 });
 
