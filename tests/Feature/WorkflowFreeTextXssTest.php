@@ -62,8 +62,13 @@ class WorkflowFreeTextXssTest extends TestCase
         $this->assertIsString($taskView);
         $this->assertIsString($completedView);
         foreach ([$taskView, $completedView] as $view) {
-            $this->assertStringContainsString('window.Phase3UI.showTimeline(data.entries, { url: button.dataset.url, ...data })', $view);
+            $this->assertStringContainsString("@vite('resources/js/task-features.js')", $view);
+            $this->assertStringContainsString('window.TaskFeatures.initTimelineActions(', $view);
         }
+
+        $timelineLoader = file_get_contents(resource_path('js/tasks/timeline-actions.js'));
+        $this->assertIsString($timelineLoader);
+        $this->assertStringContainsString('window.Phase3UI.showTimeline(data.entries, { url: button.dataset.url, ...data })', $timelineLoader);
 
         $timelineRenderer = file_get_contents(public_path('js/phase3.js'));
         $this->assertIsString($timelineRenderer);
