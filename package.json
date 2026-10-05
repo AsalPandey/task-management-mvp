@@ -4,6 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
+        "check:js": "node scripts/check-js-syntax.mjs",
         "test:browser": "playwright test",
         "dev": "vite"
     },

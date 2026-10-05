@@ -10,16 +10,18 @@
     </header>
 
     <x-danger-button
-        x-data=""
-        x-on:click.prevent="$dispatch('open-modal', 'confirm-user-deletion')"
+        type="button"
+        id="openAccountDeletion"
     >{{ __('Delete Account') }}</x-danger-button>
 
-    <x-modal name="confirm-user-deletion" :show="$errors->userDeletion->isNotEmpty()" focusable>
+    <div id="accountDeletionModal" class="modal fixed inset-0 overflow-y-auto px-4 py-6 sm:px-0 z-50"
+        style="display: none;" aria-labelledby="accountDeletionTitle" data-show="{{ $errors->userDeletion->isNotEmpty() ? 'true' : 'false' }}">
+      <div class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform sm:w-full sm:max-w-2xl sm:mx-auto">
         <form method="post" action="{{ route('profile.destroy') }}" class="p-6">
             @csrf
             @method('delete')
 
-            <h2 class="text-lg font-medium text-gray-900">
+            <h2 id="accountDeletionTitle" class="text-lg font-medium text-gray-900">
                 {{ __('Are you sure you want to delete your account?') }}
             </h2>
 
@@ -42,7 +44,7 @@
             </div>
 
             <div class="mt-6 flex justify-end">
-                <x-secondary-button x-on:click="$dispatch('close')">
+                <x-secondary-button class="modal-close" aria-label="Cancel">
                     {{ __('Cancel') }}
                 </x-secondary-button>
 
@@ -51,5 +53,6 @@
                 </x-danger-button>
             </div>
         </form>
-    </x-modal>
+      </div>
+    </div>
 </section>

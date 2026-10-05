@@ -1,5 +1,26 @@
 @extends('layouts.app')
 
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('accountDeletionModal');
+    const setOpen = open => {
+        modal.style.display = open ? 'block' : 'none';
+        modal.classList.toggle('active', open);
+        document.body.classList.toggle('overflow-y-hidden', open);
+    };
+    document.getElementById('openAccountDeletion').addEventListener('click', () => setOpen(true));
+    modal.querySelector('.modal-close').addEventListener('click', () => setOpen(false));
+    modal.addEventListener('click', event => { if (event.target === modal) setOpen(false); });
+    // Phase3UI owns focus, Escape, trapping and return-focus for .modal.active.
+    if (modal.dataset.show === 'true') requestAnimationFrame(() => setOpen(true));
+    document.querySelectorAll('[data-profile-saved]').forEach(message => {
+        setTimeout(() => { message.hidden = true; }, 2000);
+    });
+});
+</script>
+@endpush
+
 @section('content')
 
     <div class="py-12">

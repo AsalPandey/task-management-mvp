@@ -1,5 +1,20 @@
 # Frontend build and browser contract
 
+R5.4 extracts task lifecycle/reviewer/deadline actions, completed-task reopening,
+and shared timeline loading into `resources/js/tasks/`. Both task pages load the
+`task-features.js` Vite entry. The modules use the existing AppClient-wrapped fetch,
+rendered versions/URLs/selectors and Phase3UI timeline/focus handling. The shared
+request helper only serializes this feature; it does not replace freshness,
+offline, dirty-form or account safety. Chart.js remains analytics-only.
+
+`npm run check:js` uses Node's maintained parser on browser/module source without
+adding lint dependencies or style churn. It catches syntax failures; the browser
+suite detects undefined DOM/API/closure behavior. No claim of semantic linting is
+made. The R54 browser gate includes completed-history 409 recovery in Chromium and
+WebKit, real reviewer reassignment, initial hold/resume, reopening/cancellation,
+and profile save/modal error/keyboard recovery. The profile compatibility page
+uses the existing modal focus handling without CSP-unsafe Alpine expressions.
+
 The application uses Laravel/Blade with Vite 6 and Tailwind CSS 4.3.3 through the
 official `@tailwindcss/vite` plugin. The committed npm lockfile is authoritative.
 Install with `npm ci`, run the full `npm audit` and production-only audit, check
