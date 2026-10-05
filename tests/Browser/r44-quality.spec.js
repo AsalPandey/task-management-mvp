@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 const evidenceDir = process.env.R44_EVIDENCE_DIR || 'output/r44';
 fs.mkdirSync(evidenceDir, { recursive: true });
 import { chromium, firefox, webkit } from 'playwright';
@@ -252,6 +253,9 @@ test('R44 responsive matrix preserves page and modal reflow including long conte
 for (const engine of ['chromium','firefox','webkit']) {
     test.describe(`R44 ${engine} smoke`, () => {
         test('login, creation, lifecycle, keyboard, filters, core pages and logout', async () => {
+            // Independent engine scenarios must not inherit the preceding suite's
+            // per-user freshness budget; production throttles remain enabled.
+            execFileSync(process.env.PHP_BINARY || 'php', ['tests/Support/r44_browser_rate_reset.php'], { stdio: 'pipe' });
             let browser;
             try { browser=await ({chromium,firefox,webkit})[engine].launch(); }
             catch(error) {
@@ -261,6 +265,7 @@ for (const engine of ['chromium','firefox','webkit']) {
                 }
                 throw error;
             }
+            try {
             const context=await browser.newContext({ baseURL: process.env.APP_URL || 'http://127.0.0.1:8046' }); const page=await context.newPage();
             page.setDefaultTimeout(30_000);
             page.setDefaultNavigationTimeout(25_000);
@@ -283,7 +288,10 @@ for (const engine of ['chromium','firefox','webkit']) {
             step('core pages');
             await page.setViewportSize({width:390,height:844}); step('mobile resize'); await page.locator('#mobileMenuBtn').click(); step('mobile menu'); await expect(page.locator('#primaryNavigation')).toHaveClass(/open/);
             await page.keyboard.press('Escape'); step('mobile escape'); await page.locator('form[action$="/logout"] button').click();
-            await expect(page.locator('#email')).toBeVisible(); await settled(page); step('logout'); expect(errors).toEqual([]); await browser.close(); step('browser close');
+            await expect(page.locator('#email')).toBeVisible(); await settled(page); step('logout'); expect(errors).toEqual([]);
+            } finally {
+                await browser.close();
+            }
         });
     });
 }
