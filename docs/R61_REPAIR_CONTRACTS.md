@@ -74,6 +74,10 @@ search and current role/project authorization. PM default staff lists are scoped
 search is an authorized project-membership-management action, not an unrestricted roster dump.
 Membership mutation responses also return bounded previews. New endpoints expose no passwords,
 security stamps or emails. Current account middleware remains mandatory.
+Roster selections stay disabled while their response is pending. Task/project submission waits
+for the current loading promises before constructing FormData, so a disabled required assignee
+cannot silently disappear from an early edit. Reviewer editing remains confined to its workflow
+action. Deterministic browser barriers qualify delayed selection and early edit submission.
 
 `scripts/r61-prepare-roster.php` prepares an empty guarded disposable company fixture.
 `scripts/r61-check-roster.php` starts fresh 128M profiling processes and enforces 64 MiB peak,

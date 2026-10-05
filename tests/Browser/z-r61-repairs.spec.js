@@ -45,8 +45,34 @@ test('R61 reviewer loading cannot clear an early selection', async ({page}) => {
     await page.locator('#taskReviewer').selectOption({label:'R41 Manager'});
     await expect(page.locator('#taskReviewer')).toHaveValue('1');
 });
+test('R61 edit waits for delayed roster loading before serializing the assignee', async ({page}) => {
+    await login(page); await page.goto('/tasks?search=R61%20Loading%20Draft');
+    let release;
+    let observed;
+    const pending = new Promise(resolve => { observed = resolve; });
+    const barrier = new Promise(resolve => { release = resolve; });
+    await page.route('**/projects/*/candidates?*', async route => {
+        if (new URL(route.request().url()).searchParams.get('kind') === 'assignment') {
+            observed(); await barrier;
+        }
+        await route.continue();
+    });
+    const card=page.locator(`.task-card[data-task-id="${fixture.loading_task}"]`);
+    await card.getByRole('button',{name:'Edit R61 Loading Draft',exact:true}).click();
+    await pending; await page.locator('#taskTitle').fill('R61 Loading Draft Updated');
+    let writes=0;
+    page.on('request',request=>{if(request.method()==='PUT' && new URL(request.url()).pathname===`/tasks/${fixture.loading_task}`) writes++;});
+    const response=page.waitForResponse(r=>r.request().method()==='PUT' && new URL(r.url()).pathname===`/tasks/${fixture.loading_task}`);
+    await page.locator('#taskForm button[type=submit]').click();
+    await expect(page.locator('#taskForm button[type=submit]')).toBeDisabled(); expect(writes).toBe(0);
+    release(); expect((await response).status()).toBe(200);
+    expect(writes).toBe(1);
+    expect((await api(page,'POST',`/tasks/${fixture.loading_task}/cancel`,{expected_version:2,cancellation_reason:'Finish isolated loading test'})).status).toBe(200);
+});
 test('R61 Manager sees responsibility warnings and can resolve promotion and PM handover', async ({page}) => {
     await login(page);
+    const loading=(await (await page.request.get(`/tasks/${fixture.loading_task}/edit`)).json()).task;
+    if(loading.status.toLowerCase().replaceAll(' ','_')!=='cancelled') expect((await api(page,'POST',`/tasks/${fixture.loading_task}/cancel`,{expected_version:loading.lock_version ?? loading.version,cancellation_reason:'Resolve isolated loading fixture'})).status).toBe(200);
     await roleEdit(page,fixture.employee,409);
     await expect(page.locator('#editMemberForm [role="alert"]')).toContainText('unfinished task assignments');
     expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>['serious','critical'].includes(v.impact))).toEqual([]);

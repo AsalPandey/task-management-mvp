@@ -76,8 +76,13 @@ document.addEventListener('DOMContentLoaded', function() {
     managerSearch.placeholder = 'Search project manager'; managerSearch.setAttribute('aria-label', 'Search project manager');
     managerSelect?.before(managerSearch);
     let managerSequence = 0; let managerTimer;
-    async function loadManagers(selectedId = '') {
+    let managerLoading = Promise.resolve();
+    function loadManagers(selectedId = '') {
+        return managerLoading = fetchManagers(selectedId);
+    }
+    async function fetchManagers(selectedId = '') {
         const sequence = ++managerSequence;
+        managerSelect.disabled = true;
         try {
             const parameters = new URLSearchParams({search: managerSearch.value});
             if (selectedId) parameters.set('selected', selectedId);
@@ -88,6 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
             managerSelect.replaceChildren(new Option('Unassigned', ''));
             data.candidates.forEach(user => { const option = new Option(user.name, user.id); option.selected = String(user.id) === String(selectedId); managerSelect.appendChild(option); });
         } catch(error) { showMessage(error.message, false); }
+        finally { if (sequence === managerSequence) managerSelect.disabled = false; }
     }
     managerSearch.addEventListener('input', () => { clearTimeout(managerTimer); managerTimer = setTimeout(() => loadManagers(), 250); });
     function openModal(project = null) {
@@ -172,13 +178,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    form.addEventListener('submit', function(event) {
+    form.addEventListener('submit', async function(event) {
         event.preventDefault();
         if (form.dataset.pending === 'true') return;
         form.dataset.pending = 'true';
         form.setAttribute('aria-busy', 'true');
         const submit = form.querySelector('button[type="submit"]');
         submit.disabled = true;
+        await managerLoading;
         const formData = new FormData(form);
         const payload = Object.fromEntries(formData.entries());
         const url = editingProjectId ? `/projects/${editingProjectId}` : '/projects';
@@ -209,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let sequence = 0;
         async function loadCandidates() {
             const request = ++sequence;
+            select.disabled = true;
             try {
                 const parameters = new URLSearchParams({kind: 'member', search: search.value});
                 const response = await fetch(window.AppClient.appUrl(`/projects/${memberForm.dataset.projectId}/candidates?${parameters}`), {headers: {Accept: 'application/json'}});
@@ -218,6 +226,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 select.replaceChildren(new Option('Add member', ''));
                 data.candidates.forEach(user => select.appendChild(new Option(user.name, user.id)));
             } catch(error) { showMessage(error.message, false); }
+            finally { if (request === sequence) select.disabled = false; }
         }
         search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadCandidates, 250); });
         select.addEventListener('focus', loadCandidates, {once: true});

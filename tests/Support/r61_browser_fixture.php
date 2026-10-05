@@ -54,7 +54,7 @@ foreach ([$employee, $former] as $person) {
 }
 function createWork($manager, $person, $project, $title)
 {
-    $r = httpAction($manager, 'POST', '/tasks', ['title' => $title, 'project_id' => $project->id, 'assignee_id' => $person->id, 'reviewer_id' => $manager->id, 'priority' => 'High', 'due_date' => today()->addDays(4)->toDateString()]);
+    $r = httpAction($manager, 'POST', '/tasks', ['title' => $title, 'description' => 'R61 browser workflow fixture', 'start_date' => today()->toDateString(), 'project_id' => $project->id, 'assignee_id' => $person->id, 'reviewer_id' => $manager->id, 'priority' => 'High', 'due_date' => today()->addDays(4)->toDateString()]);
 
     return Task::findOrFail($r['task']['id']);
 }
@@ -63,6 +63,7 @@ function action($actor, $task, $suffix, $data = [])
     return httpAction($actor, 'POST', '/tasks/'.$task->id.'/'.$suffix, ['expected_version' => $task->fresh()->lock_version] + $data);
 }
 $promotion = createWork($manager, $employee, $project, 'R61 Promotion Work');
+$loading = createWork($manager, $employee, $project, 'R61 Loading Draft');
 action($employee, $promotion, 'start');
 $handover = createWork($manager, $pm, $project, 'R61 PM Assignment');
 action($pm, $handover, 'start');
@@ -84,4 +85,4 @@ action($manager, $delayed, 'cancel', ['cancellation_reason' => 'R61_PRIVATE_BROW
 $fail = false;
 $intent = WorkflowNotificationIntent::where('task_id', $delayed->id)->where('transition', 'submitted')->where('recipient_id', $manager->id)->firstOrFail();
 app(RequiredWorkflowNotifications::class)->deliver($intent->id);
-echo json_encode(['employee' => $employee->only(['id', 'name', 'email']), 'former' => $former->only(['id', 'name', 'email']), 'pm' => $pm->only(['id', 'name', 'email']), 'next' => $next->only(['id', 'name', 'email']), 'admin' => $admin->only(['id', 'name', 'email']), 'project' => $project->id, 'project_name' => $project->name, 'promotion_task' => $promotion->id, 'pm_task' => $handover->id, 'notice' => $intent->id], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+echo json_encode(['employee' => $employee->only(['id', 'name', 'email']), 'former' => $former->only(['id', 'name', 'email']), 'pm' => $pm->only(['id', 'name', 'email']), 'next' => $next->only(['id', 'name', 'email']), 'admin' => $admin->only(['id', 'name', 'email']), 'project' => $project->id, 'project_name' => $project->name, 'loading_task' => $loading->id, 'promotion_task' => $promotion->id, 'pm_task' => $handover->id, 'notice' => $intent->id], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);

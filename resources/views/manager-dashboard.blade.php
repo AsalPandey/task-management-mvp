@@ -100,7 +100,12 @@ document.addEventListener('DOMContentLoaded', function() {
         rosterTimer = setTimeout(() => populateAssignees(taskProjectSelect.value), 250);
     });
     taskAssigneeSelect?.before(assigneeSearch);
-    async function populateAssignees(projectId, selectedId = '') {
+    let assigneeLoading = Promise.resolve();
+    let reviewerLoading = Promise.resolve();
+    function populateAssignees(projectId, selectedId = '') {
+        return assigneeLoading = loadAssignees(projectId, selectedId);
+    }
+    async function loadAssignees(projectId, selectedId = '') {
         if (!projectId || !taskAssigneeSelect) { renderAssignees(projectId, selectedId); return; }
         const sequence = ++rosterRequest;
         taskAssigneeSelect.disabled = true;
@@ -181,7 +186,10 @@ document.addEventListener('DOMContentLoaded', function() {
     reviewerSearch.addEventListener('input', () => {
         clearTimeout(reviewerTimer); reviewerTimer = setTimeout(() => populateReviewers(taskProjectSelect.value), 250);
     });
-    async function populateReviewers(projectId, selectedId = '') {
+    function populateReviewers(projectId, selectedId = '') {
+        return reviewerLoading = loadReviewers(projectId, selectedId);
+    }
+    async function loadReviewers(projectId, selectedId = '') {
         if (!projectId || !taskReviewerSelect) { renderReviewers(projectId, selectedId); return; }
         const sequence = ++reviewerRequest;
         taskReviewerSelect.disabled = true;
@@ -271,6 +279,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     function setLoading(isLoading) {
+        taskForm.dataset.pending = isLoading ? 'true' : 'false';
         const submitBtn = document.getElementById('submitBtn');
         if (submitBtn) submitBtn.disabled = isLoading;
         if (isLoading) {
@@ -329,7 +338,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (taskForm) {
         taskForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            if (taskForm.dataset.pending === 'true') return;
             setLoading(true);
+            await Promise.all([assigneeLoading, reviewerLoading]);
             const formData = new FormData(taskForm);
             const payload = {
                 title: formData.get('taskTitle'),

@@ -27,7 +27,9 @@ test('R61 dense 1000-person roster remains searchable keyboard usable and scoped
     await page.locator('#taskDueDate').fill(new Date(Date.now()+7*86400000).toISOString().slice(0,10));
     expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>['serious','critical'].includes(v.impact))).toEqual([]);
     const response=page.waitForResponse(r=>r.request().method()==='POST' && new URL(r.url()).pathname==='/tasks');
+    const reloaded=page.waitForEvent('framenavigated',{predicate:frame=>frame===page.mainFrame()});
     await page.locator('#taskForm button[type=submit]').click(); expect((await response).status()).toBe(200);
+    await reloaded; await page.waitForLoadState('load');
     await page.goto('/tasks?search=R61%20large%20roster%20assignment');
     await expect(page.locator('#tasksGrid')).toContainText('R61 large roster assignment');
     await page.screenshot({path:`${process.env.BROWSER_OUTPUT_DIR}/r61-large-assignment.png`,fullPage:true});
