@@ -68,8 +68,12 @@ test('core browser libraries are provided by the locked local vite build', funct
     expect($package['devDependencies'])
         ->toHaveKeys(['chart.js', 'sweetalert2']);
     expect($entry)
-        ->toContain("import Chart from 'chart.js/auto'")
+        ->not->toContain('chart.js')
         ->toContain("import Swal from 'sweetalert2'");
+    expect(file_get_contents(resource_path('js/charts.js')))->toContain("import Chart from 'chart.js/auto'");
+    foreach (['analytics', 'team-member-analytics'] as $view) {
+        expect(file_get_contents(resource_path("views/{$view}.blade.php")))->toContain("@vite('resources/js/charts.js')");
+    }
     expect($views)
         ->toContain("@vite(['resources/css/app.css', 'resources/js/app.js'])")
         ->not->toContain('cdn.jsdelivr.net')

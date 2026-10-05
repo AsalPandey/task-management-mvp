@@ -166,6 +166,7 @@ body { background: #f7f8fa; }
 </div>
 @endsection
 @push('scripts')
+@vite('resources/js/charts.js')
 <script type="module">
 const priorityData = @json($priorityCounts);
 const productivityData = @json($productivity);

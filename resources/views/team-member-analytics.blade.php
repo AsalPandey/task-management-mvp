@@ -129,6 +129,7 @@ body { background: #f7f8fa; }
     </div>
 </div>
 @push('scripts')
+@vite('resources/js/charts.js')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Completion Trend Chart
