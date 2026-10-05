@@ -50,6 +50,26 @@ and run the existing command once only after reviewing the business timing.
 Generation-based idempotency protects repeated delivery, not an external cron
 availability guarantee. Do not clear scheduler locks while a worker is active.
 
+## Required workflow notice recovery
+
+Mandatory in-app notices have durable `workflow_notification_intents` written in
+the workflow transaction. The scheduler runs
+`app:deliver-required-workflow-notifications` every minute with non-overlap.
+Database queue processing for optional push/mail does not replace this recovery.
+Inspect pending count, oldest `available_at`, and safe deferred-retry warnings
+privately after a database or delivery outage. Restore the cause, then run
+`php artisan app:deliver-required-workflow-notifications --limit=100` and observe
+pending intents drain. A successful command exit means the bounded scan ran;
+individual delivery failures can still remain pending for later retry.
+
+Delivery rechecks recipient authorization and deduplicates its database notice.
+Revoked recipients can be discarded; membership withdrawal uses a restricted
+notice without revealing the former project's private content. Do not manually
+insert notices or mark pending intents delivered. The command prunes only old
+finished delivered/discarded intents (default 30 days), in bounded batches.
+Pending intents are retained. A host cron/recovery rehearsal remains an external
+acceptance requirement.
+
 ## Mail or push failing
 
 Mail: inspect safe transport failures, SMTP host/port/scheme, provider limits,

@@ -7,7 +7,7 @@ hosting account are unrelated applications and must not be modified.
 
 The `CI` workflow tests the exact `main` commit with SQLite/quality checks and
 MariaDB migration/bootstrap/concurrency qualification. Its dependent deployment
-job runs only when both jobs succeed and the repository variable
+job runs only when all three required jobs succeed and the repository variable
 `HOSTINGER_DEPLOY_ENABLED` is `true`. Main-branch runs are not interrupted during
 a deployment by a subsequent push.
 
