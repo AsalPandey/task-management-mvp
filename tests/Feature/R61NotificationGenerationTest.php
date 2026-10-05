@@ -81,6 +81,6 @@ class R61NotificationGenerationTest extends TestCase
         $notice = $a->fresh()->notifications()->where('data', 'like', '%reopened_revision_required%')->firstOrFail();
         $this->assertTrue($notice->data['historical']);
         $this->assertFalse($notice->data['actionable']);
-        $this->assertStringNotContainsString('R61_PRIVATE',json_encode($notice->data));
+        $this->assertStringNotContainsString('R61_PRIVATE', json_encode($notice->data));
     }
 }

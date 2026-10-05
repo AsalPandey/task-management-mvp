@@ -98,8 +98,8 @@ class ProjectsController extends Controller
             $this->writeProject(function () use ($project, $request, $pmReplacementService) {
                 $actor = app(ProjectWriterLocks::class)->actor(auth()->user(), array_filter([$project->project_manager_id, $request->input('project_manager_id')]));
                 $lockedProject = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
-                abort_if((int) $lockedProject->project_manager_id !== (int) $project->project_manager_id, 409, 'Project ownership changed. Refresh and try again.');
                 Gate::forUser($actor)->authorize('update', $lockedProject);
+                abort_if((int) $lockedProject->project_manager_id !== (int) $project->project_manager_id, 409, 'Project ownership changed. Refresh and try again.');
                 $data = $this->validatedProjectData($request, $lockedProject);
                 if ($actor->hasRole('project_manager') && ! $actor->hasRole('manager')) {
                     $data['project_manager_id'] = $actor->id;

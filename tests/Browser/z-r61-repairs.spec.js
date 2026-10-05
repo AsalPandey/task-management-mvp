@@ -24,6 +24,26 @@ async function roleEdit(page, person, expected) {
     await page.getByRole('button',{name:'Yes, change!',exact:true}).click();
     expect((await response).status()).toBe(expected);
 }
+test('R61 reviewer loading cannot clear an early selection', async ({page}) => {
+    await login(page);
+    let release;
+    let observed;
+    const pending = new Promise(resolve => { observed = resolve; });
+    const barrier = new Promise(resolve => { release = resolve; });
+    await page.route('**/projects/*/candidates?*', async route => {
+        if (new URL(route.request().url()).searchParams.get('kind') === 'reviewer') {
+            observed(); await barrier;
+        }
+        await route.continue();
+    });
+    await page.goto('/tasks'); await page.locator('#newTaskBtn').click();
+    await page.locator('#taskProject').selectOption(String(fixture.project));
+    await pending;
+    await expect(page.locator('#taskReviewer')).toBeDisabled();
+    release();
+    await page.locator('#taskReviewer').selectOption({label:'R41 Manager'});
+    await expect(page.locator('#taskReviewer')).toHaveValue('1');
+});
 test('R61 Manager sees responsibility warnings and can resolve promotion and PM handover', async ({page}) => {
     await login(page);
     await roleEdit(page,fixture.employee,409);

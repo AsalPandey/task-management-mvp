@@ -195,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function populateReviewers(projectId, selectedId = '') {
         if (!projectId || !taskReviewerSelect) { renderReviewers(projectId, selectedId); return; }
         const sequence = ++reviewerRequest;
+        taskReviewerSelect.disabled = true;
         try {
             const parameters = new URLSearchParams({search: reviewerSearch.value, kind: 'reviewer'});
             if (selectedId) parameters.set('selected', selectedId);
@@ -205,6 +206,7 @@ document.addEventListener('DOMContentLoaded', function() {
             reviewerCandidates.splice(0, reviewerCandidates.length, ...data.candidates);
             renderReviewers(projectId, selectedId);
         } catch(error) { if (sequence === reviewerRequest) showMessage(error.message, false); }
+        finally { if (sequence === reviewerRequest) taskReviewerSelect.disabled = false; }
     }
 
     function renderReviewers(projectId, selectedId = '') {

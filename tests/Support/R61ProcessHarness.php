@@ -16,7 +16,8 @@ trait R61ProcessHarness
     protected function setUp(): void
     {
         parent::setUp();
-        if (DB::getDriverName() !== 'mysql' || ! str_starts_with(DB::getDatabaseName(), 'task_management_r6_r61_')) {
+        $schemaPrefix = 'task_management_r6_r61_'.(str_contains(static::class, 'Responsibility') ? 'responsibility_' : 'account_');
+        if (DB::getDriverName() !== 'mysql' || ! str_starts_with(DB::getDatabaseName(), $schemaPrefix)) {
             $this->markTestSkipped('Requires private R61 account MariaDB schema.');
         }
         $this->seed();
