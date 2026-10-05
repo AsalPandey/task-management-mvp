@@ -211,6 +211,9 @@ jobs:
       DB_USERNAME: root
       DB_PASSWORD: ci_root_password
       SESSION_DRIVER: database
+      # The disposable browser servers use loopback HTTP, including APIRequestContext.
+      # Real HTTPS deployments retain secure cookies from their production environment.
+      SESSION_SECURE_COOKIE: "false"
       CACHE_STORE: database
       QUEUE_CONNECTION: database
       MAIL_MAILER: log

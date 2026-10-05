@@ -157,7 +157,7 @@ done
 recreate_database "${r42_reset_database}"
 php artisan db:seed --force --no-interaction
 php artisan migrate:reset --force --no-interaction
-test "$(MYSQL_PWD="${DB_PASSWORD}" "${mysql_command[@]}" --execute="SELECT COUNT(*) FROM migrations;")" = "0"
+test "$(MYSQL_PWD="${DB_PASSWORD}" "${mysql_command[@]}" --database="${r42_reset_database}" --execute="SELECT COUNT(*) FROM migrations;")" = "0"
 php artisan migrate --seed --force --no-interaction
 php artisan about --only=environment,drivers
 

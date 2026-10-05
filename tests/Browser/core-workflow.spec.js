@@ -373,7 +373,7 @@ test('logout and login retain canonical completed state and history', async ({ p
     await expect(page.locator('.swal2-popup')).toContainText('Task created');
     await page.screenshot({ path: `${process.env.BROWSER_OUTPUT_DIR || 'output/playwright/r41'}/r41-revision-timeline.png`, fullPage: true });
 });
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 test('R5.1 delayed approval cannot approve a newer submission', async ({ page, context, browser }) => {
     await login(page);
@@ -404,7 +404,9 @@ test('R5.1 delayed approval cannot approve a newer submission', async ({ page, c
     const result = await response;
     const after = snapshot();
     const observed = { rendered, current: current.lock_version, payload: result.request().postDataJSON(), status: result.status(), after: after.tasks.find(t => t.id === current.id), approvals: after.approvals.filter(a => a.task_id === current.id), eventsBefore: before.events.filter(e => e.task_id === current.id).length, eventsAfter: after.events.filter(e => e.task_id === current.id).length, historyBefore: before.history.filter(h => h.task_id === current.id).length, historyAfter: after.history.filter(h => h.task_id === current.id).length, notificationsBefore: before.notifications, notificationsAfter: after.notifications };
-    writeFileSync((process.env.R51_EVIDENCE_DIR || 'output/r5-1') + '/delayed-browser-approval.json', JSON.stringify(observed, null, 2));
+    const evidenceDir = process.env.R51_EVIDENCE_DIR || 'output/r5-1';
+    mkdirSync(evidenceDir, { recursive: true });
+    writeFileSync(evidenceDir + '/delayed-browser-approval.json', JSON.stringify(observed, null, 2));
     expect(result.status()).toBe(409);
     expect(observed.payload.expected_version).toBe(rendered);
     expect(observed.after.status).toBe('in_review');
