@@ -191,6 +191,7 @@ class TaskNotificationDispatcher
         Task $task,
         User $actor,
         ?User $oldReviewer,
+        bool $deliverAfterCommit = true,
     ): void {
         $this->dispatchReviewTransition(
             $task,
@@ -203,6 +204,7 @@ class TaskNotificationDispatcher
                 $task->creator,
             ]),
             'Review the updated reviewer assignment',
+            $deliverAfterCommit,
         );
     }
 
@@ -228,9 +230,10 @@ class TaskNotificationDispatcher
         string $transition,
         Collection $recipients,
         string $requiredAction,
+        bool $deliverAfterCommit = true,
     ): void {
         if (app(NotificationPreferencePolicy::class)->isRequiredType('task_'.$transition)) {
-            app(RequiredWorkflowNotifications::class)->record($task, $actor, $transition, $recipients, $requiredAction);
+            app(RequiredWorkflowNotifications::class)->record($task, $actor, $transition, $recipients, $requiredAction, $deliverAfterCommit);
 
             return;
         }

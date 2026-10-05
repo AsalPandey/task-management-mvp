@@ -58,6 +58,7 @@ class TaskEventRecorder
         TaskOperationContext $context,
         array $changedFields,
         ?array $metadata = null,
+        bool $joinOuterTransaction = false,
     ): TaskEvent {
         if (! $task->exists || ! $task->getKey()) {
             throw new InvalidArgumentException('A persisted task is required to record an event.');
@@ -69,7 +70,7 @@ class TaskEventRecorder
 
         $connection = $task->getConnection();
 
-        return $connection->transaction(function () use ($connection, $task, $eventType, $context, $changedFields, $metadata) {
+        $write = function () use ($connection, $task, $eventType, $context, $changedFields, $metadata) {
             $lockedTask = Task::on($connection->getName())
                 ->withTrashed()
                 ->whereKey($task->getKey())
@@ -89,7 +90,20 @@ class TaskEventRecorder
                 $changedFields,
                 $metadata,
             );
-        });
+        };
+
+        // Bulk reconciliation already owns an all-or-nothing transaction. Retain
+        // the current task lock and recorder checks without one saved transaction
+        // record per event. Other callers retain the original savepoint boundary.
+        if ($joinOuterTransaction) {
+            if ($connection->transactionLevel() === 0) {
+                throw new RuntimeException('An outer transaction is required for bulk event recording.');
+            }
+
+            return $write();
+        }
+
+        return $connection->transaction($write);
     }
 
     /**

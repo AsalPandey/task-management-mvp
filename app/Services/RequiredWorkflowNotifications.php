@@ -19,19 +19,47 @@ use Throwable;
 
 final class RequiredWorkflowNotifications
 {
-    public function record(Task $task, User $actor, string $transition, Collection $recipients, string $action): void
+    public function record(Task $task, User $actor, string $transition, Collection $recipients, string $action, bool $deliverAfterCommit = true): void
     {
+        if (! $deliverAfterCommit && $task->getConnection()->transactionLevel() === 0) {
+            throw new RuntimeException('An outer transaction is required for bulk workflow intents.');
+        }
         foreach ($recipients->filter()->unique('id') as $recipient) {
             $responsibility = (int) $recipient->id === (int) $task->assignee_id ? 'assignee'
                 : ((int) $recipient->id === (int) $task->reviewer_id ? 'reviewer' : 'observer');
-            $intent = WorkflowNotificationIntent::firstOrCreate([
+            $identity = [
                 'task_id' => $task->id, 'task_version' => $task->lock_version,
                 'recipient_id' => $recipient->id, 'transition' => $transition,
-            ], ['id' => (string) Str::uuid(), 'actor_id' => $actor->id, 'responsibility' => $responsibility,
-                'action' => $action, 'available_at' => now()]);
+            ];
+            $values = ['id' => (string) Str::uuid(), 'actor_id' => $actor->id, 'responsibility' => $responsibility,
+                'action' => $action, 'available_at' => now()];
+            if ($deliverAfterCommit) {
+                $intent = WorkflowNotificationIntent::firstOrCreate($identity, $values);
+            } else {
+                // PM reconciliation holds the task row through the outer commit.
+                // Its new version serializes this identity; an unexpected unique
+                // violation must roll back the whole operation, not a savepoint.
+                $intent = WorkflowNotificationIntent::firstOrNew($identity, $values);
+                if (! $intent->exists) {
+                    $intent->save();
+                }
+            }
             $id = $intent->id;
-            $task->getConnection()->afterCommit(fn () => $this->deliver($id));
+            if ($deliverAfterCommit) {
+                $task->getConnection()->afterCommit(fn () => $this->deliver($id));
+            }
         }
+    }
+
+    public function deliverProjectReviewerReassignments(int $projectId): void
+    {
+        WorkflowNotificationIntent::query()->where('status', 'pending')->where('transition', 'reviewer_reassigned')
+            ->whereIn('task_id', Task::query()->where('project_id', $projectId)->select('id'))
+            ->select('id')->chunkById(100, function ($intents) {
+                foreach ($intents as $intent) {
+                    $this->deliver($intent->id);
+                }
+            });
     }
 
     public function deliver(string $id): void

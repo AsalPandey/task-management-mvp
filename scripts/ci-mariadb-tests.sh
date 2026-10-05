@@ -20,6 +20,8 @@ readonly r42_reset_database="task_management_r42_reset_ci"
 readonly r42_timezone_database="task_management_r42_timezone_ci"
 readonly r3c_fresh_database="task_management_r3c_fresh_ci"
 readonly r43_qualification_database="task_management_r43_ci_qualification"
+readonly r53_dense10_database="task_management_r43_r53_ci_dense10000"
+readonly r53_dense25_database="task_management_r43_r53_ci_dense25000"
 readonly r51_concurrency_database="task_management_r51_concurrency_ci"
 readonly r52_concurrency_database="task_management_r52_concurrency_ci"
 readonly r43_concurrency_database="task_management_r43_concurrency_ci"
@@ -36,7 +38,7 @@ mysql_command=(
 
 database_is_approved() {
     case "$1" in
-        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r43_concurrency_database}"|"${r51_concurrency_database}"|"${r52_concurrency_database}")
+        "${main_database}"|"${r2a_database}"|"${r2a_migration_database}"|"${r2b5_database}"|"${r2b5q_database}"|"${r3a2_database}"|"${r3a3_database}"|"${r3c_fresh_database}"|"${r42_membership_database}"|"${r42_upgrade_database}"|"${r42_reset_database}"|"${r42_timezone_database}"|"${r43_qualification_database}"|"${r53_dense10_database}"|"${r53_dense25_database}"|"${r43_concurrency_database}"|"${r51_concurrency_database}"|"${r52_concurrency_database}")
             return 0
             ;;
         *)
@@ -161,6 +163,19 @@ done
 php artisan config:clear
 php artisan route:clear
 php artisan event:clear
+
+# R5.3: dense company fixtures, unchanged 128M process limit, real reconciliation
+# with durable delivery and an independent state/version/provenance oracle.
+export APP_TIMEZONE=Asia/Kathmandu
+mkdir -p output/r5-3-ci
+for size in 10000 25000; do
+    if [[ "$size" == 10000 ]]; then database="$r53_dense10_database"; else database="$r53_dense25_database"; fi
+    recreate_database "$database"
+    php artisan db:seed --force --no-interaction
+    php -d memory_limit=128M scripts/r43-prepare-performance.php "$size" 1 0 > "output/r5-3-ci/fixture-$size.json"
+    MYSQL_PWD="$DB_PASSWORD" "${mysql_command[@]}" --database="$database" --execute="INSERT INTO users (name,email,password,active,role_id,created_at,updated_at) SELECT 'Second capacity manager','second@r53.example.invalid',password,1,role_id,NOW(),NOW() FROM users WHERE email='manager@r43.example.invalid';"
+    php -d memory_limit=128M scripts/r53-check-administration.php > "output/r5-3-ci/administration-$size.json"
+done
 
 # R4.3 is a separate 10k resource gate; the normal suite keeps small deterministic budgets.
 export APP_TIMEZONE=Asia/Kathmandu

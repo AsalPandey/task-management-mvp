@@ -61,22 +61,16 @@ class AccountLifecycleService
         }
 
         $activeReviewDuties = Task::query()
-            ->with('project:id,project_manager_id')
             ->where('reviewer_id', $user->id)
             ->whereNotIn('status', [TaskState::Completed->value, TaskState::Cancelled->value])
-            ->lockForUpdate()
-            ->get();
+            ->lockForUpdate();
 
-        $wouldInvalidateDuty = $activeReviewDuties->contains(function (Task $task) use ($newRole, $user): bool {
-            if ($newRole->name === 'manager') {
-                return false;
-            }
-
-            return $newRole->name !== 'project_manager'
-                || ! $task->project
-                || (int) $task->project->project_manager_id !== (int) $user->id
-                || (int) $task->assignee_id === (int) $user->id;
-        });
+        $wouldInvalidateDuty = $newRole->name !== 'manager'
+            && $activeReviewDuties->when($newRole->name === 'project_manager', fn ($query) => $query
+                ->where(fn ($duties) => $duties
+                    ->whereDoesntHave('project', fn ($projects) => $projects->where('project_manager_id', $user->id))
+                    ->orWhere('assignee_id', $user->id)))
+                ->exists();
 
         if ($wouldInvalidateDuty) {
             throw new AccountLifecycleException(

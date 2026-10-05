@@ -419,6 +419,7 @@ class FailingTaskEventRecorder extends TaskEventRecorder
         TaskOperationContext $context,
         array $changedFields,
         ?array $metadata = null,
+        bool $joinOuterTransaction = false,
     ): TaskEvent {
         throw new RuntimeException('Injected task event failure.');
     }
