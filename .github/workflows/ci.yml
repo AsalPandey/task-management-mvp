@@ -268,15 +268,15 @@ jobs:
           php artisan migrate --seed --force --no-interaction
           php scripts/r43-prepare-performance.php 10000 20 10000 > /tmp/r43-browser-oracle.json
           php artisan optimize
-            R43_LARGE_BROWSER=1 npx playwright test tests/Browser/r43-performance.spec.js
-        - name: Exercise dense 1000-person roster browser workflow
-          run: |
-            php artisan config:clear
-            export DB_DATABASE=task_management_r6_company
-            MYSQL_PWD="$DB_PASSWORD" mysql --protocol=tcp --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USERNAME" --execute="CREATE DATABASE task_management_r6_company CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            php scripts/r61-prepare-roster.php 1000 > /tmp/r61-roster-oracle.json
-            php artisan optimize
-            R61_LARGE_ROSTER=1 npx playwright test tests/Browser/z-r61-roster.spec.js
+          R43_LARGE_BROWSER=1 npx playwright test tests/Browser/r43-performance.spec.js
+      - name: Exercise dense 1000-person roster browser workflow
+        run: |
+          php artisan config:clear
+          export DB_DATABASE=task_management_r6_company
+          MYSQL_PWD="$DB_PASSWORD" mysql --protocol=tcp --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USERNAME" --execute="CREATE DATABASE task_management_r6_company CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          php scripts/r61-prepare-roster.php 1000 > /tmp/r61-roster-oracle.json
+          php artisan optimize
+          R61_LARGE_ROSTER=1 npx playwright test tests/Browser/z-r61-roster.spec.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:
