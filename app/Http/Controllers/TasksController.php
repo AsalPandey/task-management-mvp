@@ -588,6 +588,7 @@ class TasksController extends Controller
     public function timeline(Request $request, Task $task)
     {
         $this->authorize('view', $task);
+        $data = $request->validate(['before' => InputContracts::id('sometimes')]);
 
         return response()->json([
             'success' => true,
@@ -596,8 +597,7 @@ class TasksController extends Controller
                 'task_uid' => $task->task_uid,
                 'title' => $task->title,
             ],
-            'entries' => $this->taskTimeline->forViewer($task, $request->user()),
-        ]);
+        ] + $this->taskTimeline->pageForViewer($task, $request->user(), isset($data['before']) ? (int) $data['before'] : null));
     }
 
     private function visibleTasks(): Builder

@@ -914,7 +914,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!response.ok || !data.success) {
                     throw new Error(data.message || 'The timeline could not be loaded.');
                 }
-                await window.Phase3UI.showTimeline(data.entries);
+                await window.Phase3UI.showTimeline(data.entries, { url: button.dataset.url, ...data });
             } catch (error) {
                 showMessage(error.message || 'The timeline could not be loaded.', false);
             } finally {

@@ -24,47 +24,77 @@
         return '•';
     };
 
-    const showTimeline = async (entries) => {
+    const showTimeline = async (entries, page = {}) => {
         const timeline = createElement('ol', 'phase3-timeline');
+        const renderEntry = (entry) => {
+            const item = createElement('li', 'phase3-timeline-item');
+            item.dataset.sequence = entry.sequence;
+            const icon = createElement('span', 'phase3-timeline-icon', timelineIcon(entry.label));
+            icon.setAttribute('aria-hidden', 'true');
+            const content = createElement('div', 'phase3-timeline-content');
+            content.append(createElement('strong', 'phase3-timeline-action', entry.label || 'Task activity'));
+            const meta = createElement('div', 'phase3-timeline-meta');
+            meta.append(createElement('span', 'phase3-timeline-actor', entry.actor || 'System'));
+            if (entry.occurred_at) {
+                const time = createElement('time', 'phase3-timeline-time', new Date(entry.occurred_at).toLocaleString());
+                time.dateTime = entry.occurred_at;
+                meta.append(time);
+            }
+            content.append(meta);
+            if (Array.isArray(entry.details) && entry.details.length) {
+                content.append(createElement('p', 'phase3-timeline-note', entry.details.join(' · ')));
+            }
+            item.append(icon, content);
+            return item;
+        };
 
         if (!Array.isArray(entries) || entries.length === 0) {
             timeline.append(createElement('li', 'phase3-timeline-empty', 'No timeline entries are available.'));
         } else {
-            entries.forEach((entry) => {
-                const item = createElement('li', 'phase3-timeline-item');
-                const icon = createElement('span', 'phase3-timeline-icon', timelineIcon(entry.label));
-                icon.setAttribute('aria-hidden', 'true');
-
-                const content = createElement('div', 'phase3-timeline-content');
-                content.append(createElement('strong', 'phase3-timeline-action', entry.label || 'Task activity'));
-
-                const meta = createElement('div', 'phase3-timeline-meta');
-                meta.append(createElement('span', 'phase3-timeline-actor', entry.actor || 'System'));
-                if (entry.occurred_at) {
-                    const time = createElement(
-                        'time',
-                        'phase3-timeline-time',
-                        new Date(entry.occurred_at).toLocaleString()
-                    );
-                    time.dateTime = entry.occurred_at;
-                    meta.append(time);
-                }
-                content.append(meta);
-
-                if (Array.isArray(entry.details) && entry.details.length) {
-                    content.append(createElement('p', 'phase3-timeline-note', entry.details.join(' · ')));
-                }
-
-                item.append(icon, content);
-                timeline.append(item);
-            });
+            entries.forEach(entry => timeline.append(renderEntry(entry)));
         }
+
+        const older = createElement('button', 'btn-small btn-secondary', 'Load older activity');
+        older.type = 'button';
+        const status = createElement('li', 'phase3-timeline-navigation');
+        const message = createElement('span', '', page.has_more ? '' : 'Beginning of activity');
+        message.setAttribute('role', 'status');
+        status.append(older, message);
+        timeline.prepend(status);
+        older.hidden = !page.has_more;
+        let cursor = page.next_cursor;
+        let closed = false;
+        const controller = new AbortController();
+        older.addEventListener('click', async () => {
+            if (older.disabled || !cursor) return;
+            older.disabled = true;
+            message.textContent = 'Loading older activity…';
+            try {
+                const url = new URL(page.url, window.location.href);
+                url.searchParams.set('before', cursor);
+                const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || 'Older activity could not be loaded. Try again.');
+                if (closed) return;
+                const fragment = document.createDocumentFragment();
+                data.entries.forEach(entry => fragment.append(renderEntry(entry)));
+                status.after(fragment);
+                cursor = data.next_cursor;
+                older.hidden = !data.has_more;
+                message.textContent = data.has_more ? 'Older activity loaded.' : 'Beginning of activity';
+            } catch (error) {
+                if (!closed) message.textContent = error.message || 'Older activity could not be loaded. Try again.';
+            } finally {
+                older.disabled = false;
+            }
+        });
 
         return window.Swal.fire({
             title: 'Task timeline',
             html: timeline,
             width: 680,
             confirmButtonText: 'Close',
+            willClose: () => { closed = true; controller.abort(); },
             customClass: {
                 popup: 'phase3-timeline-dialog',
                 htmlContainer: 'phase3-timeline-scroll',
